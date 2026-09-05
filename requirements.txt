@@ -1,0 +1,5 @@
+google-api-python-client>=2.140
+google-auth-oauthlib>=1.2
+google-auth>=2.34
+python-dotenv>=1.0
+google-genai>=0.3

@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+data/
+*.db
+*.sqlite3
+token.json
+client_secret*.json
+*credentials*.json
+*.pem
+*.key
+.DS_Store
