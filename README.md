@@ -13,6 +13,10 @@ Nothing is posted automatically.
 
 State lives in `data/comments.db` (created on first run).
 
+Before drafting and again before posting, the bot checks all reply pages for a reply from your connected YouTube channel, Facebook Page, or Instagram username. If found, it saves the comment as `already_replied` and skips it, including replies you made manually. The pre-post check also protects drafts queued before this feature was added. Failed checks skip the comment for that run. Replies from other viewers do not prevent a reply.
+
+This only detects replies visible to the API from the connected identity: Facebook replies from your personal profile are not Page replies. Likes alone do not count as replies. Avoid overlapping posting runs or replying manually while a posting run is active; the check and publication are separate API calls.
+
 ## Setup
 
 Python 3.10+ recommended.
@@ -80,14 +84,13 @@ If `FACEBOOK_POST_IDS` / `INSTAGRAM_MEDIA_IDS` are empty, Facebook polls all Pag
 Put examples in `reply_examples/` (copy `_template.txt`). One file can hold **many** `comment:` / `reply:` pairs, or you can split them across files. Gemini still drafts every reply; it uses your pairs as a style list, not a skip list.
 
 ```text
-comment: Jay Maa 🙏
-reply: 🙏
-
-comment: Har har Mahadev
-reply: Har Har Mahadev
+comment: What time is the aarti?
+reply: Aarti time is in the video description.
 ```
 
-Gemini may also append a **new chant type** to `chant-folded-hands.txt`, `chant-har-har-mahadev.txt`, or `chant-new-types.txt` when a greeting is not already in the list. Questions and near-duplicates are not added. Review those files after a poll if you want to edit Gemini’s additions.
+Examples are maintained manually; the bot does not create or append chant examples. `_template.txt` is ignored when loading examples.
+
+On all platforms, the drafting prompt prohibits generic thanks for watching, commenting, supporting, or sharing devotion in any language, including Odia and English. The persona takes priority over examples: when configured for emoji-only devotional greetings, drafts use 🙏. Questions receive a direct, brief answer. Existing drafts can be regenerated with `python -m app.cli redraft`.
 
 Optional: `REPLY_EXAMPLES_DIR` in `.env` if you keep the folder somewhere else.
 
@@ -106,6 +109,9 @@ python -m app.cli review
 # Publish approved replies (all platforms)
 python -m app.cli post
 
+# Post approved Facebook replies and like their original comments as the Page
+python -m app.cli post --platform facebook --like-comments
+
 # Post YouTube drafts straight from poll records (skip review), limited batch
 python -m app.cli post --platform youtube --pending --limit 1
 
@@ -117,6 +123,8 @@ python -m app.cli run
 ```
 
 `poll-all` continues if one platform fails and prints the error.
+
+`--like-comments` is Facebook-only and requires a Page token with the appropriate engagement permissions (`pages_manage_engagement`). Likes are attempted after successful replies. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's API has no comment-like endpoint; Instagram likes are not implemented.
 
 Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]uit`.
 

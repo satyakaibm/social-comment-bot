@@ -30,6 +30,20 @@ def get_my_channel_id(youtube: Resource) -> str:
     return items[0]["id"]
 
 
+def find_own_reply(youtube: Resource, comment_id: str, channel_id: str) -> str | None:
+    """Search every reply page for a reply from the authenticated channel."""
+    request = youtube.comments().list(
+        part="snippet", parentId=comment_id, maxResults=100, textFormat="plainText"
+    )
+    while request is not None:
+        response = request.execute()
+        for reply in response["items"]:
+            if reply.get("snippet", {}).get("authorChannelId", {}).get("value") == channel_id:
+                return reply["id"]
+        request = youtube.comments().list_next(request, response)
+    return None
+
+
 def get_uploads_playlist_id(youtube: Resource) -> str:
     resp = youtube.channels().list(part="contentDetails", mine=True).execute()
     items = resp.get("items", [])

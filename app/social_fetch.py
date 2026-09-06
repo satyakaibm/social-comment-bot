@@ -42,7 +42,13 @@ def poll_facebook_and_draft() -> int:
                     title = post_message(post_id)
 
                     try:
-                        reply = draft_reply(
+                        existing_reply = meta_client.find_own_reply(comment_id, platform="facebook")
+                    except Exception:
+                        print(f"Could not verify existing replies for facebook comment {comment_id}; skipping this run.")
+                        continue
+
+                    try:
+                        reply = "" if existing_reply else draft_reply(
                             platform="facebook",
                             context_title=title,
                             author=author,
@@ -63,8 +69,11 @@ def poll_facebook_and_draft() -> int:
                         published_at=comment.get("created_time", ""),
                         draft_reply=reply,
                     )
+                    if existing_reply:
+                        db.update_status(conn, comment_id, "already_replied", reply_comment_id=existing_reply)
                     conn.commit()
-                    new_count += 1
+                    if not existing_reply:
+                        new_count += 1
             except meta_client.GraphAPIError as e:
                 print(f"Facebook Graph API error while polling post_id={post_id!r}: {e}")
 
@@ -98,7 +107,13 @@ def poll_instagram_and_draft() -> int:
                     title = media_caption(media_id)
 
                     try:
-                        reply = draft_reply(
+                        existing_reply = meta_client.find_own_reply(comment_id, platform="instagram")
+                    except Exception:
+                        print(f"Could not verify existing replies for instagram comment {comment_id}; skipping this run.")
+                        continue
+
+                    try:
+                        reply = "" if existing_reply else draft_reply(
                             platform="instagram",
                             context_title=title,
                             author=author,
@@ -119,8 +134,11 @@ def poll_instagram_and_draft() -> int:
                         published_at=comment.get("timestamp", ""),
                         draft_reply=reply,
                     )
+                    if existing_reply:
+                        db.update_status(conn, comment_id, "already_replied", reply_comment_id=existing_reply)
                     conn.commit()
-                    new_count += 1
+                    if not existing_reply:
+                        new_count += 1
             except meta_client.GraphAPIError as e:
                 print(f"Instagram Graph API error while polling media_id={media_id!r}: {e}")
 
