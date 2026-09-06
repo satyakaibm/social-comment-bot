@@ -3,6 +3,7 @@ from googleapiclient.errors import HttpError
 from app import config, db
 from app.generate import draft_reply
 from app.youtube_client import (
+    find_own_reply,
     get_client,
     get_my_channel_id,
     get_uploads_playlist_id,
@@ -74,7 +75,13 @@ def poll_and_draft() -> int:
                     title = video_title(actual_video_id)
 
                     try:
-                        reply = draft_reply(
+                        existing_reply = find_own_reply(youtube, comment_id, channel_id)
+                    except Exception:
+                        print(f"Could not verify existing replies for YouTube comment {comment_id}; skipping this run.")
+                        continue
+
+                    try:
+                        reply = "" if existing_reply else draft_reply(
                             platform="youtube",
                             context_title=title,
                             author=author,
@@ -94,9 +101,12 @@ def poll_and_draft() -> int:
                         published_at=snippet.get("publishedAt", ""),
                         draft_reply=reply,
                     )
+                    if existing_reply:
+                        db.update_status(conn, comment_id, "already_replied", reply_comment_id=existing_reply)
                     conn.commit()  # persist each draft immediately so a later
                     # failure in this batch can't roll back already-drafted replies
-                    new_count += 1
+                    if not existing_reply:
+                        new_count += 1
             except HttpError as e:
                 print(f"YouTube API error while polling video_id={video_id!r}: {e}")
 

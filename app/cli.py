@@ -55,6 +55,7 @@ def cmd_post(args) -> None:
         video_id=args.video_id,
         limit=args.limit,
         include_pending=args.pending,
+        like_comments=args.like_comments,
     )
     print(f"Posted {n} reply(ies).")
 
@@ -118,6 +119,11 @@ def main() -> None:
         help="Also post pending_review drafts (skip interactive review)",
     )
     post_p.set_defaults(func=cmd_post)
+    post_p.add_argument(
+        "--like-comments",
+        action="store_true",
+        help="Like each original comment after posting its reply (requires --platform facebook)",
+    )
     sub.add_parser(
         "run", help="Continuously poll on an interval (drafting only, no posting)"
     ).set_defaults(func=cmd_run)
@@ -127,6 +133,8 @@ def main() -> None:
     ).set_defaults(func=cmd_redraft)
 
     args = parser.parse_args()
+    if getattr(args, "like_comments", False) and args.platform != "facebook":
+        parser.error("--like-comments requires --platform facebook")
     args.func(args)
 
 

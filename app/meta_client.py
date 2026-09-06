@@ -73,7 +73,9 @@ def iter_paged(path: str, **params):
     """Yield items from a Graph API edge, following `paging.next` links."""
     data = graph_get(path, **params)
     while True:
-        yield from data.get("data", [])
+        if not isinstance(data.get("data"), list):
+            raise GraphAPIError(f"{path}: expected a paginated list")
+        yield from data["data"]
         next_url = data.get("paging", {}).get("next")
         if not next_url:
             return
@@ -82,13 +84,43 @@ def iter_paged(path: str, **params):
         _raise_if_error(path, data)
 
 
-def reply_to_comment(comment_id: str, message: str) -> str:
+def reply_to_comment(comment_id: str, message: str, *, platform: str) -> str:
     """Post a public reply to a Facebook or Instagram comment. Returns the new reply's id."""
-    resp = graph_post(f"{comment_id}/replies", message=message)
+    if platform not in ("facebook", "instagram"):
+        raise ValueError(f"Unsupported Meta platform: {platform}")
+    edge = "comments" if platform == "facebook" else "replies"
+    resp = graph_post(f"{comment_id}/{edge}", message=message)
     return resp["id"]
 
 
 # --- Facebook Page ---
+
+
+def find_own_reply(comment_id: str, *, platform: str) -> str | None:
+    """Find replies from the configured Page or Instagram account, across pages."""
+    if platform == "facebook":
+        config.require("FACEBOOK_PAGE_ID")
+        replies = iter_paged(f"{comment_id}/comments", fields="id,from", filter="stream")
+        for reply in replies:
+            if reply.get("from", {}).get("id") == config.FACEBOOK_PAGE_ID:
+                return reply["id"]
+    elif platform == "instagram":
+        username = get_instagram_username()
+        if not username:
+            raise GraphAPIError("Cannot identify the connected Instagram account")
+        for reply in iter_paged(f"{comment_id}/replies", fields="id,username"):
+            if str(reply.get("username") or "").casefold() == username.casefold():
+                return reply["id"]
+    else:
+        raise ValueError(f"Unsupported Meta platform: {platform}")
+    return None
+
+
+def like_facebook_comment(comment_id: str) -> None:
+    """Like a Facebook comment as the configured Page."""
+    result = graph_post(f"{comment_id}/likes")
+    if result.get("success") is not True:
+        raise GraphAPIError(f"{comment_id}/likes: like was not confirmed")
 
 
 def iter_facebook_post_ids():
@@ -104,7 +136,7 @@ def iter_facebook_post_comments(post_id: str):
     yield from iter_paged(
         f"{post_id}/comments",
         fields="id,message,from,created_time",
-        filter="stream",
+        filter="toplevel",
         order="chronological",
     )
 

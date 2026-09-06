@@ -6,7 +6,7 @@ from google import genai
 from google.genai import errors, types
 
 from app import config
-from app.reply_examples import append_chant_example, format_for_prompt, load_examples
+from app.reply_examples import format_for_prompt, load_examples
 
 _client: genai.Client | None = None
 
@@ -44,40 +44,39 @@ _PLATFORM_LABELS = {
 # arbitrary public commenters).
 _MENTION_PLATFORMS = {"youtube", "instagram"}
 
-_LEARN_INSTRUCTION = """
-When the incoming comment is a NEW type of chant or short greeting that is not
-already in the examples, also record it so the chant files stay up to date.
-
-Choose one file:
-- chant-folded-hands.txt — namaste / Maa / Jai / 🙏-only greetings
-- chant-har-har-mahadev.txt — Shiva chants (Har Har Mahadev, Om Namah Shivaya)
-- chant-new-types.txt — other short chants/greetings that do not fit those two
-
-Do not record questions, complaints, spam, long feedback, or a comment that is
-only a spelling/emoji variant of an existing example.
-
-Respond with JSON only, no markdown:
-{"reply": "<public reply>", "learn": null}
-or
-{"reply": "<public reply>", "learn": {"file": "<filename>", "comment": "<typical comment>", "reply": "<example reply>"}}
+_REPLY_STYLE_INSTRUCTION = """
+Mandatory reply style (takes precedence over persona and examples):
+- Never add generic thanks or appreciation for watching, commenting, sharing,
+  supporting the channel, or sharing love/devotion. This applies in every language.
+- Do not write sentences such as "Thank you so much for watching and sharing your love for Maa with us!"
+  or "ଏହି ଭିଡିଓ ଦେଖିଥିବାରୁ ଏବଂ ଆପଣଙ୍କ ମୂଲ୍ୟବାନ ମତାମତ ପାଇଁ ଅନେକ ଧନ୍ୟବାଦ।",
+  or paraphrases/translations of them.
+- Follow the persona's reply format before the examples. If the persona requires
+  only 🙏 for devotional chants and greetings, the reply field must be exactly
+  🙏, even when an example contains chant words. Otherwise use a short matching
+  chant or 🙏. Do not append a thank-you sentence.
+- For questions or feedback needing an answer, answer directly and briefly
+  without a generic gratitude introduction or ending.
 """
 
+_OUTPUT_INSTRUCTION = '''
+Respond with JSON only, no markdown:
+{"reply": "<public reply>"}
+'''
 
-def _parse_draft_payload(raw: str) -> tuple[str, dict | None]:
+
+def _parse_draft_payload(raw: str) -> str:
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I).strip()
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return raw.strip(), None
+        return raw.strip()
     if not isinstance(data, dict) or "reply" not in data:
-        return raw.strip(), None
+        return raw.strip()
     reply = str(data.get("reply") or "").strip()
-    learn = data.get("learn")
-    if not isinstance(learn, dict):
-        learn = None
-    return reply or raw.strip(), learn
+    return reply or raw.strip()
 
 
 def draft_reply(*, platform: str = "youtube", context_title: str, author: str, comment_text: str) -> str:
@@ -88,16 +87,16 @@ def draft_reply(*, platform: str = "youtube", context_title: str, author: str, c
         f"You are drafting a public reply to a comment on a {label}. "
         "The `reply` field is the public text only: no preamble, no quotes, "
         "no signature."
-        f"{_LEARN_INSTRUCTION}"
+        f"{_OUTPUT_INSTRUCTION}"
     )
     if examples_block:
         system_instruction = f"{system_instruction}\n\n{examples_block}"
+    system_instruction = f"{system_instruction}\n\n{_REPLY_STYLE_INSTRUCTION}"
     user_message = (
         f'{label.capitalize()} title/caption: "{context_title}"\n'
         f'Commenter: {author}\n'
         f'Comment: "{comment_text}"\n\n'
         "Draft a reply in the same style as the examples when they apply. "
-        "If this is a new chant/greeting type, set learn; otherwise learn is null."
     )
     client = _get_client()
 
@@ -112,13 +111,7 @@ def draft_reply(*, platform: str = "youtube", context_title: str, author: str, c
                     response_mime_type="application/json",
                 ),
             )
-            reply, learn = _parse_draft_payload(response.text.strip())
-            if learn:
-                append_chant_example(
-                    str(learn.get("file") or ""),
-                    str(learn.get("comment") or comment_text),
-                    str(learn.get("reply") or reply),
-                )
+            reply = _parse_draft_payload(response.text.strip())
             if platform in _MENTION_PLATFORMS:
                 reply = f"@{author} {reply}"
             return reply
