@@ -7,6 +7,7 @@ from google.genai import errors, types
 
 from app import config
 from app.reply_examples import format_for_prompt, load_examples
+from app.sanitize import sanitize_draft
 
 _client: genai.Client | None = None
 
@@ -46,10 +47,15 @@ _MENTION_PLATFORMS = {"youtube", "instagram"}
 
 _REPLY_STYLE_INSTRUCTION = """
 Mandatory reply style (takes precedence over persona and examples):
+- This channel is hindolroad / Hindolroad. Write the whole reply in ONE language:
+  either Odia or English. Never mix Odia and English in the same reply.
+- Do not use Hindi, Gujarati, Bengali, Telugu, Punjabi, or any other language.
+  Do not mix Devanagari (जय, माँ) into an Odia reply; use Odia (ଜୟ, ମା)
+  or English (Jay Maa).
 - Never add generic thanks or appreciation for watching, commenting, sharing,
-  supporting the channel, or sharing love/devotion. This applies in every language.
-- Do not write sentences such as "Thank you so much for watching and sharing your love for Maa with us!"
-  or "ଏହି ଭିଡିଓ ଦେଖିଥିବାରୁ ଏବଂ ଆପଣଙ୍କ ମୂଲ୍ୟବାନ ମତାମତ ପାଇଁ ଅନେକ ଧନ୍ୟବାଦ।",
+  supporting the channel, or sharing love/devotion.
+- Do not write sentences such as "Thank you for watching and sharing your devotion with us! ❤️"
+  or "ଆମ ଭିଡିଓ ଦେଖିଥିବାରୁ ଏବଂ କମେଣ୍ଟ କରିଥିବାରୁ ଆପଣଙ୍କୁ ଅନେକ ଧନ୍ୟବାଦ।",
   or paraphrases/translations of them.
 - Follow the persona's reply format before the examples. If the persona requires
   only 🙏 for devotional chants and greetings, the reply field must be exactly
@@ -114,7 +120,7 @@ def draft_reply(*, platform: str = "youtube", context_title: str, author: str, c
             reply = _parse_draft_payload(response.text.strip())
             if platform in _MENTION_PLATFORMS:
                 reply = f"@{author} {reply}"
-            return reply
+            return sanitize_draft(reply)
         except errors.ClientError as e:
             if e.code == 429 and attempt < MAX_RATE_LIMIT_RETRIES:
                 delay = _retry_delay_seconds(e)
