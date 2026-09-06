@@ -7,7 +7,7 @@ Nothing is posted automatically.
 ## How it works
 
 1. **Poll** — pull new top-level comments. Already-seen comments (stored in SQLite) and your own comments are skipped.
-2. **Draft** — Gemini writes a reply using `REPLY_PERSONA`. YouTube and Instagram drafts are prefixed with `@author` so the commenter is notified. Facebook replies are plain text (Graph API does not expose mentionable user IDs for public commenters).
+2. **Draft** — Gemini writes a reply using `REPLY_PERSONA` plus every example file in `reply_examples/`. YouTube and Instagram drafts are prefixed with `@author` so the commenter is notified. Facebook replies are plain text (Graph API does not expose mentionable user IDs for public commenters).
 3. **Review** — approve, edit-and-approve, reject, or skip each draft in the terminal.
 4. **Post** — send approved replies via the YouTube Data API or Meta Graph API.
 
@@ -75,6 +75,22 @@ Typical Graph permissions include Page read/manage engagement, `pages_show_list`
 
 If `FACEBOOK_POST_IDS` / `INSTAGRAM_MEDIA_IDS` are empty, Facebook polls all Page posts and Instagram polls the most recent `INSTAGRAM_MEDIA_LIMIT` media items. Set those ID lists to stay on specific posts.
 
+## Reply examples
+
+Put examples in `reply_examples/` (copy `_template.txt`). One file can hold **many** `comment:` / `reply:` pairs, or you can split them across files. Gemini still drafts every reply; it uses your pairs as a style list, not a skip list.
+
+```text
+comment: Jay Maa 🙏
+reply: 🙏
+
+comment: Har har Mahadev
+reply: Har Har Mahadev
+```
+
+Gemini may also append a **new chant type** to `chant-folded-hands.txt`, `chant-har-har-mahadev.txt`, or `chant-new-types.txt` when a greeting is not already in the list. Questions and near-duplicates are not added. Review those files after a poll if you want to edit Gemini’s additions.
+
+Optional: `REPLY_EXAMPLES_DIR` in `.env` if you keep the folder somewhere else.
+
 ## Usage
 
 ```bash
@@ -93,7 +109,7 @@ python -m app.cli post
 # Post YouTube drafts straight from poll records (skip review), limited batch
 python -m app.cli post --platform youtube --pending --limit 1
 
-# Rebuild pending drafts with the current REPLY_PERSONA
+# Rebuild pending drafts with the current REPLY_PERSONA and example files
 python -m app.cli redraft
 
 # Continuously poll YouTube only (drafts, no posting)

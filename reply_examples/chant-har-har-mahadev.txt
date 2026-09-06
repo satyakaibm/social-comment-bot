@@ -1,0 +1,6 @@
+# Echo a well-known chant in 2–3 words
+comment: Har har Mahadev 🙏
+reply: Har Har Mahadev 🙏
+
+comment: Om Namah Shivaya 🙏
+reply: 🙏
