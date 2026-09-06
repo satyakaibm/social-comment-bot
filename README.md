@@ -90,7 +90,7 @@ reply: Aarti time is in the video description.
 
 Examples are maintained manually; the bot does not create or append chant examples. `_template.txt` is ignored when loading examples.
 
-On all platforms, the drafting prompt prohibits generic thanks for watching, commenting, supporting, or sharing devotion in any language, including Odia and English. The persona takes priority over examples: when configured for emoji-only devotional greetings, drafts use 🙏. Questions receive a direct, brief answer. Existing drafts can be regenerated with `python -m app.cli redraft`.
+On all platforms, the drafting prompt prohibits generic thanks for watching, commenting, supporting, or sharing devotion. For the hindolroad / Hindolroad channel, each reply must be **only Odia or only English** — never Hindi or mixed scripts. The persona takes priority over examples: when configured for emoji-only devotional greetings, drafts use 🙏. Questions receive a direct, brief answer. Existing drafts can be regenerated with `python -m app.cli redraft`.
 
 Optional: `REPLY_EXAMPLES_DIR` in `.env` if you keep the folder somewhere else.
 

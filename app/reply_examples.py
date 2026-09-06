@@ -63,7 +63,8 @@ def format_for_prompt(examples: list[tuple[str, str]]) -> str:
         "with the persona and mandatory reply style. "
         "Use the closest relevant example as a guide. "
         "Never add generic thanks for watching, commenting, supporting, or "
-        "sharing love/devotion, in any language.",
+        "sharing love/devotion. Use only Odia or only English in each reply, "
+        "never Hindi or mixed scripts.",
         "",
         "Examples:",
     ]
