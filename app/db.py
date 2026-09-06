@@ -98,6 +98,30 @@ def list_by_status(conn: sqlite3.Connection, status: str):
     ).fetchall()
 
 
+def list_for_post(
+    conn: sqlite3.Connection,
+    *,
+    statuses: list[str],
+    platform: str | None = None,
+    video_id: str | None = None,
+    limit: int | None = None,
+):
+    placeholders = ",".join("?" * len(statuses))
+    sql = f"SELECT * FROM comments WHERE status IN ({placeholders})"
+    params: list = list(statuses)
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if video_id:
+        sql += " AND video_id = ?"
+        params.append(video_id)
+    sql += " ORDER BY created_at ASC"
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    return conn.execute(sql, params).fetchall()
+
+
 def update_status(
     conn: sqlite3.Connection,
     comment_id: str,
