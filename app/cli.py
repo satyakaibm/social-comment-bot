@@ -49,8 +49,13 @@ def cmd_review(_args) -> None:
     review_loop()
 
 
-def cmd_post(_args) -> None:
-    n = post_approved()
+def cmd_post(args) -> None:
+    n = post_approved(
+        platform=args.platform,
+        video_id=args.video_id,
+        limit=args.limit,
+        include_pending=args.pending,
+    )
     print(f"Posted {n} reply(ies).")
 
 
@@ -88,9 +93,31 @@ def main() -> None:
     sub.add_parser("review", help="Interactively approve/reject/edit drafts").set_defaults(
         func=cmd_review
     )
-    sub.add_parser("post", help="Post all approved replies to YouTube").set_defaults(
-        func=cmd_post
+    post_p = sub.add_parser(
+        "post",
+        help="Post approved replies (optionally from pending poll drafts)",
     )
+    post_p.add_argument(
+        "--platform",
+        choices=("youtube", "facebook", "instagram"),
+        help="Only post replies for this platform",
+    )
+    post_p.add_argument(
+        "--video-id",
+        help="Only post replies for this YouTube video / Facebook post / Instagram media id",
+    )
+    post_p.add_argument(
+        "--limit",
+        type=int,
+        metavar="N",
+        help="Post at most N replies (oldest first)",
+    )
+    post_p.add_argument(
+        "--pending",
+        action="store_true",
+        help="Also post pending_review drafts (skip interactive review)",
+    )
+    post_p.set_defaults(func=cmd_post)
     sub.add_parser(
         "run", help="Continuously poll on an interval (drafting only, no posting)"
     ).set_defaults(func=cmd_run)

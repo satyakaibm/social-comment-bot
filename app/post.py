@@ -4,17 +4,33 @@ from app import db, meta_client
 from app.youtube_client import get_client
 
 
-def post_approved() -> int:
-    """Post all approved draft replies to YouTube, Facebook, and Instagram.
+def post_approved(
+    *,
+    platform: str | None = None,
+    video_id: str | None = None,
+    limit: int | None = None,
+    include_pending: bool = False,
+) -> int:
+    """Post draft replies to YouTube, Facebook, and Instagram.
+
+    By default only `approved` rows are posted. Pass include_pending=True to
+    also post `pending_review` drafts (useful for a live trial from poll records).
 
     Returns the number posted.
     """
     db.init_db()
     posted = 0
     youtube = None  # lazily created only if a YouTube reply needs posting
+    statuses = ["approved", "pending_review"] if include_pending else ["approved"]
 
     with db.connect() as conn:
-        rows = db.list_by_status(conn, "approved")
+        rows = db.list_for_post(
+            conn,
+            statuses=statuses,
+            platform=platform,
+            video_id=video_id,
+            limit=limit,
+        )
         for row in rows:
             platform = row["platform"]
             try:
@@ -44,6 +60,7 @@ def post_approved() -> int:
                     continue
 
                 db.update_status(conn, row["comment_id"], "posted", reply_comment_id=reply_id)
+                conn.commit()
                 posted += 1
                 print(f"Posted reply to {platform} comment {row['comment_id']}.")
             except HttpError as e:
