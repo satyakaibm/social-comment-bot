@@ -6,11 +6,38 @@ from app.fetch import poll_and_draft
 from app.post import post_approved
 from app.redraft import redraft_pending
 from app.review import review_loop
+from app.social_fetch import poll_facebook_and_draft, poll_instagram_and_draft
 
 
 def cmd_poll(_args) -> None:
     n = poll_and_draft()
     print(f"Queued {n} new comment(s) for review.")
+
+
+def cmd_poll_facebook(_args) -> None:
+    n = poll_facebook_and_draft()
+    print(f"Queued {n} new Facebook comment(s) for review.")
+
+
+def cmd_poll_instagram(_args) -> None:
+    n = poll_instagram_and_draft()
+    print(f"Queued {n} new Instagram comment(s) for review.")
+
+
+def cmd_poll_all(_args) -> None:
+    total = 0
+    for name, fn in (
+        ("YouTube", poll_and_draft),
+        ("Facebook", poll_facebook_and_draft),
+        ("Instagram", poll_instagram_and_draft),
+    ):
+        try:
+            n = fn()
+            print(f"{name}: queued {n} new comment(s).")
+            total += n
+        except Exception as e:
+            print(f"{name} poll failed: {e}")
+    print(f"Total queued: {total}")
 
 
 def cmd_redraft(_args) -> None:
@@ -46,9 +73,18 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="social-comment-bot")
     sub = parser.add_subparsers(required=True)
 
-    sub.add_parser("poll", help="Fetch new comments and draft replies").set_defaults(
+    sub.add_parser("poll", help="Fetch new YouTube comments and draft replies").set_defaults(
         func=cmd_poll
     )
+    sub.add_parser(
+        "poll-facebook", help="Fetch new Facebook comments and draft replies"
+    ).set_defaults(func=cmd_poll_facebook)
+    sub.add_parser(
+        "poll-instagram", help="Fetch new Instagram comments and draft replies"
+    ).set_defaults(func=cmd_poll_instagram)
+    sub.add_parser(
+        "poll-all", help="Fetch new comments from YouTube, Facebook, and Instagram"
+    ).set_defaults(func=cmd_poll_all)
     sub.add_parser("review", help="Interactively approve/reject/edit drafts").set_defaults(
         func=cmd_review
     )

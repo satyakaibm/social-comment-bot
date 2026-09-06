@@ -75,7 +75,10 @@ def poll_and_draft() -> int:
 
                     try:
                         reply = draft_reply(
-                            video_title=title, author=author, comment_text=text
+                            platform="youtube",
+                            context_title=title,
+                            author=author,
+                            comment_text=text,
                         )
                     except Exception as e:
                         print(f"Failed to draft reply for comment {comment_id}: {e}")

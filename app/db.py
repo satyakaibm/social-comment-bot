@@ -7,6 +7,7 @@ from app.config import DB_PATH
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS comments (
     comment_id TEXT PRIMARY KEY,
+    platform TEXT NOT NULL DEFAULT 'youtube',
     video_id TEXT NOT NULL,
     video_title TEXT,
     author TEXT,
@@ -35,6 +36,12 @@ def connect():
 def init_db() -> None:
     with connect() as conn:
         conn.execute(SCHEMA)
+        # Migrate DBs created before multi-platform support.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(comments)")}
+        if "platform" not in columns:
+            conn.execute(
+                "ALTER TABLE comments ADD COLUMN platform TEXT NOT NULL DEFAULT 'youtube'"
+            )
 
 
 def now() -> str:
@@ -58,16 +65,30 @@ def insert_comment(
     text: str,
     published_at: str,
     draft_reply: str,
+    platform: str = "youtube",
 ) -> None:
+    # video_id/video_title double as the generic "container" id/title for
+    # non-YouTube platforms (Facebook post id/message, Instagram media id/caption).
     ts = now()
     conn.execute(
         """
         INSERT OR IGNORE INTO comments (
-            comment_id, video_id, video_title, author, text, published_at,
+            comment_id, platform, video_id, video_title, author, text, published_at,
             status, draft_reply, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?)
         """,
-        (comment_id, video_id, video_title, author, text, published_at, draft_reply, ts, ts),
+        (
+            comment_id,
+            platform,
+            video_id,
+            video_title,
+            author,
+            text,
+            published_at,
+            draft_reply,
+            ts,
+            ts,
+        ),
     )
 
 

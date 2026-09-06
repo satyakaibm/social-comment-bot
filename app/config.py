@@ -19,6 +19,26 @@ YOUTUBE_VIDEO_IDS = [
     v.strip() for v in os.environ.get("YOUTUBE_VIDEO_IDS", "").split(",") if v.strip()
 ]
 
+META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
+FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
+FACEBOOK_PAGE_ACCESS_TOKEN = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+INSTAGRAM_USER_ID = os.environ.get("INSTAGRAM_USER_ID", "")
+
+# Optional: comma-separated Facebook post IDs / Instagram media IDs to
+# restrict polling to. Leave blank to poll all posts/media on the account.
+FACEBOOK_POST_IDS = [
+    v.strip() for v in os.environ.get("FACEBOOK_POST_IDS", "").split(",") if v.strip()
+]
+INSTAGRAM_MEDIA_IDS = [
+    v.strip() for v in os.environ.get("INSTAGRAM_MEDIA_IDS", "").split(",") if v.strip()
+]
+
+# Cap how many of the most recent Instagram media items get polled per run
+# (ignored if INSTAGRAM_MEDIA_IDS is set). Accounts can have hundreds of old
+# posts; without a cap the first run would draft-via-Gemini every unseen
+# comment across all of them in one go.
+INSTAGRAM_MEDIA_LIMIT = int(os.environ.get("INSTAGRAM_MEDIA_LIMIT", "10"))
+
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 REPLY_PERSONA = os.environ.get(

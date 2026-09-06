@@ -1,9 +1,16 @@
 from app import db
 
+_CONTAINER_LABELS = {
+    "youtube": "Video",
+    "facebook": "Facebook Post",
+    "instagram": "Instagram Post",
+}
+
 
 def _print_comment(row) -> None:
+    label = _CONTAINER_LABELS.get(row["platform"], "Post")
     print("-" * 70)
-    print(f"Video:   {row['video_title']}")
+    print(f"{label}: {row['video_title']}")
     print(f"Author:  {row['author']}")
     print(f"Comment: {row['text']}")
     print(f"Draft:   {row['draft_reply']}")

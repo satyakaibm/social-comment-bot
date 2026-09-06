@@ -15,7 +15,8 @@ def redraft_pending() -> int:
         for row in rows:
             try:
                 new_reply = draft_reply(
-                    video_title=row["video_title"],
+                    platform=row["platform"],
+                    context_title=row["video_title"],
                     author=row["author"],
                     comment_text=row["text"],
                 )
