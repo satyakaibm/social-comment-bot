@@ -46,6 +46,12 @@ REPLY_PERSONA = os.environ.get(
     "You are a friendly, concise community manager. Keep replies under 3 sentences.",
 )
 
+# Operator-written comment/reply examples (one file per example).
+_examples_dir = os.environ.get("REPLY_EXAMPLES_DIR", "").strip()
+REPLY_EXAMPLES_DIR = (
+    Path(_examples_dir) if _examples_dir else BASE_DIR / "reply_examples"
+)
+
 
 def require(*names: str) -> None:
     missing = [n for n in names if not globals().get(n)]

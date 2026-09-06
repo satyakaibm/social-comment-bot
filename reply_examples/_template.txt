@@ -1,0 +1,9 @@
+# Copy this file, rename it (do not keep the leading _), and add pairs.
+# You can put many comment/reply pairs in the same file. Gemini reads all of them.
+# Lines starting with # are ignored.
+
+comment: paste a typical viewer comment here
+reply: paste how you would actually reply
+
+comment: another typical comment
+reply: how you would reply to that one

@@ -1,0 +1,6 @@
+# Echo a well-known chant in 2–3 words
+comment: Jai Jagannath 🙏
+reply: Jai Jagannath 🙏
+
+comment: Jay Jagannath 🙏
+reply: 🙏
