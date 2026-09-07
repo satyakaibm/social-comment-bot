@@ -23,6 +23,16 @@ META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
 FACEBOOK_PAGE_ACCESS_TOKEN = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 INSTAGRAM_USER_ID = os.environ.get("INSTAGRAM_USER_ID", "")
+META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
+META_WEBHOOK_VERIFY_TOKEN = os.environ.get("META_WEBHOOK_VERIFY_TOKEN", "")
+META_WEBHOOK_AUTO_POST = os.environ.get("META_WEBHOOK_AUTO_POST", "true").lower() in (
+    "1", "true", "yes", "on"
+)
+META_WEBHOOK_ENABLED = os.environ.get("META_WEBHOOK_ENABLED", "false").lower() in (
+    "1", "true", "yes", "on"
+)
+WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "127.0.0.1")
+WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8081"))
 
 # Optional: comma-separated Facebook post IDs / Instagram media IDs to
 # restrict polling to. Leave blank to poll all posts/media on the account.

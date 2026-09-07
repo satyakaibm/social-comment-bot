@@ -19,6 +19,16 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS webhook_events (
+    event_key TEXT PRIMARY KEY,
+    platform TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -35,7 +45,7 @@ def connect():
 
 def init_db() -> None:
     with connect() as conn:
-        conn.execute(SCHEMA)
+        conn.executescript(SCHEMA)
         # Migrate DBs created before multi-platform support.
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(comments)")}
         if "platform" not in columns:
@@ -140,3 +150,42 @@ def update_status(
         params.append(reply_comment_id)
     params.append(comment_id)
     conn.execute(f"UPDATE comments SET {', '.join(fields)} WHERE comment_id = ?", params)
+
+
+def enqueue_webhook_event(conn, *, event_key: str, platform: str, payload: str) -> bool:
+    ts = now()
+    cursor = conn.execute(
+        """INSERT OR IGNORE INTO webhook_events
+           (event_key, platform, payload, status, created_at, updated_at)
+           VALUES (?, ?, ?, 'pending', ?, ?)""",
+        (event_key, platform, payload, ts, ts),
+    )
+    return cursor.rowcount == 1
+
+
+def reset_interrupted_webhook_events(conn) -> None:
+    conn.execute(
+        "UPDATE webhook_events SET status='pending', updated_at=? WHERE status='processing'",
+        (now(),),
+    )
+
+
+def claim_webhook_event(conn):
+    row = conn.execute(
+        "SELECT * FROM webhook_events WHERE status='pending' ORDER BY created_at LIMIT 1"
+    ).fetchone()
+    if row is None:
+        return None
+    conn.execute(
+        "UPDATE webhook_events SET status='processing', updated_at=? WHERE event_key=?",
+        (now(), row["event_key"]),
+    )
+    conn.commit()
+    return row
+
+
+def finish_webhook_event(conn, event_key: str, *, error: str | None = None) -> None:
+    conn.execute(
+        "UPDATE webhook_events SET status=?, error=?, updated_at=? WHERE event_key=?",
+        ("failed" if error else "processed", error, now(), event_key),
+    )

@@ -75,6 +75,12 @@ def cmd_run(_args) -> None:
         time.sleep(config.POLL_INTERVAL_SECONDS)
 
 
+def cmd_webhook(_args) -> None:
+    from app.webhook import run as run_webhook
+
+    run_webhook()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="social-comment-bot")
     sub = parser.add_subparsers(required=True)
@@ -127,6 +133,9 @@ def main() -> None:
     sub.add_parser(
         "run", help="Continuously poll on an interval (drafting only, no posting)"
     ).set_defaults(func=cmd_run)
+    sub.add_parser(
+        "webhook", help="Run the Facebook and Instagram webhook receiver"
+    ).set_defaults(func=cmd_webhook)
     sub.add_parser(
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",
