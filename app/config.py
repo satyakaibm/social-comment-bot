@@ -31,7 +31,7 @@ META_WEBHOOK_AUTO_POST = os.environ.get("META_WEBHOOK_AUTO_POST", "true").lower(
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "127.0.0.1")
 WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8080"))
 DASHBOARD_HOST = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
-DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "9000"))
+DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "9001"))
 DASHBOARD_SECRET = os.environ.get("DASHBOARD_SECRET", "localhost-dashboard")
 
 # Optional: comma-separated Facebook post IDs / Instagram media IDs to

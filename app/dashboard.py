@@ -9,6 +9,7 @@ from app import config, db
 from app.post import post_approved
 
 STATUSES = (
+    "pending_review",
     "posted",
     "failed",
     "already_replied",
@@ -145,30 +146,22 @@ def create_app() -> Flask:
 app = create_app()
 
 
-def pick_free_port(host: str, preferred: int, attempts: int = 20) -> int:
-    """Return preferred if it is free, otherwise the next free TCP port."""
-    last_error = None
-    for port in range(preferred, preferred + attempts):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            try:
-                sock.bind((host, port))
-            except OSError as exc:
-                last_error = exc
-                continue
-            return port
-    raise RuntimeError(
-        f"No free dashboard port in {preferred}-{preferred + attempts - 1} on {host}: {last_error}"
-    )
+def require_port(host: str, port: int) -> None:
+    """Fail if the configured dashboard port is already bound."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+        except OSError as exc:
+            raise RuntimeError(
+                f"Dashboard port {port} is already in use on {host}. "
+                "Stop the other process; this URL does not change ports."
+            ) from exc
 
 
 def run() -> None:
     host = config.DASHBOARD_HOST
-    port = pick_free_port(host, config.DASHBOARD_PORT)
-    if port != config.DASHBOARD_PORT:
-        print(
-            f"Port {config.DASHBOARD_PORT} is in use; using {port} instead.",
-            flush=True,
-        )
+    port = config.DASHBOARD_PORT
+    require_port(host, port)
     print(f"Admin dashboard: http://127.0.0.1:{port}/", flush=True)
     if host in ("127.0.0.1", "localhost"):
         print(f"Chrome: http://127.0.0.1:{port}/  or  http://localhost:{port}/", flush=True)
