@@ -19,6 +19,43 @@ This only detects replies visible to the API from the connected identity: Facebo
 
 ## Setup
 
+### Docker dashboard (recommended for everyday use)
+
+With Docker Desktop running and your `.env` configured (including
+`META_APP_SECRET` and `META_WEBHOOK_VERIFY_TOKEN`), start the dashboard once:
+
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:9001. The dashboard and Meta webhook receiver run in the
+background; you no longer need to run `scripts/dashboard.sh`. Stop any existing
+manual dashboard before starting the container because they use the same port.
+Keep one dashboard container/process running to own the webhook queue.
+
+The container restarts automatically when Docker starts, unless you explicitly
+stop it. Enable **Start Docker Desktop when you sign in** in Docker Desktop
+settings to bring it back after a computer restart. Docker must remain running.
+
+Your existing `data/` folder is mounted into the container, preserving comments
+and webhook state across rebuilds and sharing them with the existing host polling
+cron job. `reply_examples/` is mounted read-only, so example edits apply without
+rebuilding. Credentials are loaded from `.env` at runtime and are excluded from
+the image. `DASHBOARD_PORT` in `.env` can change the host port (default 9001).
+
+```bash
+docker compose ps                         # Status and health
+docker compose logs -f --tail=100 dashboard # Follow logs
+docker compose up -d --build              # Apply code or .env changes
+docker compose stop                      # Stop until explicitly started again
+docker compose up -d                      # Start again
+```
+
+The existing polling cron job still runs on the host and needs the Python setup
+below. Docker runs the dashboard/webhook service only.
+
+### Local Python setup
+
 Python 3.10+ recommended.
 
 ```bash

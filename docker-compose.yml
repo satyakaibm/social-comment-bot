@@ -1,0 +1,21 @@
+services:
+  dashboard:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      DASHBOARD_HOST: 0.0.0.0
+      DASHBOARD_PORT: "9001"
+      REPLY_EXAMPLES_DIR: /app/reply_examples
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-9001}:9001"
+    volumes:
+      - ./data:/app/data
+      - ./reply_examples:/app/reply_examples:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s
