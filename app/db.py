@@ -281,7 +281,9 @@ def list_comments(
         like = f"%{query}%"
         sql += " AND (author LIKE ? OR text LIKE ? OR draft_reply LIKE ? OR video_title LIKE ?)"
         params.extend([like, like, like, like])
-    sql += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    # posted_at_ist is the IST rendering of updated_at, so this keeps the most
+    # recently posted or otherwise handled comments at the top of the table.
+    sql += " ORDER BY updated_at DESC, created_at DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     return conn.execute(sql, params).fetchall()
 

@@ -47,6 +47,10 @@ class DashboardTests(unittest.TestCase):
     def test_pending_review_tab_is_shown(self):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
+        self.assertIn(b'<header class="topbar">', page.data)
+        self.assertIn(b'<footer class="site-footer">', page.data)
+        self.assertIn(b"Capture. Curate. Publish.", page.data)
+        self.assertIn(b"Gateway health", page.data)
         self.assertIn(b"Community workspace", page.data)
         self.assertNotIn(
             b"Review conversations and monitor automated replies", page.data
@@ -95,14 +99,19 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Handled total", page.data)
 
         facebook = self.client.get("/?status=already_replied&platform=facebook")
+        self.assertIn(b'<body class="theme-facebook">', facebook.data)
         self.assertIn(b'class="activity-platform active" href="/?status=already_replied&amp;platform=facebook"', facebook.data)
         self.assertIn(b'<span class="stat-label">already replied</span><span class="stat-value">1</span>', facebook.data)
         self.assertIn(b'data-received="1"', facebook.data)
         self.assertIn(b'data-already="1"', facebook.data)
 
         youtube = self.client.get("/?status=posted&platform=youtube")
+        self.assertIn(b'<body class="theme-youtube">', youtube.data)
         self.assertIn(b'<span class="stat-label">posted</span><span class="stat-value">1</span>', youtube.data)
         self.assertIn(b'data-posted="1"', youtube.data)
+
+        instagram = self.client.get("/?status=posted&platform=instagram")
+        self.assertIn(b'<body class="theme-instagram">', instagram.data)
 
     def test_posted_failed_and_already_replied_tabs(self):
         with db.connect() as conn:
@@ -128,6 +137,27 @@ class DashboardTests(unittest.TestCase):
         already = self.client.get("/?status=already_replied")
         self.assertIn(b"already_replied", already.data)
         self.assertIn(b">manual<", already.data)
+
+    def test_comments_are_sorted_by_posted_time_newest_first(self):
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id="newest", platform="facebook", video_id="post",
+                video_title="Post", author="new author", text="New activity",
+                published_at="", draft_reply="🙏",
+            )
+            db.update_status(conn, "c1", "posted", reply_comment_id="old-reply")
+            db.update_status(conn, "newest", "posted", reply_comment_id="new-reply")
+            conn.execute(
+                "UPDATE comments SET updated_at = ? WHERE comment_id = ?",
+                ("2026-09-07T10:00:00+00:00", "c1"),
+            )
+            conn.execute(
+                "UPDATE comments SET updated_at = ? WHERE comment_id = ?",
+                ("2026-09-07T11:00:00+00:00", "newest"),
+            )
+            rows = db.list_comments(conn, status="posted")
+
+        self.assertEqual([row["comment_id"] for row in rows], ["newest", "c1"])
 
     def test_retry_posts_failed_comment(self):
         with db.connect() as conn:
@@ -223,7 +253,10 @@ class DashboardTests(unittest.TestCase):
 
     def test_profile_menu_resets_password_and_invalidates_sessions(self):
         page = self.client.get("/")
+        self.assertIn(b'aria-label="Open My Profile menu"', page.data)
+        self.assertIn(b'title="My Profile">A</summary>', page.data)
         self.assertIn(b"My Profile", page.data)
+        self.assertIn(b'class="profile-menu-user">admin</span>', page.data)
         self.assertIn(b"Reset password", page.data)
         self.assertIn(b"Log out", page.data)
 
