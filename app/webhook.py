@@ -6,6 +6,7 @@ import threading
 from flask import Flask, Response, request
 
 from app import config, db, meta_client
+from app.comment_age import is_within_comment_age_limit
 from app.generate import draft_reply
 from app.post import post_approved
 
@@ -62,6 +63,13 @@ def queue_payload(payload: dict) -> int:
     queued = 0
     with db.connect() as conn:
         for event in extract_comment_events(payload):
+            if not is_within_comment_age_limit(event.get("published_at")):
+                print(
+                    f"Skipped {event['platform']} webhook comment "
+                    f"{event['comment_id']}: older than {config.COMMENT_MAX_AGE_DAYS} days.",
+                    flush=True,
+                )
+                continue
             if db.comment_exists(conn, event["comment_id"]):
                 continue
             raw = json.dumps(event, separators=(",", ":"), ensure_ascii=False)

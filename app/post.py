@@ -2,6 +2,7 @@ from googleapiclient.errors import HttpError
 from requests import RequestException
 
 from app import config, db, meta_client
+from app.comment_age import is_within_comment_age_limit
 from app.sanitize import sanitize_draft
 from app.youtube_client import (
     find_own_reply,
@@ -52,8 +53,28 @@ def post_approved(
             platform=platform,
             video_id=video_id,
             comment_id=comment_id,
-            limit=limit,
+            # Load all candidates so stale rows can be rejected without consuming
+            # this cycle's publish allowance.
+            limit=None,
         )
+        current_rows = []
+        for row in rows:
+            if is_within_comment_age_limit(row["published_at"]):
+                current_rows.append(row)
+                continue
+            db.update_status(
+                conn,
+                row["comment_id"],
+                "rejected",
+                error=f"Comment is older than {config.COMMENT_MAX_AGE_DAYS} days.",
+            )
+            print(
+                f"Skipped {row['platform']} comment {row['comment_id']}: older than "
+                f"{config.COMMENT_MAX_AGE_DAYS} days."
+            )
+        if len(current_rows) != len(rows):
+            conn.commit()
+        rows = current_rows[:limit] if limit is not None else current_rows
         youtube_rows = [row for row in rows if row["platform"] == "youtube"]
         video_channel_ids = {}
         youtube_identity_ready = not youtube_rows

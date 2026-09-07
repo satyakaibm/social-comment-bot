@@ -77,6 +77,31 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(row['status'], 'failed')
             self.assertIn('token expired', row['error'])
 
+    def test_old_comment_is_rejected_without_remote_checks_or_posting(self):
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id='old-facebook', platform='facebook',
+                video_id='media', video_title='Title', author='viewer',
+                text='Old comment', published_at='2020-01-01T00:00:00Z',
+                draft_reply='🙏',
+            )
+            db.update_status(conn, 'old-facebook', 'approved')
+
+        with patch.object(meta_client, 'find_own_reply') as find, \
+             patch.object(meta_client, 'reply_to_comment') as send, \
+             patch.object(meta_client, 'like_comment') as like:
+            self.assertEqual(
+                post.post_approved(platform='facebook', like_comments=True), 0
+            )
+            find.assert_not_called()
+            send.assert_not_called()
+            like.assert_not_called()
+
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'old-facebook')
+            self.assertEqual(row['status'], 'rejected')
+            self.assertIn('older than 90 days', row['error'])
+
     def test_repeated_graph_errors_stop_the_platform_batch(self):
         with db.connect() as conn:
             for index in range(5):
@@ -223,11 +248,32 @@ class ExistingReplyTests(unittest.TestCase):
             )
             like.assert_called_once_with('instagram', platform='instagram')
 
-    def test_instagram_likes_use_ig_user_likes_edge(self):
+    def test_instagram_likes_use_user_token_query(self):
+        response = MagicMock()
+        response.json.return_value = {'success': True}
         with patch.object(meta_client.config, 'INSTAGRAM_USER_ID', 'ig-user'), \
-             patch.object(meta_client, 'graph_post', return_value={'success': True}) as send:
+             patch.object(meta_client, 'get_user_access_token', return_value='user-token'), \
+             patch.object(meta_client, 'graph_post') as page_post, \
+             patch.object(meta_client.requests, 'post', return_value=response) as send:
             meta_client.like_comment('ig-comment', platform='instagram')
-        send.assert_called_once_with('ig-user/likes', comment_id='ig-comment')
+        page_post.assert_not_called()
+        send.assert_called_once()
+        url = send.call_args.args[0]
+        params = send.call_args.kwargs['params']
+        self.assertTrue(url.endswith('/ig-user/likes'))
+        self.assertEqual(params['comment_id'], 'ig-comment')
+        self.assertEqual(params['access_token'], 'user-token')
+
+    def test_instagram_likes_reject_page_token(self):
+        meta_client._user_token_cache = None
+        self.addCleanup(setattr, meta_client, '_user_token_cache', None)
+        identity = MagicMock()
+        identity.json.return_value = {'id': 'page'}
+        with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
+             patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'page-token'), \
+             patch.object(meta_client.requests, 'get', return_value=identity):
+            with self.assertRaisesRegex(meta_client.GraphAPIError, 'User access token'):
+                meta_client.get_user_access_token()
 
     def test_facebook_likes_use_comment_likes_edge(self):
         with patch.object(meta_client, 'graph_post', return_value={'success': True}) as send:

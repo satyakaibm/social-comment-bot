@@ -1,4 +1,5 @@
 from app import config, db, meta_client
+from app.comment_age import is_within_comment_age_limit
 from app.generate import draft_reply
 
 
@@ -40,6 +41,13 @@ def poll_facebook_and_draft() -> int:
                 ):
                     remaining -= 1
                     comment_id = comment["id"]
+
+                    if not is_within_comment_age_limit(comment.get("created_time", "")):
+                        print(
+                            f"Skipped Facebook comment {comment_id}: older than "
+                            f"{config.COMMENT_MAX_AGE_DAYS} days."
+                        )
+                        continue
 
                     if db.comment_exists(conn, comment_id):
                         continue
@@ -114,6 +122,13 @@ def poll_instagram_and_draft() -> int:
                 ):
                     remaining -= 1
                     comment_id = comment["id"]
+
+                    if not is_within_comment_age_limit(comment.get("timestamp", "")):
+                        print(
+                            f"Skipped Instagram comment {comment_id}: older than "
+                            f"{config.COMMENT_MAX_AGE_DAYS} days."
+                        )
+                        continue
 
                     if db.comment_exists(conn, comment_id):
                         continue

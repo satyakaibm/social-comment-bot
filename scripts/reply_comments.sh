@@ -26,6 +26,7 @@ mkdir -p "$(dirname "$LOG_FILE")"
 exec >>"$LOG_FILE" 2>&1
 
 required_limits=(
+  COMMENT_MAX_AGE_DAYS
   YOUTUBE_VIDEO_LIMIT
   YOUTUBE_COMMENT_LIMIT
   YOUTUBE_PUBLISH_LIMIT
@@ -95,6 +96,7 @@ echo ""
 echo "==== Polling cycle started: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
 echo "Config: $POLLING_CONFIG_FILE"
 echo "Log: $LOG_FILE"
+echo "Comment age limit: ${COMMENT_MAX_AGE_DAYS} days."
 echo "Limits: YouTube ${YOUTUBE_VIDEO_LIMIT} videos/${YOUTUBE_COMMENT_LIMIT} comments/${YOUTUBE_PUBLISH_LIMIT} publishes; Facebook ${FACEBOOK_POST_LIMIT} posts/${FACEBOOK_COMMENT_LIMIT} comments/${FACEBOOK_PUBLISH_LIMIT} publishes; Instagram ${INSTAGRAM_MEDIA_LIMIT} media/${INSTAGRAM_COMMENT_LIMIT} comments/${INSTAGRAM_PUBLISH_LIMIT} publishes; stop after ${PUBLISH_ERROR_LIMIT} consecutive publish errors."
 failures=0
 youtube_poll_ok=false
