@@ -83,6 +83,34 @@ def cmd_dashboard(_args) -> None:
     run_dashboard()
 
 
+def cmd_import_stats(args) -> None:
+    from app import db as database
+
+    n = database.import_seen_stats_from_backup(args.backup)
+    print(
+        f"Imported timestamps for {n} comment(s) from {args.backup}. "
+        "Dashboard 1 Hour–365 Day counts now include pruned history."
+    )
+
+
+def cmd_prune(args) -> None:
+    from app import db as database
+
+    database.init_db()
+    with database.connect() as conn:
+        result = database.prune_storage(
+            conn, older_than_days=args.older_than_days
+        )
+    if not args.no_vacuum:
+        database.vacuum_db()
+    print(
+        "Pruned "
+        f"{result['comments_deleted']} comment row(s) and "
+        f"{result['webhooks_deleted']} webhook event(s). "
+        "Comment IDs remain in seen_comments so they will not be drafted or posted again."
+    )
+
+
 def cmd_reconcile_youtube(_args) -> None:
     from app.reconcile import reconcile_youtube_pending
 
@@ -160,6 +188,39 @@ def main() -> None:
         "reconcile-youtube",
         help="Remove comments already answered by Hindolroad from YouTube pending review",
     ).set_defaults(func=cmd_reconcile_youtube)
+    prune_p = sub.add_parser(
+        "prune",
+        help=(
+            "Delete handled comment text and processed webhooks to reclaim disk; "
+            "keep comment IDs so they are not replied to again"
+        ),
+    )
+    prune_p.add_argument(
+        "--older-than-days",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Only prune handled comments older than N days (default: all handled)",
+    )
+    prune_p.add_argument(
+        "--no-vacuum",
+        action="store_true",
+        help="Skip SQLite VACUUM (file size will not shrink until vacuum runs)",
+    )
+    prune_p.set_defaults(func=cmd_prune)
+    import_p = sub.add_parser(
+        "import-stats",
+        help=(
+            "Copy comment IDs, statuses, and timestamps from a comments.db backup "
+            "into seen_comments so dashboard time-window counts stay accurate"
+        ),
+    )
+    import_p.add_argument(
+        "--backup",
+        default="data/comments.db.bak",
+        help="Path to the backup database (default: data/comments.db.bak)",
+    )
+    import_p.set_defaults(func=cmd_import_stats)
     sub.add_parser(
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",

@@ -62,6 +62,8 @@ def queue_payload(payload: dict) -> int:
     queued = 0
     with db.connect() as conn:
         for event in extract_comment_events(payload):
+            if db.comment_exists(conn, event["comment_id"]):
+                continue
             raw = json.dumps(event, separators=(",", ":"), ensure_ascii=False)
             if db.enqueue_webhook_event(
                 conn,
