@@ -52,7 +52,7 @@
     }
     .brand { display:flex; align-items:center; min-width:0; text-decoration:none; }
     .brand img { display:block; width:178px; height:58px; object-fit:contain; object-position:left center; }
-    .service-nav { min-height:45px; padding:6px 28px; display:flex; align-items:center; gap:8px; overflow-x:auto; background:rgba(245,247,248,.82); border-top:1px solid var(--header-line); scrollbar-width:thin; }
+    .service-nav { min-height:45px; padding:6px 28px; display:flex; align-items:center; gap:8px; overflow-x:auto; background:rgba(245,247,248,.92); border-bottom:1px solid var(--header-line); scrollbar-width:thin; }
     .service-link,.gateway { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
     .service-link { color:var(--navy); background:#fff; border:1px solid var(--line); }
     .gateway { color:#086142; background:#e9f8f1; border:1px solid #c9ecdd; }
@@ -187,11 +187,11 @@
         </details>
       </div>
     </div>
-    <nav class="service-nav" aria-label="Service navigation">
-      <a class="service-link" href="/">Social Comment Studio</a>
-      <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway Health</span></a>
-    </nav>
   </header>
+  <nav class="service-nav" aria-label="Service navigation">
+    <a class="service-link" href="/">Social Comment Studio</a>
+    <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway Health</span></a>
+  </nav>
 
   <main class="page" id="main-content" tabindex="-1">
     <section class="intro">

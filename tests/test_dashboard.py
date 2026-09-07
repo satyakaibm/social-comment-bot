@@ -184,6 +184,13 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'sort=desc', ascending.data)
         self.assertIn("↑".encode(), ascending.data)
 
+    def test_service_navigation_is_below_header_banner(self):
+        page = self.client.get("/")
+        markup = page.data.decode()
+        self.assertLess(markup.index("</header>"), markup.index('class="service-nav"'))
+        self.assertIn("Social Comment Studio", markup)
+        self.assertIn("Gateway Health", markup)
+
     def test_comment_table_paginates_in_batches_of_one_hundred(self):
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="reply-c1")
