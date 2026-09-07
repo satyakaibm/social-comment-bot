@@ -136,7 +136,7 @@ Webhook delivery state is visible in the `webhook_events` SQLite table. Run one 
 
 ### Dashboard login
 
-The dashboard and browser health page require a login. Meta webhooks and `/api/health` remain public for delivery and container monitoring. Generate a password hash without storing the plaintext password:
+The dashboard and browser health page require a login. Meta webhooks and `/api/health` remain public for delivery and container monitoring. Generate a password hash without storing the plaintext password. Passwords require at least 8 characters with one uppercase letter, one number, and one special character:
 
 ```bash
 ./.venv/bin/python scripts/generate_dashboard_password.py
@@ -145,6 +145,10 @@ The dashboard and browser health page require a login. Meta webhooks and `/api/h
 Set `DASHBOARD_USERNAME` and the generated `DASHBOARD_PASSWORD_HASH_B64` in `.env`, and use a strong random `DASHBOARD_SECRET` for session signing. The Base64 encoding keeps Docker Compose from interpreting characters inside the password hash. Set `DASHBOARD_COOKIE_SECURE=true` when users access the dashboard through HTTPS. Login sessions expire after `DASHBOARD_SESSION_HOURS` (12 by default), and repeated invalid attempts are temporarily rate limited.
 
 After signing in, use **My Profile → Reset password** to change the password. The replacement hash is stored in the SQLite database and persists through container restarts. Changing the password invalidates existing dashboard sessions.
+
+New portal users can follow **Create an account** from the login page. User IDs are unique regardless of letter case, and every account uses the same password-strength requirements.
+
+The avatar menu links to **My Profile**, where each user can maintain a display name and email address, review account dates, and open the password reset form. Email addresses are unique across portal accounts and are matched without regard to letter case.
 
 Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. Its output is appended to the `POLLING_LOG_FILE` configured in `config/polling.env` (`data/polling.log` by default); follow a running cycle with `tail -f data/polling.log`.
 

@@ -1,5 +1,6 @@
 import socket
 import hmac
+import re
 import secrets
 import threading
 import time
@@ -11,6 +12,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.serving import make_server
 
 from app import config, db
+from app.password_policy import PASSWORD_HINT, password_meets_policy
 from app.post import post_approved
 from app.webhook import register_meta_routes, start_event_worker
 
@@ -23,7 +25,7 @@ STATUSES = (
     "rejected",
 )
 PLATFORMS = ("youtube", "facebook", "instagram")
-PAGE_SIZE = 25
+PAGE_SIZE = 100
 CONTAINER_LABELS = {
     "youtube": "Video",
     "facebook": "Facebook post",
@@ -33,6 +35,8 @@ LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 15 * 60
 _login_failures: dict[str, list[float]] = {}
 _login_lock = threading.Lock()
+USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,50}$")
+EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 
 def _csrf_token() -> str:
@@ -113,21 +117,27 @@ def create_app() -> Flask:
     db.init_db()
     with db.connect() as conn:
         db.initialize_dashboard_auth(conn, config.DASHBOARD_PASSWORD_HASH)
+        legacy_auth = db.get_dashboard_auth(conn)
+        db.initialize_dashboard_user(
+            conn,
+            config.DASHBOARD_USERNAME,
+            legacy_auth["password_hash"] if legacy_auth else config.DASHBOARD_PASSWORD_HASH,
+        )
 
-    def dashboard_auth():
+    def dashboard_auth(username: str | None = None):
+        username = username or session.get("dashboard_username", "")
         with db.connect() as conn:
-            return db.get_dashboard_auth(conn)
+            return db.get_dashboard_user(conn, username) if username else None
 
     @app.before_request
     def require_dashboard_login():
-        public = request.endpoint in {"login", "static", "health_api"}
+        public = request.endpoint in {"login", "signup", "static", "health_api"}
         if public or request.path.startswith("/webhooks/meta"):
             return None
         auth = dashboard_auth()
-        if not config.DASHBOARD_USERNAME or auth is None:
-            return render_template("login.html", configuration_missing=True), 503
         if (
             not session.get("dashboard_authenticated")
+            or auth is None
             or session.get("dashboard_auth_version") != auth["version"]
         ):
             session.clear()
@@ -136,9 +146,6 @@ def create_app() -> Flask:
 
     @app.route("/login", methods=("GET", "POST"))
     def login():
-        auth = dashboard_auth()
-        if not config.DASHBOARD_USERNAME or auth is None:
-            return render_template("login.html", configuration_missing=True), 503
         client = request.remote_addr or "unknown"
         if request.method == "POST":
             if _login_blocked(client):
@@ -148,16 +155,16 @@ def create_app() -> Flask:
             csrf_valid = hmac.compare_digest(
                 request.form.get("csrf_token", ""), session.get("csrf_token", "")
             )
-            username_valid = hmac.compare_digest(
-                request.form.get("username", ""), config.DASHBOARD_USERNAME
-            )
-            password_valid = check_password_hash(
+            username = request.form.get("username", "").strip()
+            auth = dashboard_auth(username)
+            password_valid = bool(auth) and check_password_hash(
                 auth["password_hash"], request.form.get("password", "")
             )
-            if csrf_valid and username_valid and password_valid:
+            if csrf_valid and password_valid:
                 session.clear()
                 session["dashboard_authenticated"] = True
                 session["dashboard_auth_version"] = auth["version"]
+                session["dashboard_username"] = auth["username"]
                 session.permanent = True
                 _clear_login_failures(client)
                 return redirect(_safe_next(request.form.get("next", "/")))
@@ -169,7 +176,46 @@ def create_app() -> Flask:
             "login.html",
             next=_safe_next(request.args.get("next", "/")),
             password_changed=request.args.get("password_changed") == "1",
+            registered=request.args.get("registered") == "1",
         )
+
+    @app.route("/signup", methods=("GET", "POST"))
+    def signup():
+        if request.method == "POST":
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            confirmation = request.form.get("confirm_password", "")
+            csrf_valid = hmac.compare_digest(
+                request.form.get("csrf_token", ""), session.get("csrf_token", "")
+            )
+            if not csrf_valid:
+                return render_template(
+                    "signup.html", error="Your session expired. Please try again.", username=username
+                ), 400
+            if not USERNAME_PATTERN.fullmatch(username):
+                return render_template(
+                    "signup.html",
+                    error="User ID must be 3–50 characters using letters, numbers, dots, hyphens, or underscores.",
+                    username=username,
+                ), 400
+            if not password_meets_policy(password):
+                return render_template(
+                    "signup.html", error=PASSWORD_HINT, username=username
+                ), 400
+            if password != confirmation:
+                return render_template(
+                    "signup.html", error="Passwords do not match.", username=username
+                ), 400
+            with db.connect() as conn:
+                created = db.create_dashboard_user(
+                    conn, username, generate_password_hash(password)
+                )
+            if not created:
+                return render_template(
+                    "signup.html", error="That User ID is already registered.", username=username
+                ), 409
+            return redirect(url_for("login", registered="1"))
+        return render_template("signup.html", username="")
 
     @app.route("/profile/password", methods=("GET", "POST"))
     def reset_password():
@@ -189,20 +235,76 @@ def create_app() -> Flask:
                 return render_template(
                     "reset_password.html", error="Current password is incorrect."
                 ), 400
-            if len(new) < 12:
+            if not password_meets_policy(new):
                 return render_template(
                     "reset_password.html",
-                    error="New password must contain at least 12 characters.",
+                    error=PASSWORD_HINT,
+                    password_hint=PASSWORD_HINT,
                 ), 400
             if new != confirmation:
                 return render_template(
                     "reset_password.html", error="New passwords do not match."
                 ), 400
             with db.connect() as conn:
-                db.update_dashboard_password(conn, generate_password_hash(new))
+                db.update_dashboard_user_password(
+                    conn, session["dashboard_username"], generate_password_hash(new)
+                )
             session.clear()
             return redirect(url_for("login", password_changed="1"))
-        return render_template("reset_password.html")
+        return render_template("reset_password.html", password_hint=PASSWORD_HINT)
+
+    @app.route("/profile", methods=("GET", "POST"))
+    def profile():
+        auth = dashboard_auth()
+        if request.method == "POST":
+            csrf_valid = hmac.compare_digest(
+                request.form.get("csrf_token", ""), session.get("csrf_token", "")
+            )
+            display_name = request.form.get("display_name", "").strip()
+            email = request.form.get("email", "").strip()
+            submitted_user = {
+                **dict(auth),
+                "display_name": display_name,
+                "email": email,
+            }
+            if not csrf_valid:
+                return render_template(
+                    "profile.html", user=submitted_user, error="Your session expired. Please try again."
+                ), 400
+            if len(display_name) > 100:
+                return render_template(
+                    "profile.html", user=submitted_user, error="Display name cannot exceed 100 characters."
+                ), 400
+            if email and (len(email) > 254 or not EMAIL_PATTERN.fullmatch(email)):
+                return render_template(
+                    "profile.html", user=submitted_user, error="Enter a valid email address."
+                ), 400
+            with db.connect() as conn:
+                if db.dashboard_email_registered(
+                    conn, email, excluding_username=session["dashboard_username"]
+                ):
+                    return render_template(
+                        "profile.html",
+                        user=submitted_user,
+                        error="This email address is already registered to another account.",
+                    ), 409
+                updated = db.update_dashboard_user_profile(
+                    conn,
+                    session["dashboard_username"],
+                    display_name=display_name,
+                    email=email,
+                )
+                if not updated:
+                    return render_template(
+                        "profile.html",
+                        user=submitted_user,
+                        error="This email address is already registered to another account.",
+                    ), 409
+                auth = db.get_dashboard_user(conn, session["dashboard_username"])
+            return render_template(
+                "profile.html", user=auth, success="Profile details updated."
+            )
+        return render_template("profile.html", user=auth)
 
     @app.post("/logout")
     def logout():
@@ -214,6 +316,7 @@ def create_app() -> Flask:
         return redirect(url_for("login"))
 
     app.jinja_env.globals["csrf_token"] = _csrf_token
+    app.jinja_env.globals["password_hint"] = PASSWORD_HINT
 
     @app.get("/")
     def index():
@@ -254,8 +357,8 @@ def create_app() -> Flask:
             pages=pages,
             total=total,
             query_string=request.query_string.decode(),
-            dashboard_username=config.DASHBOARD_USERNAME,
-            profile_initial=config.DASHBOARD_USERNAME.strip()[:1].upper(),
+            dashboard_username=session["dashboard_username"],
+            profile_initial=session["dashboard_username"][:1].upper(),
             current_year=datetime.now().year,
         )
 

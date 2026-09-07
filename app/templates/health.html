@@ -97,13 +97,37 @@
     .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px var(--green); }
     a { color: var(--muted); text-decoration: none; }
     a:hover { color: var(--text); }
-    .dashboard-link { display: inline-block; margin-top: 25px; font-size: 14px; }
+    .back-button {
+      position: fixed;
+      top: 22px;
+      left: 22px;
+      z-index: 2;
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 0 15px;
+      color: var(--text);
+      background: rgba(12, 39, 30, .86);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .22);
+      font-size: 13px;
+      font-weight: 750;
+      backdrop-filter: blur(14px);
+    }
+    .back-button:hover { color:#fff; background:rgba(20,58,45,.94); }
+    .back-button svg { width:17px; height:17px; }
     @keyframes breathe { 50% { transform: scale(1.04); box-shadow: 0 0 0 17px rgba(74, 222, 128, .04), 0 0 65px var(--glow); } }
-    @media (max-width: 480px) { main { padding: 42px 24px 30px; border-radius: 22px; } }
+    @media (max-width: 480px) { body{padding-top:84px}.back-button{top:16px;left:16px}main{padding:42px 24px 30px;border-radius:22px} }
     @media (prefers-reduced-motion: reduce) { .pulse { animation: none; } }
   </style>
 </head>
 <body>
+  <a class="back-button" href="/" aria-label="Back to Comment Dashboard">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg>
+    <span>Back</span>
+  </a>
   <main>
     <div class="pulse" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
@@ -118,7 +142,16 @@
       <span class="badge">HTTP 200</span>
       <span class="badge">Webhook ready</span>
     </div>
-    <a class="dashboard-link" href="/">Open comment review dashboard &rarr;</a>
   </main>
+  <script>
+    document.addEventListener('keydown', (event) => {
+      const target = event.target;
+      const isEditable = target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
+      if (event.key === 'Backspace' && !isEditable) {
+        event.preventDefault();
+        window.location.assign('/');
+      }
+    });
+  </script>
 </body>
 </html>

@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS dashboard_auth (
     version INTEGER NOT NULL DEFAULT 1,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS dashboard_users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    display_name TEXT,
+    email TEXT,
+    password_hash TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 """
 
 
@@ -62,6 +74,37 @@ def init_db() -> None:
             )
         if "error" not in columns:
             conn.execute("ALTER TABLE comments ADD COLUMN error TEXT")
+        user_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(dashboard_users)")
+        }
+        if "display_name" not in user_columns:
+            conn.execute("ALTER TABLE dashboard_users ADD COLUMN display_name TEXT")
+        if "email" not in user_columns:
+            conn.execute("ALTER TABLE dashboard_users ADD COLUMN email TEXT")
+        # Older builds allowed duplicate profile emails. Preserve the earliest
+        # account as the owner and clear the duplicate copies before adding the
+        # constraint; no user account is removed.
+        conn.execute(
+            """
+            UPDATE dashboard_users
+            SET email = NULL, updated_at = ?
+            WHERE email IS NOT NULL AND trim(email) <> ''
+              AND id NOT IN (
+                  SELECT MIN(id) FROM dashboard_users
+                  WHERE email IS NOT NULL AND trim(email) <> ''
+                  GROUP BY lower(trim(email))
+              )
+            """,
+            (now(),),
+        )
+        conn.execute(
+            "UPDATE dashboard_users SET email = trim(email) WHERE email IS NOT NULL"
+        )
+        conn.execute(
+            """CREATE UNIQUE INDEX IF NOT EXISTS dashboard_users_email_unique
+               ON dashboard_users(email COLLATE NOCASE)
+               WHERE email IS NOT NULL AND email <> ''"""
+        )
 
 
 def now() -> str:
@@ -97,6 +140,93 @@ def update_dashboard_password(conn: sqlite3.Connection, password_hash: str) -> i
         (password_hash, now()),
     )
     return int(get_dashboard_auth(conn)["version"])
+
+
+def initialize_dashboard_user(
+    conn: sqlite3.Connection, username: str, password_hash: str
+) -> None:
+    """Migrate the original environment-backed account into the users table."""
+    if username and password_hash:
+        ts = now()
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO dashboard_users
+                (username, password_hash, version, created_at, updated_at)
+            VALUES (?, ?, 1, ?, ?)
+            """,
+            (username.strip(), password_hash, ts, ts),
+        )
+
+
+def create_dashboard_user(
+    conn: sqlite3.Connection, username: str, password_hash: str
+) -> bool:
+    ts = now()
+    cursor = conn.execute(
+        """
+        INSERT OR IGNORE INTO dashboard_users
+            (username, password_hash, version, created_at, updated_at)
+        VALUES (?, ?, 1, ?, ?)
+        """,
+        (username.strip(), password_hash, ts, ts),
+    )
+    return cursor.rowcount == 1
+
+
+def get_dashboard_user(conn: sqlite3.Connection, username: str):
+    return conn.execute(
+        """SELECT id, username, display_name, email, password_hash, version,
+                  created_at, updated_at
+           FROM dashboard_users WHERE username = ? COLLATE NOCASE""",
+        (username.strip(),),
+    ).fetchone()
+
+
+def update_dashboard_user_password(
+    conn: sqlite3.Connection, username: str, password_hash: str
+) -> int:
+    conn.execute(
+        """
+        UPDATE dashboard_users
+        SET password_hash = ?, version = version + 1, updated_at = ?
+        WHERE username = ? COLLATE NOCASE
+        """,
+        (password_hash, now(), username.strip()),
+    )
+    return int(get_dashboard_user(conn, username)["version"])
+
+
+def update_dashboard_user_profile(
+    conn: sqlite3.Connection, username: str, *, display_name: str, email: str
+) -> bool:
+    try:
+        conn.execute(
+            """
+            UPDATE dashboard_users
+            SET display_name = ?, email = ?, updated_at = ?
+            WHERE username = ? COLLATE NOCASE
+            """,
+            (display_name or None, email or None, now(), username.strip()),
+        )
+    except sqlite3.IntegrityError:
+        return False
+    return True
+
+
+def dashboard_email_registered(
+    conn: sqlite3.Connection, email: str, *, excluding_username: str
+) -> bool:
+    if not email:
+        return False
+    row = conn.execute(
+        """
+        SELECT 1 FROM dashboard_users
+        WHERE email = ? COLLATE NOCASE
+          AND username <> ? COLLATE NOCASE
+        """,
+        (email.strip(), excluding_username.strip()),
+    ).fetchone()
+    return row is not None
 
 
 def comment_exists(conn: sqlite3.Connection, comment_id: str) -> bool:
@@ -207,9 +337,10 @@ def activity_summary(
     """Return received and handled comment totals for dashboard time windows."""
     reference_time = reference_time or datetime.now(timezone.utc)
     windows = (
-        ("Last 24 hours", timedelta(hours=24)),
-        ("Last 7 days", timedelta(days=7)),
-        ("Last 1 year", timedelta(days=365)),
+        ("1 Hour", timedelta(hours=1)),
+        ("24 Hours", timedelta(hours=24)),
+        ("7 Day", timedelta(days=7)),
+        ("365 Days", timedelta(days=365)),
     )
     summaries = []
     for label, duration in windows:

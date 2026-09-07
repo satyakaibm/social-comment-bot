@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2a38">
+  <title>Sign up · Content My Trip</title>
+  <style>
+    :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
+    * { box-sizing:border-box; }
+    body { min-height:100vh; margin:0; display:grid; place-items:center; padding:24px; color:#17252c; background:radial-gradient(circle at 90% 5%,rgba(255,106,61,.14),transparent 30rem),radial-gradient(circle at 4% 90%,rgba(54,174,180,.12),transparent 28rem),#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(450px,100%); padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
+    img { display:block; width:190px; height:64px; margin:0 auto 25px; object-fit:contain; }
+    .eyebrow { margin:0 0 8px; color:var(--coral); font-size:11px; font-weight:800; letter-spacing:.15em; text-transform:uppercase; }
+    h1 { margin:0; color:var(--navy); font-size:30px; letter-spacing:-.035em; }
+    .copy { margin:10px 0 22px; color:var(--muted); font-size:14px; line-height:1.55; }
+    label { display:block; margin:14px 0 7px; color:var(--navy); font-size:12px; font-weight:750; }
+    input { width:100%; height:46px; padding:0 13px; color:#17252c; background:#f8fafb; border:1px solid var(--line); border-radius:11px; font:inherit; outline:none; }
+    input:focus { background:#fff; border-color:#36aeb4; box-shadow:0 0 0 3px rgba(54,174,180,.12); }
+    button { width:100%; height:46px; margin-top:22px; color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; border-radius:11px; font:inherit; font-weight:800; cursor:pointer; box-shadow:0 8px 20px rgba(255,106,61,.24); }
+    .message { padding:11px 13px; color:#98253d; background:#fff0f3; border:1px solid #f5ccd5; border-radius:10px; font-size:13px; line-height:1.45; }
+    .hint { margin:7px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
+    .login-link { margin:18px 0 0; color:var(--muted); font-size:13px; text-align:center; }
+    .login-link a { color:var(--navy); font-weight:800; text-decoration:none; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
+    <p class="eyebrow">Social Comment Studio</p>
+    <h1>Create account</h1>
+    <p class="copy">Register for access to the comment management portal.</p>
+    {% if error %}<p class="message">{{ error }}</p>{% endif %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="username">User ID</label>
+      <input id="username" name="username" type="text" value="{{ username }}" minlength="3" maxlength="50" pattern="[A-Za-z0-9_.-]+" autocomplete="username" aria-describedby="username-hint" required autofocus>
+      <p class="hint" id="username-hint">Use 3–50 letters, numbers, dots, hyphens, or underscores.</p>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" minlength="8" autocomplete="new-password" aria-describedby="password-hint" required>
+      <p class="hint" id="password-hint">{{ password_hint }}</p>
+      <label for="confirm-password">Confirm password</label>
+      <input id="confirm-password" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required>
+      <button type="submit">Create account</button>
+    </form>
+    <p class="login-link">Already registered? <a href="/login">Sign in</a></p>
+  </main>
+</body>
+</html>
