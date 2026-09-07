@@ -2,7 +2,12 @@ from googleapiclient.errors import HttpError
 from requests import RequestException
 
 from app import db, meta_client
-from app.youtube_client import find_own_reply, get_client, get_my_channel_id
+from app.youtube_client import (
+    find_own_reply,
+    get_client,
+    get_my_channel_id,
+    is_quota_exceeded,
+)
 
 
 def post_approved(
@@ -106,6 +111,12 @@ def post_approved(
                             f"{row['comment_id']} failed. Check Page permissions or like it manually."
                         )
             except HttpError as e:
+                if is_quota_exceeded(e):
+                    print(
+                        "YouTube quota is exhausted; leaving remaining comments "
+                        "pending for the next cycle."
+                    )
+                    break
                 db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
                 conn.commit()
                 print(f"Failed to post reply to YouTube comment {row['comment_id']}: {e}")

@@ -99,6 +99,8 @@ Meta can deliver new comments immediately, so the bot does not need to rescan hi
 
 Webhook delivery state is visible in the `webhook_events` SQLite table. Run one dashboard process because its background processor owns this local SQLite queue. YouTube does not offer comment webhooks, so it still requires polling.
 
+Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. Its output is appended to `data/polling.log`; follow a running cycle with `tail -f data/polling.log`.
+
 If `FACEBOOK_POST_IDS` / `INSTAGRAM_MEDIA_IDS` are empty, Facebook polls all Page posts and Instagram polls the most recent `INSTAGRAM_MEDIA_LIMIT` media items. Set those ID lists to stay on specific posts.
 
 ## Reply examples

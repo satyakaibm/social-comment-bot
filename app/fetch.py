@@ -7,6 +7,7 @@ from app.youtube_client import (
     get_client,
     get_my_channel_id,
     get_uploads_playlist_id,
+    is_quota_exceeded,
     iter_uploaded_video_ids,
 )
 
@@ -108,6 +109,8 @@ def poll_and_draft() -> int:
                     if not existing_reply:
                         new_count += 1
             except HttpError as e:
+                if is_quota_exceeded(e):
+                    raise
                 print(f"YouTube API error while polling video_id={video_id!r}: {e}")
 
     return new_count
