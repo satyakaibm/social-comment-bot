@@ -6,6 +6,7 @@ from app.youtube_client import (
     find_own_reply,
     get_client,
     get_my_channel_id,
+    get_video_channel_ids,
     is_quota_exceeded,
 )
 
@@ -43,15 +44,45 @@ def post_approved(
             comment_id=comment_id,
             limit=limit,
         )
+        youtube_rows = [row for row in rows if row["platform"] == "youtube"]
+        video_channel_ids = {}
+        youtube_identity_ready = not youtube_rows
+        if youtube_rows:
+            try:
+                youtube = get_client()
+                channel_id = get_my_channel_id(youtube)
+                video_channel_ids = get_video_channel_ids(
+                    youtube, (row["video_id"] for row in youtube_rows)
+                )
+                youtube_identity_ready = True
+            except Exception as exc:
+                print(
+                    "Could not verify the Hindolroad YouTube channel identity; "
+                    f"skipping YouTube publishing: {exc}"
+                )
+
         for row in rows:
             platform = row["platform"]
             try:
                 if platform == "youtube":
+                    video_owner_id = video_channel_ids.get(row["video_id"], "")
+                    if not youtube_identity_ready or not video_owner_id:
+                        print(
+                            "Could not confirm the video owner for YouTube comment "
+                            f"{row['comment_id']}; skipping to prevent a duplicate reply."
+                        )
+                        continue
                     if youtube is None:
                         youtube = get_client()
                     if channel_id is None:
                         channel_id = get_my_channel_id(youtube)
-                    existing_reply = find_own_reply(youtube, row["comment_id"], channel_id)
+                    own_channel_ids = {
+                        channel_id,
+                        video_owner_id,
+                    }
+                    existing_reply = find_own_reply(
+                        youtube, row["comment_id"], own_channel_ids
+                    )
                 elif platform in ("facebook", "instagram"):
                     existing_reply = meta_client.find_own_reply(row["comment_id"], platform=platform)
                 else:
@@ -124,6 +155,13 @@ def post_approved(
                 db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
                 conn.commit()
                 print(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
+            except RequestException as e:
+                # A timed-out write may still have reached Meta. Keep the row
+                # pending so the next run checks for that reply before retrying.
+                print(
+                    f"Meta request timed out for {platform} comment "
+                    f"{row['comment_id']}; left pending for verification: {e}"
+                )
 
     return posted
 

@@ -42,15 +42,40 @@ def get_my_channel_id(youtube: Resource) -> str:
     return items[0]["id"]
 
 
-def find_own_reply(youtube: Resource, comment_id: str, channel_id: str) -> str | None:
-    """Search every reply page for a reply from the authenticated channel."""
+def get_video_channel_ids(youtube: Resource, video_ids) -> dict[str, str]:
+    """Return each video's owner channel ID, batching lookups to save quota."""
+    unique_ids = list(dict.fromkeys(video_id for video_id in video_ids if video_id))
+    owners = {}
+    for start in range(0, len(unique_ids), 50):
+        response = youtube.videos().list(
+            part="snippet", id=",".join(unique_ids[start:start + 50])
+        ).execute()
+        for item in response.get("items", []):
+            owners[item["id"]] = item.get("snippet", {}).get("channelId", "")
+    return owners
+
+
+def find_own_reply(
+    youtube: Resource,
+    comment_id: str,
+    channel_ids: str | set[str],
+) -> str | None:
+    """Search every reply page for a reply from any known channel identity."""
+    own_ids = {channel_ids} if isinstance(channel_ids, str) else set(channel_ids)
+    own_ids.discard("")
     request = youtube.comments().list(
         part="snippet", parentId=comment_id, maxResults=100, textFormat="plainText"
     )
     while request is not None:
         response = request.execute()
         for reply in response["items"]:
-            if reply.get("snippet", {}).get("authorChannelId", {}).get("value") == channel_id:
+            author_channel = reply.get("snippet", {}).get("authorChannelId", {})
+            author_channel_id = (
+                author_channel.get("value")
+                if isinstance(author_channel, dict)
+                else author_channel
+            )
+            if author_channel_id in own_ids:
                 return reply["id"]
         request = youtube.comments().list_next(request, response)
     return None

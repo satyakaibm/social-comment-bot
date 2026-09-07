@@ -57,8 +57,6 @@ META_WEBHOOK_ENABLED=false
 # Optional: restrict polling to specific posts/media. Leave blank to poll the account.
 FACEBOOK_POST_IDS=
 INSTAGRAM_MEDIA_IDS=
-# Cap of recent Instagram media items when INSTAGRAM_MEDIA_IDS is unset (default 10)
-INSTAGRAM_MEDIA_LIMIT=10
 ```
 
 ### YouTube
@@ -101,7 +99,13 @@ Webhook delivery state is visible in the `webhook_events` SQLite table. Run one 
 
 Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. Its output is appended to `data/polling.log`; follow a running cycle with `tail -f data/polling.log`.
 
-If `FACEBOOK_POST_IDS` / `INSTAGRAM_MEDIA_IDS` are empty, Facebook polls all Page posts and Instagram polls the most recent `INSTAGRAM_MEDIA_LIMIT` media items. Set those ID lists to stay on specific posts.
+Each cron cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. `YOUTUBE_PUBLISH_LIMIT` controls how many pending YouTube replies can be published in that cycle. The cron entry does not need limit variables:
+
+```cron
+0 * * * * /Users/satyakaran/Documents/D/myproject/social-comment-bot/scripts/reply_comments.sh
+```
+
+For another environment, create a file with the same variables and select it with `POLLING_CONFIG_FILE=/path/to/polling.env`. Set `FACEBOOK_POST_IDS` or `INSTAGRAM_MEDIA_IDS` in `.env` to stay on specific content.
 
 ## Reply examples
 

@@ -3,6 +3,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from requests.exceptions import ReadTimeout
+
 from app import db, fetch, meta_client, post, social_fetch, youtube_client
 
 
@@ -28,6 +30,7 @@ class ExistingReplyTests(unittest.TestCase):
             target = post if platform == 'youtube' else meta_client
             with patch.object(post, 'get_client', return_value=MagicMock()), \
                  patch.object(post, 'get_my_channel_id', return_value='owner'), \
+                 patch.object(post, 'get_video_channel_ids', return_value={'media':'owner'}), \
                  patch.object(target, 'find_own_reply', side_effect=RuntimeError('offline')), \
                  patch.object(meta_client, 'reply_to_comment') as send:
                 self.assertEqual(post.post_approved(platform=platform), 0)
@@ -36,6 +39,7 @@ class ExistingReplyTests(unittest.TestCase):
                 self.assertEqual(len(db.list_by_status(conn, 'approved')), 1)
             with patch.object(post, 'get_client', return_value=MagicMock()) as yt, \
                  patch.object(post, 'get_my_channel_id', return_value='owner'), \
+                 patch.object(post, 'get_video_channel_ids', return_value={'media':'owner'}), \
                  patch.object(target, 'find_own_reply', return_value='manual'), \
                  patch.object(meta_client, 'reply_to_comment') as send:
                 self.assertEqual(post.post_approved(platform=platform), 0)
@@ -45,6 +49,20 @@ class ExistingReplyTests(unittest.TestCase):
                 row = conn.execute('SELECT * FROM comments WHERE comment_id=?', (platform,)).fetchone()
                 self.assertEqual(row['status'], 'already_replied')
                 self.assertEqual(row['reply_comment_id'], 'manual')
+
+    def test_youtube_post_checks_oauth_and_video_owner_identities(self):
+        self.seed('youtube')
+        youtube = MagicMock()
+        with patch.object(post, 'get_client', return_value=youtube), \
+             patch.object(post, 'get_my_channel_id', return_value='oauth-channel'), \
+             patch.object(post, 'get_video_channel_ids', return_value={'media':'hindolroad'}), \
+             patch.object(post, 'find_own_reply', return_value='manual') as find:
+            self.assertEqual(post.post_approved(platform='youtube'), 0)
+
+        find.assert_called_once_with(
+            youtube, 'youtube', {'oauth-channel', 'hindolroad'}
+        )
+        youtube.comments.return_value.insert.assert_not_called()
 
     def test_graph_error_marks_comment_failed(self):
         self.seed('facebook')
@@ -58,6 +76,31 @@ class ExistingReplyTests(unittest.TestCase):
             row = db.get_comment(conn, 'facebook')
             self.assertEqual(row['status'], 'failed')
             self.assertIn('token expired', row['error'])
+
+    def test_meta_write_timeout_stays_pending_for_duplicate_check(self):
+        self.seed('facebook')
+        with patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(
+                 meta_client, 'reply_to_comment',
+                 side_effect=ReadTimeout('read timed out'),
+             ):
+            self.assertEqual(post.post_approved(platform='facebook'), 0)
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'facebook')
+            self.assertEqual(row['status'], 'approved')
+            self.assertIsNone(row['reply_comment_id'])
+
+    def test_facebook_post_poll_is_limited(self):
+        with patch.object(meta_client.config, 'FACEBOOK_POST_IDS', []), \
+             patch.object(meta_client.config, 'FACEBOOK_POST_LIMIT', 2), \
+             patch.object(
+                 meta_client, 'iter_paged',
+                 return_value=iter([{'id':'p1'}, {'id':'p2'}, {'id':'p3'}]),
+             ) as pages:
+            self.assertEqual(list(meta_client.iter_facebook_post_ids()), ['p1', 'p2'])
+        pages.assert_called_once_with(
+            f'{meta_client.config.FACEBOOK_PAGE_ID}/posts', fields='id', limit=2
+        )
 
     def test_unanswered_comment_still_posts(self):
         self.seed('facebook')
@@ -88,6 +131,41 @@ class ExistingReplyTests(unittest.TestCase):
         youtube.comments.return_value.list.return_value = first
         youtube.comments.return_value.list_next.return_value = second
         self.assertEqual(youtube_client.find_own_reply(youtube, 'parent', 'owner'), 'mine')
+
+    def test_youtube_treats_video_owner_reply_as_own(self):
+        youtube = MagicMock()
+        request = youtube.comments.return_value.list.return_value
+        request.execute.return_value = {
+            'items': [{
+                'id': 'manual-hindolroad-reply',
+                'snippet': {'authorChannelId': {'value': 'video-owner'}},
+            }]
+        }
+        youtube.comments.return_value.list_next.return_value = None
+
+        reply = youtube_client.find_own_reply(
+            youtube, 'parent', {'oauth-channel', 'video-owner'}
+        )
+
+        self.assertEqual(reply, 'manual-hindolroad-reply')
+
+    def test_video_owner_ids_are_batched(self):
+        youtube = MagicMock()
+        youtube.videos.return_value.list.return_value.execute.return_value = {
+            'items': [
+                {'id': 'video-1', 'snippet': {'channelId': 'hindolroad'}},
+                {'id': 'video-2', 'snippet': {'channelId': 'hindolroad'}},
+            ]
+        }
+
+        owners = youtube_client.get_video_channel_ids(
+            youtube, ['video-1', 'video-2', 'video-1']
+        )
+
+        self.assertEqual(owners, {'video-1': 'hindolroad', 'video-2': 'hindolroad'})
+        youtube.videos.return_value.list.assert_called_once_with(
+            part='snippet', id='video-1,video-2'
+        )
 
     def test_meta_checks_later_reply_pages(self):
         for platform, fields, identity in (
@@ -145,7 +223,8 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(fetch.poll_and_draft(), 0)
             draft.assert_not_called()
         with db.connect() as conn:
-            self.assertEqual(len(db.list_by_status(conn, 'already_replied')), 3)
+            self.assertEqual(len(db.list_by_status(conn, 'already_replied')), 2)
+            self.assertIsNone(db.get_comment(conn, 'youtube'))
 
 
 if __name__ == '__main__':
