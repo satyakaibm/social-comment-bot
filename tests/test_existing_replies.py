@@ -109,6 +109,22 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='facebook'), 1)
             send.assert_called_once_with('facebook', '🙏', platform='facebook')
 
+    def test_malformed_json_draft_is_cleaned_before_instagram_post(self):
+        self.seed('instagram')
+        malformed = '@viewer {"reply": ଜୟ ମା ଦକ୍ଷିଣକାଳୀ! }}'
+        with db.connect() as conn:
+            db.update_status(
+                conn, 'instagram', 'approved', draft_reply=malformed
+            )
+        with patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
+            self.assertEqual(post.post_approved(platform='instagram'), 1)
+
+        cleaned = '@viewer ଜୟ ମା ଦକ୍ଷିଣକାଳୀ!'
+        send.assert_called_once_with('instagram', cleaned, platform='instagram')
+        with db.connect() as conn:
+            self.assertEqual(db.get_comment(conn, 'instagram')['draft_reply'], cleaned)
+
     def test_instagram_reply_can_like_original_comment(self):
         self.seed('instagram')
         with patch.object(meta_client, 'find_own_reply', return_value=None), \

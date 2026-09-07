@@ -2,6 +2,7 @@ from googleapiclient.errors import HttpError
 from requests import RequestException
 
 from app import db, meta_client
+from app.sanitize import sanitize_draft
 from app.youtube_client import (
     find_own_reply,
     get_client,
@@ -96,6 +97,15 @@ def post_approved(
                 conn.commit()
                 print(f"Skipped {platform} comment {row['comment_id']}: your account already replied.")
                 continue
+            reply_text = sanitize_draft(row["draft_reply"] or "")
+            if reply_text != (row["draft_reply"] or ""):
+                db.update_status(
+                    conn,
+                    row["comment_id"],
+                    row["status"],
+                    draft_reply=reply_text,
+                )
+                conn.commit()
             try:
                 if platform == "youtube":
                     if youtube is None:
@@ -107,7 +117,7 @@ def post_approved(
                             body={
                                 "snippet": {
                                     "parentId": row["comment_id"],
-                                    "textOriginal": row["draft_reply"],
+                                    "textOriginal": reply_text,
                                 }
                             },
                         )
@@ -116,7 +126,7 @@ def post_approved(
                     reply_id = resp["id"]
                 elif platform in ("facebook", "instagram"):
                     reply_id = meta_client.reply_to_comment(
-                        row["comment_id"], row["draft_reply"], platform=platform
+                        row["comment_id"], reply_text, platform=platform
                     )
                 else:
                     print(f"Unknown platform {platform!r} for comment {row['comment_id']}, skipping.")

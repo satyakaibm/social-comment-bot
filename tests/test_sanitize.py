@@ -39,6 +39,17 @@ class SanitizeDraftTests(unittest.TestCase):
         text = "@foo Thank you for watching and commenting on the video."
         self.assertEqual(sanitize_draft(text), "@foo 🙏")
 
+    def test_removes_malformed_json_wrapper_after_mention(self):
+        text = '@customername {"reply": ଜୟ ମା ଦକ୍ଷିଣକାଳୀ! }}'
+        self.assertEqual(
+            sanitize_draft(text),
+            "@customername ଜୟ ମା ଦକ୍ଷିଣକାଳୀ!",
+        )
+
+    def test_removes_valid_json_wrapper_after_mention(self):
+        text = '@customername {"reply": "🙏"}'
+        self.assertEqual(sanitize_draft(text), "@customername 🙏")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,3 +1,4 @@
+import json
 import re
 
 # Devanagari / Gujarati / Bengali chant fragments Gemini mixed into Odia replies.
@@ -64,6 +65,29 @@ _OTHER_INDIC = re.compile(
     r"\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]+"
 )
 
+_REPLY_WRAPPER = re.compile(
+    r"^\{\s*[\"']?reply[\"']?\s*:\s*(.*?)\s*\}+\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _unwrap_reply_payload(text: str) -> str:
+    """Extract reply text from valid or slightly malformed Gemini JSON."""
+    try:
+        payload = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        payload = None
+    if isinstance(payload, dict) and "reply" in payload:
+        return str(payload.get("reply") or "").strip()
+
+    match = _REPLY_WRAPPER.match(text)
+    if not match:
+        return text
+    reply = match.group(1).strip()
+    if len(reply) >= 2 and reply[0] == reply[-1] and reply[0] in "\"'":
+        reply = reply[1:-1].strip()
+    return reply
+
 
 def _strip_odia_thanks(text: str) -> str:
     parts = _SENTENCE_SPLIT.split(text)
@@ -96,6 +120,7 @@ def sanitize_draft(text: str) -> str:
         mention, rest = rest.split(" ", 1)
         mention = mention + " "
 
+    rest = _unwrap_reply_payload(rest)
     rest = _EN_THANKS.sub(" ", rest)
     rest = _strip_odia_thanks(rest)
     rest = _fix_scripts(rest)
