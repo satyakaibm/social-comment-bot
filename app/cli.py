@@ -75,6 +75,18 @@ def cmd_run(_args) -> None:
         time.sleep(config.POLL_INTERVAL_SECONDS)
 
 
+def cmd_webhook(_args) -> None:
+    from app.webhook import run as run_webhook
+
+    run_webhook()
+
+
+def cmd_dashboard(_args) -> None:
+    from app.dashboard import run as run_dashboard
+
+    run_dashboard()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="social-comment-bot")
     sub = parser.add_subparsers(required=True)
@@ -122,19 +134,25 @@ def main() -> None:
     post_p.add_argument(
         "--like-comments",
         action="store_true",
-        help="Like each original comment after posting its reply (requires --platform facebook)",
+        help="Like each original comment after replying (Facebook or Instagram)",
     )
     sub.add_parser(
         "run", help="Continuously poll on an interval (drafting only, no posting)"
     ).set_defaults(func=cmd_run)
+    sub.add_parser(
+        "webhook", help="Run the Facebook and Instagram webhook receiver"
+    ).set_defaults(func=cmd_webhook)
+    sub.add_parser(
+        "dashboard", help="Open the localhost admin dashboard for comment review"
+    ).set_defaults(func=cmd_dashboard)
     sub.add_parser(
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",
     ).set_defaults(func=cmd_redraft)
 
     args = parser.parse_args()
-    if getattr(args, "like_comments", False) and args.platform != "facebook":
-        parser.error("--like-comments requires --platform facebook")
+    if getattr(args, "like_comments", False) and args.platform not in ("facebook", "instagram"):
+        parser.error("--like-comments requires --platform facebook or instagram")
     args.func(args)
 
 

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Comment review</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --card: #fffcf7;
+      --line: #e7e0d4;
+      --accent: #9a3412;
+      --ok: #166534;
+      --err: #9f1239;
+      --youtube: #b91c1c;
+      --facebook: #1d4ed8;
+      --instagram: #a21caf;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      padding: 1.25rem 1.5rem 0.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    h1 { margin: 0 0 0.25rem; font-size: 1.4rem; }
+    .sub { color: var(--muted); margin: 0; font-size: 0.95rem; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1rem 1.5rem 3rem; }
+    .flash { padding: 0.7rem 0.9rem; border-radius: 8px; margin-bottom: 1rem; }
+    .flash.ok { background: #dcfce7; color: var(--ok); }
+    .flash.error { background: #ffe4e6; color: var(--err); }
+    .tabs, .filters { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+    .tab, .chip {
+      text-decoration: none;
+      color: var(--ink);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.4rem 0.8rem;
+      font-size: 0.9rem;
+    }
+    .tab.active, .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .count { opacity: 0.75; }
+    form.search { display: flex; gap: 0.5rem; margin: 0.5rem 0 1.25rem; }
+    input[type=search], textarea {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.5rem 0.7rem;
+      background: #fff;
+      width: 100%;
+    }
+    button, .btn {
+      font: inherit;
+      border: 0;
+      border-radius: 8px;
+      padding: 0.45rem 0.8rem;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+    }
+    button.secondary { background: #44403c; }
+    button.danger { background: var(--err); }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+      margin-bottom: 0.9rem;
+    }
+    .meta { display: flex; flex-wrap: wrap; gap: 0.4rem 0.8rem; color: var(--muted); font-size: 0.85rem; margin-bottom: 0.6rem; }
+    .plat { font-weight: 600; text-transform: capitalize; }
+    .plat.youtube { color: var(--youtube); }
+    .plat.facebook { color: var(--facebook); }
+    .plat.instagram { color: var(--instagram); }
+    .comment { white-space: pre-wrap; margin: 0.3rem 0 0.8rem; }
+    label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 0.3rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
+    .error-box { background: #fff1f2; color: var(--err); padding: 0.6rem 0.7rem; border-radius: 8px; font-size: 0.9rem; }
+    .empty { color: var(--muted); padding: 2rem 0; }
+    .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 1rem; }
+    .pager a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Comment review</h1>
+    <p class="sub">Local admin for pending, posted, failed, and already-replied comments. Bound to localhost only.</p>
+  </header>
+  <main>
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+      <div class="flash {{ category }}">{{ message }}</div>
+    {% endfor %}
+
+    <nav class="tabs">
+      {% for s in statuses %}
+          <a class="tab {% if s == status %}active{% endif %}" href="/?status={{ s }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">
+          {{ s.replace('_', ' ') }} <span class="count">{{ counts.get(s, 0) }}</span>
+        </a>
+      {% endfor %}
+    </nav>
+
+    <div class="filters">
+      <a class="chip {% if not platform %}active{% endif %}" href="/?status={{ status }}{% if query %}&amp;q={{ query }}{% endif %}">All platforms</a>
+      {% for p in platforms %}
+        <a class="chip {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query }}{% endif %}">{{ p }}</a>
+      {% endfor %}
+    </div>
+
+    <form class="search" method="get">
+      <input type="hidden" name="status" value="{{ status }}">
+      {% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
+      <input type="search" name="q" value="{{ query }}" placeholder="Search author, comment, draft, or post title">
+      <button type="submit">Search</button>
+    </form>
+
+    <p class="sub">{{ total }} comment{{ '' if total == 1 else 's' }} in this view.</p>
+
+    {% if not rows %}
+      <p class="empty">No comments in this view.</p>
+    {% endif %}
+
+    {% for row in rows %}
+      {% set qs = query_string and ('?' + query_string) or '' %}
+      <article class="card">
+        <div class="meta">
+          <span class="plat {{ row.platform }}">{{ row.platform }}</span>
+          <span>{{ row.container_label }}: {{ (row.video_title or row.video_id)[:140] }}{% if (row.video_title or '')|length > 140 %}…{% endif %}</span>
+          <span>{{ row.author or 'unknown' }}</span>
+          <span>{{ row.published_at or row.created_at }}</span>
+          <span>{{ row.status.replace('_', ' ') }}</span>
+        </div>
+        <p class="comment"><strong>Comment</strong><br>{{ row.text }}</p>
+        {% if row.error %}
+          <p class="error-box">{{ row.error }}</p>
+        {% endif %}
+        {% if row.reply_comment_id %}
+          <p class="sub">Reply id: {{ row.reply_comment_id }}</p>
+        {% endif %}
+
+        {% if row.status in ('pending_review', 'approved', 'failed', 'rejected') %}
+          <form method="post">
+            <label for="draft-{{ loop.index }}">Draft reply</label>
+            <textarea id="draft-{{ loop.index }}" name="draft_reply" rows="3">{{ row.draft_reply or '' }}</textarea>
+            <div class="actions">
+              {% if row.status == 'pending_review' %}
+                <button type="submit" formaction="/comments/{{ row.comment_id }}/save{{ qs }}">Save draft</button>
+                <button type="submit" class="secondary" formaction="/comments/{{ row.comment_id }}/approve{{ qs }}">Approve</button>
+                <button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Approve &amp; post</button>
+                <button type="submit" class="danger" formaction="/comments/{{ row.comment_id }}/reject{{ qs }}">Reject</button>
+              {% elif row.status == 'approved' %}
+                <button type="submit" formaction="/comments/{{ row.comment_id }}/save{{ qs }}">Save draft</button>
+                <button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Post reply</button>
+                <button type="submit" class="danger" formaction="/comments/{{ row.comment_id }}/reject{{ qs }}">Reject</button>
+              {% elif row.status == 'failed' %}
+                <button type="submit" formaction="/comments/{{ row.comment_id }}/save{{ qs }}">Save draft</button>
+                <button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Retry post</button>
+                <button type="submit" class="danger" formaction="/comments/{{ row.comment_id }}/reject{{ qs }}">Reject</button>
+              {% else %}
+                <button type="submit" class="secondary" formaction="/comments/{{ row.comment_id }}/approve{{ qs }}">Approve</button>
+                <button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Post reply</button>
+              {% endif %}
+            </div>
+          </form>
+        {% else %}
+          <p class="comment"><strong>Reply</strong><br>{{ row.draft_reply or '—' }}</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+
+    {% if pages > 1 %}
+      <div class="pager">
+        {% if page > 1 %}
+          <a href="/?status={{ status }}&amp;page={{ page - 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query }}{% endif %}">Previous</a>
+        {% endif %}
+        <span>Page {{ page }} of {{ pages }}</span>
+        {% if page < pages %}
+          <a href="/?status={{ status }}&amp;page={{ page + 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query }}{% endif %}">Next</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  </main>
+</body>
+</html>

@@ -46,12 +46,39 @@ class ExistingReplyTests(unittest.TestCase):
                 self.assertEqual(row['status'], 'already_replied')
                 self.assertEqual(row['reply_comment_id'], 'manual')
 
+    def test_graph_error_marks_comment_failed(self):
+        self.seed('facebook')
+        with patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(
+                 meta_client, 'reply_to_comment',
+                 side_effect=meta_client.GraphAPIError('token expired'),
+             ):
+            self.assertEqual(post.post_approved(platform='facebook'), 0)
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'facebook')
+            self.assertEqual(row['status'], 'failed')
+            self.assertIn('token expired', row['error'])
+
     def test_unanswered_comment_still_posts(self):
         self.seed('facebook')
         with patch.object(meta_client, 'find_own_reply', return_value=None), \
              patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
             self.assertEqual(post.post_approved(platform='facebook'), 1)
             send.assert_called_once_with('facebook', '🙏', platform='facebook')
+
+    def test_instagram_reply_can_like_original_comment(self):
+        self.seed('instagram')
+        with patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(meta_client, 'reply_to_comment', return_value='new'), \
+             patch.object(meta_client, 'like_comment') as like:
+            self.assertEqual(
+                post.post_approved(platform='instagram', like_comments=True), 1
+            )
+            like.assert_called_once_with('instagram')
+
+    def test_comment_likes_reject_youtube(self):
+        with self.assertRaisesRegex(ValueError, 'facebook or instagram'):
+            post.post_approved(platform='youtube', like_comments=True)
 
     def test_youtube_checks_later_reply_pages(self):
         youtube = MagicMock()
@@ -80,6 +107,18 @@ class ExistingReplyTests(unittest.TestCase):
             for platform, edge in (('facebook','comments'), ('instagram','replies')):
                 meta_client.reply_to_comment('parent', '🙏', platform=platform)
                 send.assert_called_with(f'parent/{edge}', message='🙏')
+
+    def test_configured_page_token_skips_user_token_exchange(self):
+        meta_client._page_token_cache = None
+        self.addCleanup(setattr, meta_client, '_page_token_cache', None)
+        identity = MagicMock()
+        identity.json.return_value = {'id': 'page'}
+        with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
+             patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'token'), \
+             patch.object(meta_client.requests, 'get', return_value=identity) as get:
+            self.assertEqual(meta_client.get_page_access_token(), 'token')
+            get.assert_called_once()
+            self.assertTrue(get.call_args.args[0].endswith('/me'))
 
     def test_poll_skips_manual_replies_without_generating(self):
         for platform in ('facebook', 'instagram'):
