@@ -1,6 +1,6 @@
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.config import DB_PATH
 
@@ -117,6 +117,36 @@ def get_comment(conn: sqlite3.Connection, comment_id: str):
     ).fetchone()
 
 
+def claim_comment_for_post(
+    conn: sqlite3.Connection, comment_id: str, expected_status: str
+) -> bool:
+    """Atomically reserve one comment for a single publishing process."""
+    result = conn.execute(
+        """
+        UPDATE comments
+        SET status = 'posting', updated_at = ?
+        WHERE comment_id = ? AND status = ?
+        """,
+        (now(), comment_id, expected_status),
+    )
+    return result.rowcount == 1
+
+
+def reset_stale_posting(conn: sqlite3.Connection, *, minutes: int = 10) -> int:
+    """Release claims left behind when a publisher was forcibly stopped."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    result = conn.execute(
+        """
+        UPDATE comments
+        SET status = 'failed', error = 'Publishing was interrupted; safe to retry',
+            updated_at = ?
+        WHERE status = 'posting' AND updated_at < ?
+        """,
+        (now(), cutoff),
+    )
+    return result.rowcount
+
+
 def count_by_status(conn: sqlite3.Connection) -> dict[str, int]:
     rows = conn.execute(
         "SELECT status, COUNT(*) AS n FROM comments GROUP BY status"
@@ -201,7 +231,13 @@ def list_for_post(
     if comment_id:
         sql += " AND comment_id = ?"
         params.append(comment_id)
-    sql += " ORDER BY created_at ASC"
+    # Process fresh work before retries so a permanently failing old comment
+    # cannot starve new replies when a per-cycle limit is used.
+    sql += """ ORDER BY CASE status
+        WHEN 'approved' THEN 0
+        WHEN 'pending_review' THEN 1
+        WHEN 'failed' THEN 2
+        ELSE 3 END, created_at ASC"""
     if limit is not None:
         sql += " LIMIT ?"
         params.append(limit)

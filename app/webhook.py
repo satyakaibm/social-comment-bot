@@ -7,6 +7,7 @@ from flask import Flask, Response, request
 
 from app import config, db, meta_client
 from app.generate import draft_reply
+from app.post import post_approved
 
 
 def _signature_is_valid(body: bytes, signature: str) -> bool:
@@ -130,16 +131,23 @@ def process_event(event: dict) -> None:
             draft_reply=reply,
         )
     if config.META_WEBHOOK_AUTO_POST:
-        reply_id = meta_client.reply_to_comment(comment_id, reply, platform=platform)
+        posted = post_approved(
+            platform=platform,
+            comment_id=comment_id,
+            include_pending=True,
+            like_comments=True,
+            limit=1,
+        )
         with db.connect() as conn:
-            db.update_status(conn, comment_id, "posted", reply_comment_id=reply_id)
-        print(f"Posted webhook reply to {platform} comment {comment_id}.", flush=True)
-        try:
-            meta_client.like_comment(comment_id)
-            print(f"Liked {platform} comment {comment_id}.", flush=True)
-        except Exception as exc:
-            # A reply must remain recorded even when Meta rejects the optional like.
-            print(f"Reply posted, but liking {platform} comment {comment_id} failed: {exc}", flush=True)
+            result = db.get_comment(conn, comment_id)
+        if posted:
+            print(f"Posted webhook reply to {platform} comment {comment_id}.", flush=True)
+        elif result and result["status"] == "already_replied":
+            print(
+                f"Skipped webhook reply to {platform} comment {comment_id}: "
+                "the account already replied.",
+                flush=True,
+            )
 
 
 def process_one_pending_event() -> bool:

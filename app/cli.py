@@ -56,6 +56,7 @@ def cmd_post(args) -> None:
         video_id=args.video_id,
         limit=args.limit,
         include_pending=args.pending,
+        include_failed=args.retry_failed,
         like_comments=args.like_comments,
     )
     print(f"Posted {n} reply(ies).")
@@ -138,6 +139,11 @@ def main() -> None:
         action="store_true",
         help="Also post pending_review drafts (skip interactive review)",
     )
+    post_p.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Retry failed replies after checking that no reply already exists",
+    )
     post_p.set_defaults(func=cmd_post)
     post_p.add_argument(
         "--like-comments",
@@ -164,6 +170,9 @@ def main() -> None:
         parser.error("--like-comments requires --platform facebook")
     try:
         args.func(args)
+    except KeyboardInterrupt:
+        print("Interrupted; current operation stopped cleanly.", file=sys.stderr)
+        raise SystemExit(130) from None
     except Exception as exc:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         raise SystemExit(1) from None

@@ -1,7 +1,7 @@
 from googleapiclient.errors import HttpError
 from requests import RequestException
 
-from app import db, meta_client
+from app import config, db, meta_client
 from app.sanitize import sanitize_draft
 from app.youtube_client import (
     find_own_reply,
@@ -18,13 +18,15 @@ def post_approved(
     video_id: str | None = None,
     limit: int | None = None,
     include_pending: bool = False,
+    include_failed: bool = False,
     like_comments: bool = False,
     comment_id: str | None = None,
 ) -> int:
     """Post draft replies to YouTube, Facebook, and Instagram.
 
-    By default only `approved` rows are posted. Pass include_pending=True to
-    also post `pending_review` drafts (useful for a live trial from poll records).
+    By default only `approved` rows are posted. Pending and failed rows can be
+    included explicitly. Every row is checked remotely before posting, so a
+    retry cannot duplicate a reply that succeeded before an interruption.
 
     Returns the number posted.
     """
@@ -32,11 +34,19 @@ def post_approved(
         raise ValueError("Comment likes require --platform facebook or instagram.")
     db.init_db()
     posted = 0
+    consecutive_platform_errors = 0
     youtube = None  # lazily created only if a YouTube reply needs posting
     channel_id = None
-    statuses = ["approved", "pending_review"] if include_pending else ["approved"]
+    statuses = ["approved"]
+    if include_pending:
+        statuses.append("pending_review")
+    if include_failed:
+        statuses.append("failed")
 
     with db.connect() as conn:
+        recovered = db.reset_stale_posting(conn)
+        if recovered:
+            print(f"Recovered {recovered} interrupted publishing claim(s).")
         rows = db.list_for_post(
             conn,
             statuses=statuses,
@@ -64,6 +74,16 @@ def post_approved(
 
         for row in rows:
             platform = row["platform"]
+            original_status = row["status"]
+            if not db.claim_comment_for_post(
+                conn, row["comment_id"], original_status
+            ):
+                print(
+                    f"Skipped {platform} comment {row['comment_id']}: "
+                    "another process is already handling it."
+                )
+                continue
+            conn.commit()
             try:
                 if platform == "youtube":
                     video_owner_id = video_channel_ids.get(row["video_id"], "")
@@ -72,6 +92,8 @@ def post_approved(
                             "Could not confirm the video owner for YouTube comment "
                             f"{row['comment_id']}; skipping to prevent a duplicate reply."
                         )
+                        db.update_status(conn, row["comment_id"], original_status)
+                        conn.commit()
                         continue
                     if youtube is None:
                         youtube = get_client()
@@ -88,8 +110,12 @@ def post_approved(
                     existing_reply = meta_client.find_own_reply(row["comment_id"], platform=platform)
                 else:
                     print(f"Unknown platform {platform!r}, skipping.")
+                    db.update_status(conn, row["comment_id"], original_status)
+                    conn.commit()
                     continue
             except Exception:
+                db.update_status(conn, row["comment_id"], original_status)
+                conn.commit()
                 print(f"Could not verify existing replies for {platform} comment {row['comment_id']}; skipping this run.")
                 continue
             if existing_reply:
@@ -102,7 +128,7 @@ def post_approved(
                 db.update_status(
                     conn,
                     row["comment_id"],
-                    row["status"],
+                    "posting",
                     draft_reply=reply_text,
                 )
                 conn.commit()
@@ -141,6 +167,7 @@ def post_approved(
                 )
                 conn.commit()
                 posted += 1
+                consecutive_platform_errors = 0
                 print(f"Posted reply to {platform} comment {row['comment_id']}.")
                 if like_comments:
                     try:
@@ -165,13 +192,25 @@ def post_approved(
                 db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
                 conn.commit()
                 print(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
+                consecutive_platform_errors += 1
+                if consecutive_platform_errors >= config.PUBLISH_ERROR_LIMIT:
+                    print(
+                        f"Stopped {platform} publishing after "
+                        f"{consecutive_platform_errors} consecutive API errors; "
+                        "remaining comments were left unchanged."
+                    )
+                    break
             except RequestException as e:
                 # A timed-out write may still have reached Meta. Keep the row
                 # pending so the next run checks for that reply before retrying.
                 print(
                     f"Meta request timed out for {platform} comment "
-                    f"{row['comment_id']}; left pending for verification: {e}"
+                    f"{row['comment_id']}; left retryable for verification: {e}"
                 )
+                db.update_status(
+                    conn, row["comment_id"], original_status, error=str(e)[:1000]
+                )
+                conn.commit()
 
     return posted
 

@@ -77,6 +77,94 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(row['status'], 'failed')
             self.assertIn('token expired', row['error'])
 
+    def test_repeated_graph_errors_stop_the_platform_batch(self):
+        with db.connect() as conn:
+            for index in range(5):
+                comment_id = f'instagram-{index}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='instagram',
+                    video_id='media', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+
+        with patch.object(post.config, 'PUBLISH_ERROR_LIMIT', 3), \
+             patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(
+                 meta_client, 'reply_to_comment',
+                 side_effect=meta_client.GraphAPIError('comment not added'),
+             ) as send:
+            self.assertEqual(post.post_approved(platform='instagram'), 0)
+
+        self.assertEqual(send.call_count, 3)
+        with db.connect() as conn:
+            statuses = {
+                row['status']
+                for row in conn.execute(
+                    "SELECT status FROM comments WHERE platform = 'instagram'"
+                )
+            }
+            self.assertEqual(statuses, {'failed', 'approved'})
+
+    def test_failed_reply_is_checked_and_retried(self):
+        self.seed('instagram')
+        with db.connect() as conn:
+            db.update_status(
+                conn, 'instagram', 'failed',
+                draft_reply='@viewer {"reply": 🙏 }}', error='interrupted',
+            )
+        with patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
+            self.assertEqual(
+                post.post_approved(platform='instagram', include_failed=True), 1
+            )
+
+        send.assert_called_once_with('instagram', '@viewer 🙏', platform='instagram')
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'instagram')
+            self.assertEqual(row['status'], 'posted')
+            self.assertEqual(row['error'], '')
+
+    def test_failed_reply_is_not_duplicated_when_remote_reply_exists(self):
+        self.seed('instagram')
+        with db.connect() as conn:
+            db.update_status(conn, 'instagram', 'failed', error='interrupted')
+        with patch.object(meta_client, 'find_own_reply', return_value='remote'), \
+             patch.object(meta_client, 'reply_to_comment') as send:
+            self.assertEqual(
+                post.post_approved(platform='instagram', include_failed=True), 0
+            )
+
+        send.assert_not_called()
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'instagram')
+            self.assertEqual(row['status'], 'already_replied')
+            self.assertEqual(row['reply_comment_id'], 'remote')
+
+    def test_atomic_claim_allows_only_one_publisher(self):
+        self.seed('instagram')
+        with db.connect() as first:
+            self.assertTrue(
+                db.claim_comment_for_post(first, 'instagram', 'approved')
+            )
+        with db.connect() as second:
+            self.assertFalse(
+                db.claim_comment_for_post(second, 'instagram', 'approved')
+            )
+            self.assertEqual(
+                db.get_comment(second, 'instagram')['status'], 'posting'
+            )
+
+    def test_publisher_skips_row_claimed_by_another_process(self):
+        self.seed('instagram')
+        with patch.object(db, 'claim_comment_for_post', return_value=False), \
+             patch.object(meta_client, 'find_own_reply') as find, \
+             patch.object(meta_client, 'reply_to_comment') as send:
+            self.assertEqual(post.post_approved(platform='instagram'), 0)
+
+        find.assert_not_called()
+        send.assert_not_called()
+
     def test_meta_write_timeout_stays_pending_for_duplicate_check(self):
         self.seed('facebook')
         with patch.object(meta_client, 'find_own_reply', return_value=None), \
