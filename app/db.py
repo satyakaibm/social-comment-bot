@@ -134,6 +134,11 @@ def list_comments(
     offset: int = 0,
 ):
     sql = """SELECT *,
+        datetime(
+            replace(replace(published_at, 'T', ' '), '+0000', ''),
+            '+5 hours',
+            '+30 minutes'
+        ) AS published_at_ist,
         datetime(created_at, '+5 hours', '+30 minutes') AS created_at_ist,
         datetime(updated_at, '+5 hours', '+30 minutes') AS posted_at_ist
         FROM comments WHERE 1=1"""

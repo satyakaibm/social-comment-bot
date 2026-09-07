@@ -45,6 +45,13 @@ def cmd_redraft(_args) -> None:
     print(f"Redrafted {n} comment(s) using the current REPLY_PERSONA.")
 
 
+def cmd_sanitize_drafts(_args) -> None:
+    from app.sanitize import sanitize_stored_drafts
+
+    n = sanitize_stored_drafts(platform="youtube")
+    print(f"Sanitized {n} YouTube draft(s).")
+
+
 def cmd_review(_args) -> None:
     review_loop()
 
@@ -149,6 +156,10 @@ def main() -> None:
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",
     ).set_defaults(func=cmd_redraft)
+    sub.add_parser(
+        "sanitize-drafts",
+        help="Strip thanks-for-watching filler from stored YouTube drafts",
+    ).set_defaults(func=cmd_sanitize_drafts)
 
     args = parser.parse_args()
     if getattr(args, "like_comments", False) and args.platform not in ("facebook", "instagram"):

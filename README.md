@@ -149,14 +149,14 @@ python -m app.cli run
 
 ## Admin dashboard
 
-Open a browser review UI on this machine. It reads `data/comments.db` and stays on localhost (default `http://127.0.0.1:9000/`). If that port is already in use, the server takes the next free port and prints the URL.
+Open a browser review UI on this machine. It reads `data/comments.db` and stays on localhost at `http://127.0.0.1:9001/`. If that port is already in use, the server exits so the URL stays fixed.
 
 ```bash
 chmod +x scripts/dashboard.sh
 ./scripts/dashboard.sh
 ```
 
-Tabs cover **posted**, **failed**, **already replied**, and **rejected**. Drafts are posted automatically by the webhook receiver and cron; this dashboard does not approve pending comments. Failed posts keep the API error and can be retried. Override `DASHBOARD_HOST` / `DASHBOARD_PORT` in `.env` if needed. This is separate from the Meta webhook server on port 8080.
+Tabs cover **pending review**, **posted**, **failed**, **already replied**, and **rejected**. Drafts are posted automatically by the webhook receiver and cron. Failed posts keep the API error and can be retried. Override `DASHBOARD_HOST` / `DASHBOARD_PORT` in `.env` if needed. This is separate from the Meta webhook server on port 8080.
 
 Posting failures are stored as `failed` so they show up in the dashboard. Checking whether you already replied still skips a comment for that run without marking it failed.
 

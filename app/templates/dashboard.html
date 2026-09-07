@@ -105,7 +105,7 @@
 <body>
   <header>
     <h1>Comment review</h1>
-    <p class="sub">Posted, failed, already-replied, and rejected comments. Replies post automatically via webhook and cron. Times are IST (UTC+5:30).</p>
+    <p class="sub">Pending review, posted, failed, already-replied, and rejected comments. Replies post automatically via webhook and cron. Times are IST (UTC+5:30).</p>
   </header>
   <main>
     {% for category, message in get_flashed_messages(with_categories=true) %}
@@ -151,7 +151,7 @@
               <th>video_title</th>
               <th>author</th>
               <th>text</th>
-              <th>published_at</th>
+              <th>published_at_ist</th>
               <th>status</th>
               <th>draft_reply</th>
               <th>reply_comment_id</th>
@@ -173,7 +173,7 @@
                 <td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td>
                 <td>{{ row.author }}</td>
                 <td class="wrap">{{ row.text }}</td>
-                <td>{{ row.published_at }}</td>
+                <td>{{ row.published_at_ist or '' }}</td>
                 <td>{{ row.status }}</td>
                 <td class="wrap">{{ row.draft_reply or '' }}</td>
                 <td class="narrow">{{ row.reply_comment_id or '' }}</td>

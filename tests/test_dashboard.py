@@ -30,17 +30,15 @@ class DashboardTests(unittest.TestCase):
                 draft_reply="Aarti time is in the description.",
             )
 
-    def test_default_view_hides_pending_and_approved_tabs(self):
+    def test_pending_review_tab_is_shown(self):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
+        self.assertIn(b"status=pending_review", page.data)
         self.assertIn(b"status=posted", page.data)
-        self.assertIn(b"already replied", page.data)
-        self.assertNotIn(b"status=pending_review", page.data)
         self.assertNotIn(b"status=approved", page.data)
-        self.assertNotIn(b"What time is aarti?", page.data)
-        remapped = self.client.get("/?status=pending_review")
-        self.assertNotIn(b"What time is aarti?", remapped.data)
-        self.assertNotIn(b"pending review", remapped.data)
+        pending = self.client.get("/?status=pending_review")
+        self.assertIn(b"What time is aarti?", pending.data)
+        self.assertIn(b"pending review", pending.data)
 
     def test_posted_failed_and_already_replied_tabs(self):
         with db.connect() as conn:
@@ -87,14 +85,13 @@ class DashboardTests(unittest.TestCase):
         with db.connect() as conn:
             self.assertEqual(db.get_comment(conn, "c1")["draft_reply"], "Updated")
 
-    def test_pick_free_port_skips_occupied_port(self):
+    def test_require_port_rejects_occupied_port(self):
         occupied = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         occupied.bind(("127.0.0.1", 0))
         self.addCleanup(occupied.close)
         busy = occupied.getsockname()[1]
-        chosen = dashboard.pick_free_port("127.0.0.1", busy, attempts=5)
-        self.assertNotEqual(chosen, busy)
-        self.assertGreater(chosen, busy)
+        with self.assertRaisesRegex(RuntimeError, "already in use"):
+            dashboard.require_port("127.0.0.1", busy)
 
     def test_every_tab_trims_video_title_to_50_chars(self):
         long_title = "A" * 80
@@ -128,12 +125,21 @@ class DashboardTests(unittest.TestCase):
     def test_list_comments_converts_timestamps_to_ist(self):
         with db.connect() as conn:
             conn.execute(
-                """UPDATE comments SET created_at = '2026-09-07 00:00:00',
+                """UPDATE comments SET
+                   published_at = '2026-09-07 00:00:00',
+                   created_at = '2026-09-07 00:00:00',
                    updated_at = '2026-09-07 01:00:00' WHERE comment_id = 'c1'"""
             )
             row = db.list_comments(conn, status="pending_review")[0]
+        self.assertEqual(row["published_at_ist"], "2026-09-07 05:30:00")
         self.assertEqual(row["created_at_ist"], "2026-09-07 05:30:00")
         self.assertEqual(row["posted_at_ist"], "2026-09-07 06:30:00")
+        with db.connect() as conn:
+            conn.execute(
+                "UPDATE comments SET published_at = '2026-07-02T06:58:32+0000' WHERE comment_id = 'c1'"
+            )
+            row = db.list_comments(conn, status="pending_review")[0]
+        self.assertEqual(row["published_at_ist"], "2026-07-02 12:28:32")
 
 
 if __name__ == "__main__":
