@@ -112,7 +112,7 @@ python scripts/youtube_oauth_setup.py
 
 Use a Facebook Page access token (or a user token with `pages_show_list`; the bot exchanges it for the Page token via `/me/accounts`). Instagram must be a professional account linked to that Page.
 
-Typical Graph permissions include Page read/manage engagement, `pages_show_list`, and Instagram comment management (`instagram_basic`, `instagram_manage_comments`).
+Typical Graph permissions include Page read/manage engagement, `pages_show_list`, Instagram comment management (`instagram_basic`, `instagram_manage_comments`), and Instagram comment likes (`instagram_manage_engagement`).
 
 `FACEBOOK_PAGE_ID` is the Page's numeric ID. `INSTAGRAM_USER_ID` is the Instagram professional account ID (not the username).
 
@@ -190,8 +190,9 @@ python -m app.cli review
 # Publish approved replies (all platforms)
 python -m app.cli post
 
-# Post approved Facebook replies and like their original comments as the Page
+# Post approved Facebook or Instagram replies and like their original comments
 python -m app.cli post --platform facebook --like-comments
+python -m app.cli post --platform instagram --like-comments
 
 # Post YouTube drafts straight from poll records (skip review), limited batch
 python -m app.cli post --platform youtube --pending --limit 1
@@ -215,7 +216,7 @@ python -m app.cli run
 
 `poll-all` continues if one platform fails and prints the error.
 
-`--like-comments` is Facebook-only and requires a Page token with the appropriate engagement permissions (`pages_manage_engagement`). Likes are attempted after successful replies. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's API has no comment-like endpoint; Instagram likes are not implemented.
+`--like-comments` likes the original Facebook or Instagram comment after a successful reply. Facebook uses `pages_manage_engagement`; Instagram uses `POST /{INSTAGRAM_USER_ID}/likes` and needs `instagram_manage_engagement`. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's Data API has no comment-like endpoint.
 
 Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]uit`.
 

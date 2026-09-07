@@ -221,11 +221,34 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(
                 post.post_approved(platform='instagram', like_comments=True), 1
             )
-            like.assert_called_once_with('instagram')
+            like.assert_called_once_with('instagram', platform='instagram')
 
-    def test_comment_likes_reject_youtube(self):
-        with self.assertRaisesRegex(ValueError, 'facebook or instagram'):
-            post.post_approved(platform='youtube', like_comments=True)
+    def test_instagram_likes_use_ig_user_likes_edge(self):
+        with patch.object(meta_client.config, 'INSTAGRAM_USER_ID', 'ig-user'), \
+             patch.object(meta_client, 'graph_post', return_value={'success': True}) as send:
+            meta_client.like_comment('ig-comment', platform='instagram')
+        send.assert_called_once_with('ig-user/likes', comment_id='ig-comment')
+
+    def test_facebook_likes_use_comment_likes_edge(self):
+        with patch.object(meta_client, 'graph_post', return_value={'success': True}) as send:
+            meta_client.like_comment('fb-comment', platform='facebook')
+        send.assert_called_once_with('fb-comment/likes')
+
+    def test_youtube_comment_likes_are_skipped(self):
+        self.seed('youtube')
+        youtube = MagicMock()
+        youtube.comments.return_value.insert.return_value.execute.return_value = {
+            'id': 'new',
+        }
+        with patch.object(post, 'get_client', return_value=youtube), \
+             patch.object(post, 'get_my_channel_id', return_value='owner'), \
+             patch.object(post, 'get_video_channel_ids', return_value={'media': 'owner'}), \
+             patch.object(post, 'find_own_reply', return_value=None), \
+             patch.object(meta_client, 'like_comment') as like:
+            self.assertEqual(
+                post.post_approved(platform='youtube', like_comments=True), 1
+            )
+            like.assert_not_called()
 
     def test_youtube_checks_later_reply_pages(self):
         youtube = MagicMock()
