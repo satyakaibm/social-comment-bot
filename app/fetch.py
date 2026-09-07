@@ -1,3 +1,5 @@
+from itertools import islice
+
 from googleapiclient.errors import HttpError
 
 from app import config, db
@@ -12,17 +14,24 @@ from app.youtube_client import (
 )
 
 
-def _iter_top_level_threads(youtube, *, video_id: str):
+def _iter_top_level_threads(youtube, *, video_id: str, limit: int | None = None):
     request = youtube.commentThreads().list(
         part="snippet",
         videoId=video_id,
-        maxResults=100,
+        maxResults=max(1, min(limit or 100, 100)),
         order="time",
         textFormat="plainText",
     )
+    count = 0
     while request is not None:
         response = request.execute()
-        yield from response.get("items", [])
+        for item in response.get("items", []):
+            if limit is not None and count >= limit:
+                return
+            yield item
+            count += 1
+            if limit is not None and count >= limit:
+                return
         request = youtube.commentThreads().list_next(request, response)
 
 
@@ -52,15 +61,28 @@ def poll_and_draft() -> int:
     video_ids = config.YOUTUBE_VIDEO_IDS
     if not video_ids:
         uploads_playlist_id = get_uploads_playlist_id(youtube)
-        video_ids = list(iter_uploaded_video_ids(youtube, uploads_playlist_id))
+        video_ids = list(islice(
+            iter_uploaded_video_ids(youtube, uploads_playlist_id),
+            max(0, config.YOUTUBE_VIDEO_LIMIT),
+        ))
+    else:
+        video_ids = video_ids[:max(0, config.YOUTUBE_VIDEO_LIMIT)]
 
     new_count = 0
+    remaining = max(0, config.YOUTUBE_COMMENT_LIMIT)
 
     with db.connect() as conn:
-        for video_id in video_ids:
+        for index, video_id in enumerate(video_ids):
+            if remaining <= 0:
+                break
+            videos_left = len(video_ids) - index
+            video_limit = max(1, remaining // videos_left)
             try:
-                threads = _iter_top_level_threads(youtube, video_id=video_id)
+                threads = _iter_top_level_threads(
+                    youtube, video_id=video_id, limit=video_limit
+                )
                 for thread in threads:
+                    remaining -= 1
                     top = thread["snippet"]["topLevelComment"]
                     comment_id = top["id"]
                     snippet = top["snippet"]
@@ -76,13 +98,26 @@ def poll_and_draft() -> int:
                     title = video_title(actual_video_id)
 
                     try:
-                        existing_reply = find_own_reply(youtube, comment_id, channel_id)
+                        own_channel_ids = {
+                            channel_id,
+                            thread.get("snippet", {}).get("channelId", ""),
+                        }
+                        existing_reply = find_own_reply(
+                            youtube, comment_id, own_channel_ids
+                        )
                     except Exception:
                         print(f"Could not verify existing replies for YouTube comment {comment_id}; skipping this run.")
                         continue
 
+                    if existing_reply:
+                        print(
+                            f"Skipped YouTube comment {comment_id} before database insert: "
+                            "Hindolroad already replied."
+                        )
+                        continue
+
                     try:
-                        reply = "" if existing_reply else draft_reply(
+                        reply = draft_reply(
                             platform="youtube",
                             context_title=title,
                             author=author,
@@ -102,12 +137,9 @@ def poll_and_draft() -> int:
                         published_at=snippet.get("publishedAt", ""),
                         draft_reply=reply,
                     )
-                    if existing_reply:
-                        db.update_status(conn, comment_id, "already_replied", reply_comment_id=existing_reply)
                     conn.commit()  # persist each draft immediately so a later
                     # failure in this batch can't roll back already-drafted replies
-                    if not existing_reply:
-                        new_count += 1
+                    new_count += 1
             except HttpError as e:
                 if is_quota_exceeded(e):
                     raise

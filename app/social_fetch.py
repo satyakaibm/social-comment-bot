@@ -25,11 +25,20 @@ def poll_facebook_and_draft() -> int:
     config.require("FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN")
     post_message = _title_cache(meta_client.get_facebook_post_message)
     new_count = 0
+    remaining = max(0, config.FACEBOOK_COMMENT_LIMIT)
+    post_ids = list(meta_client.iter_facebook_post_ids())
 
     with db.connect() as conn:
-        for post_id in meta_client.iter_facebook_post_ids():
+        for index, post_id in enumerate(post_ids):
+            if remaining <= 0:
+                break
+            containers_left = len(post_ids) - index
+            container_limit = max(1, remaining // containers_left)
             try:
-                for comment in meta_client.iter_facebook_post_comments(post_id):
+                for comment in meta_client.iter_facebook_post_comments(
+                    post_id, limit=container_limit
+                ):
+                    remaining -= 1
                     comment_id = comment["id"]
 
                     if db.comment_exists(conn, comment_id):
@@ -90,11 +99,20 @@ def poll_instagram_and_draft() -> int:
     own_username = meta_client.get_instagram_username()
     media_caption = _title_cache(meta_client.get_instagram_media_caption)
     new_count = 0
+    remaining = max(0, config.INSTAGRAM_COMMENT_LIMIT)
+    media_ids = list(meta_client.iter_instagram_media_ids())
 
     with db.connect() as conn:
-        for media_id in meta_client.iter_instagram_media_ids():
+        for index, media_id in enumerate(media_ids):
+            if remaining <= 0:
+                break
+            containers_left = len(media_ids) - index
+            container_limit = max(1, remaining // containers_left)
             try:
-                for comment in meta_client.iter_instagram_media_comments(media_id):
+                for comment in meta_client.iter_instagram_media_comments(
+                    media_id, limit=container_limit
+                ):
+                    remaining -= 1
                     comment_id = comment["id"]
 
                     if db.comment_exists(conn, comment_id):

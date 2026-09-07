@@ -1,9 +1,13 @@
+import time
+
 import requests
+from requests import RequestException
 
 from app import config
 
 GRAPH_BASE = "https://graph.facebook.com"
 REQUEST_TIMEOUT_SECONDS = 30
+GET_RETRIES = 3
 
 _ig_username_cache: str | None = None
 _page_token_cache: str | None = None
@@ -66,10 +70,20 @@ def get_page_access_token() -> str:
 
 def graph_get(path: str, **params) -> dict:
     params["access_token"] = get_page_access_token()
-    resp = requests.get(_url(path), params=params, timeout=REQUEST_TIMEOUT_SECONDS)
-    data = resp.json()
-    _raise_if_error(path, data)
-    return data
+    for attempt in range(GET_RETRIES):
+        try:
+            resp = requests.get(
+                _url(path), params=params, timeout=REQUEST_TIMEOUT_SECONDS
+            )
+            data = resp.json()
+            _raise_if_error(path, data)
+            return data
+        except RequestException as exc:
+            if attempt + 1 == GET_RETRIES:
+                raise GraphAPIError(
+                    f"{path}: Meta read failed after {GET_RETRIES} attempts: {exc}"
+                ) from exc
+            time.sleep(attempt + 1)
 
 
 def graph_post(path: str, **data) -> dict:
@@ -90,9 +104,19 @@ def iter_paged(path: str, **params):
         next_url = data.get("paging", {}).get("next")
         if not next_url:
             return
-        resp = requests.get(next_url, timeout=REQUEST_TIMEOUT_SECONDS)
-        data = resp.json()
-        _raise_if_error(path, data)
+        for attempt in range(GET_RETRIES):
+            try:
+                resp = requests.get(next_url, timeout=REQUEST_TIMEOUT_SECONDS)
+                data = resp.json()
+                _raise_if_error(path, data)
+                break
+            except RequestException as exc:
+                if attempt + 1 == GET_RETRIES:
+                    raise GraphAPIError(
+                        f"{path}: Meta page read failed after {GET_RETRIES} "
+                        f"attempts: {exc}"
+                    ) from exc
+                time.sleep(attempt + 1)
 
 
 def reply_to_comment(comment_id: str, message: str, *, platform: str) -> str:
@@ -146,17 +170,30 @@ def iter_facebook_post_ids():
     if config.FACEBOOK_POST_IDS:
         yield from config.FACEBOOK_POST_IDS
         return
-    for post in iter_paged(f"{config.FACEBOOK_PAGE_ID}/posts", fields="id"):
+    for index, post in enumerate(iter_paged(
+        f"{config.FACEBOOK_PAGE_ID}/posts",
+        fields="id",
+        limit=max(1, min(config.FACEBOOK_POST_LIMIT, 100)),
+    )):
+        if index >= config.FACEBOOK_POST_LIMIT:
+            return
         yield post["id"]
 
 
-def iter_facebook_post_comments(post_id: str):
-    yield from iter_paged(
+def iter_facebook_post_comments(post_id: str, *, limit: int | None = None):
+    request_limit = max(1, min(limit or 100, 100))
+    count = 0
+    for comment in iter_paged(
         f"{post_id}/comments",
         fields="id,message,from,created_time",
         filter="toplevel",
-        order="chronological",
-    )
+        order="reverse_chronological",
+        limit=request_limit,
+    ):
+        yield comment
+        count += 1
+        if limit is not None and count >= limit:
+            return
 
 
 def get_facebook_post_message(post_id: str) -> str:
@@ -180,8 +217,18 @@ def iter_instagram_media_ids():
         yield media["id"]
 
 
-def iter_instagram_media_comments(media_id: str):
-    yield from iter_paged(f"{media_id}/comments", fields="id,text,username,timestamp")
+def iter_instagram_media_comments(media_id: str, *, limit: int | None = None):
+    request_limit = max(1, min(limit or 100, 100))
+    count = 0
+    for comment in iter_paged(
+        f"{media_id}/comments",
+        fields="id,text,username,timestamp",
+        limit=request_limit,
+    ):
+        yield comment
+        count += 1
+        if limit is not None and count >= limit:
+            return
 
 
 def get_instagram_media_caption(media_id: str) -> str:

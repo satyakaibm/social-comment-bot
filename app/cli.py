@@ -1,4 +1,5 @@
 import argparse
+import sys
 import time
 
 from app import config
@@ -81,6 +82,19 @@ def cmd_dashboard(_args) -> None:
     run_dashboard()
 
 
+def cmd_reconcile_youtube(_args) -> None:
+    from app.reconcile import reconcile_youtube_pending
+
+    result = reconcile_youtube_pending()
+    print(
+        "YouTube reconciliation: "
+        f"total={result['total']}, checked={result['checked']}, "
+        f"already_replied={result['already_replied']}, "
+        f"unanswered={result['unanswered']}, errors={result['errors']}, "
+        f"quota_exhausted={result['quota_exhausted']}"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="social-comment-bot")
     sub = parser.add_subparsers(required=True)
@@ -137,6 +151,10 @@ def main() -> None:
         "dashboard", help="Open the dashboard with the Meta webhook receiver"
     ).set_defaults(func=cmd_dashboard)
     sub.add_parser(
+        "reconcile-youtube",
+        help="Remove comments already answered by Hindolroad from YouTube pending review",
+    ).set_defaults(func=cmd_reconcile_youtube)
+    sub.add_parser(
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",
     ).set_defaults(func=cmd_redraft)
@@ -144,7 +162,11 @@ def main() -> None:
     args = parser.parse_args()
     if getattr(args, "like_comments", False) and args.platform != "facebook":
         parser.error("--like-comments requires --platform facebook")
-    args.func(args)
+    try:
+        args.func(args)
+    except Exception as exc:
+        print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

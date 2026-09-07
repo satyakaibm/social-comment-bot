@@ -18,6 +18,8 @@ POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "300"))
 YOUTUBE_VIDEO_IDS = [
     v.strip() for v in os.environ.get("YOUTUBE_VIDEO_IDS", "").split(",") if v.strip()
 ]
+YOUTUBE_VIDEO_LIMIT = int(os.environ.get("YOUTUBE_VIDEO_LIMIT", "10"))
+YOUTUBE_COMMENT_LIMIT = int(os.environ.get("YOUTUBE_COMMENT_LIMIT", "100"))
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
@@ -40,6 +42,8 @@ DASHBOARD_SECRET = os.environ.get("DASHBOARD_SECRET", "localhost-dashboard")
 FACEBOOK_POST_IDS = [
     v.strip() for v in os.environ.get("FACEBOOK_POST_IDS", "").split(",") if v.strip()
 ]
+FACEBOOK_POST_LIMIT = int(os.environ.get("FACEBOOK_POST_LIMIT", "10"))
+FACEBOOK_COMMENT_LIMIT = int(os.environ.get("FACEBOOK_COMMENT_LIMIT", "100"))
 INSTAGRAM_MEDIA_IDS = [
     v.strip() for v in os.environ.get("INSTAGRAM_MEDIA_IDS", "").split(",") if v.strip()
 ]
@@ -49,6 +53,7 @@ INSTAGRAM_MEDIA_IDS = [
 # posts; without a cap the first run would draft-via-Gemini every unseen
 # comment across all of them in one go.
 INSTAGRAM_MEDIA_LIMIT = int(os.environ.get("INSTAGRAM_MEDIA_LIMIT", "10"))
+INSTAGRAM_COMMENT_LIMIT = int(os.environ.get("INSTAGRAM_COMMENT_LIMIT", "100"))
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
