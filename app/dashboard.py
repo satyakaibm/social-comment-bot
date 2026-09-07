@@ -3,7 +3,7 @@ import hmac
 import secrets
 import threading
 import time
-from datetime import timedelta
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
@@ -254,6 +254,9 @@ def create_app() -> Flask:
             pages=pages,
             total=total,
             query_string=request.query_string.decode(),
+            dashboard_username=config.DASHBOARD_USERNAME,
+            profile_initial=config.DASHBOARD_USERNAME.strip()[:1].upper(),
+            current_year=datetime.now().year,
         )
 
     @app.post("/comments/<comment_id>/publish")

@@ -11,18 +11,44 @@
       --teal:#36aeb4; --canvas:#f5f7f8; --surface:#fff; --ink:#17252c;
       --muted:#667984; --line:#dce4e8; --danger:#c43d55;
       --shadow:0 14px 40px rgba(15,42,56,.08);
+      --page-glow-one:rgba(255,106,61,.08); --page-glow-two:rgba(54,174,180,.06);
+      --header-bg:rgba(255,255,255,.92); --header-line:rgba(15,42,56,.09);
+      --footer-start:#14201b; --footer-end:#101915; --focus:#d9a441;
+    }
+    body.theme-youtube {
+      --navy:#282828; --navy-soft:#0f0f0f; --coral:#ff0033; --pink:#cc0000;
+      --teal:#ff0033; --canvas:#f9f9f9; --ink:#0f0f0f; --muted:#606060;
+      --line:#e5e5e5; --danger:#cc0000; --page-glow-one:rgba(255,0,51,.09);
+      --page-glow-two:rgba(40,40,40,.04); --header-bg:rgba(255,255,255,.96);
+      --header-line:#dedede; --footer-start:#282828; --footer-end:#0f0f0f; --focus:#ff0033;
+    }
+    body.theme-instagram {
+      --navy:#3f183c; --navy-soft:#5b2459; --coral:#f77737; --pink:#c13584;
+      --teal:#833ab4; --canvas:#fffafd; --ink:#271525; --muted:#786574;
+      --line:#eadde7; --danger:#c13584; --page-glow-one:rgba(193,53,132,.12);
+      --page-glow-two:rgba(247,119,55,.10); --header-bg:rgba(255,255,255,.94);
+      --header-line:#eadde7; --footer-start:#3f183c; --footer-end:#21101f; --focus:#c13584;
+    }
+    body.theme-facebook {
+      --navy:#174ea6; --navy-soft:#0866ff; --coral:#0866ff; --pink:#1877f2;
+      --teal:#42b72a; --canvas:#f0f2f5; --ink:#1c1e21; --muted:#65676b;
+      --line:#d8dfea; --danger:#d93025; --page-glow-one:rgba(8,102,255,.11);
+      --page-glow-two:rgba(66,183,42,.06); --header-bg:rgba(255,255,255,.96);
+      --header-line:#d8dfea; --footer-start:#174ea6; --footer-end:#0c326f; --focus:#0866ff;
     }
     * { box-sizing:border-box; }
     html { background:var(--canvas); }
     body {
-      margin:0; min-height:100vh; color:var(--ink);
-      background:radial-gradient(circle at 94% 4%,rgba(255,106,61,.08),transparent 26rem),radial-gradient(circle at 5% 45%,rgba(54,174,180,.06),transparent 24rem),var(--canvas);
+      margin:0; min-height:100vh; display:flex; flex-direction:column; color:var(--ink);
+      background:radial-gradient(circle at 94% 4%,var(--page-glow-one),transparent 26rem),radial-gradient(circle at 5% 45%,var(--page-glow-two),transparent 24rem),var(--canvas);
       font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
     }
     a { color:inherit; }
+    .skip-link { position:fixed; top:8px; left:8px; z-index:100; padding:10px 15px; color:var(--navy); background:#fff; border-radius:9px; font-weight:800; transform:translateY(-160%); }
+    .skip-link:focus { transform:translateY(0); }
     .topbar {
       height:74px; padding:0 28px; display:flex; align-items:center; justify-content:space-between; gap:24px;
-      background:rgba(255,255,255,.92); border-bottom:1px solid rgba(15,42,56,.09);
+      background:var(--header-bg); border-bottom:1px solid var(--header-line);
       backdrop-filter:blur(16px); position:sticky; top:0; z-index:20;
     }
     .brand { display:flex; align-items:center; min-width:0; text-decoration:none; }
@@ -32,14 +58,17 @@
     .gateway-dot { width:8px; height:8px; border-radius:50%; background:#20b878; box-shadow:0 0 0 4px rgba(32,184,120,.12); }
     .topbar-actions { display:flex; align-items:center; gap:9px; }
     .profile { position:relative; }
-    .profile summary { min-height:38px; padding:0 13px; display:flex; align-items:center; gap:8px; color:var(--navy); background:#f5f7f8; border:1px solid var(--line); border-radius:10px; font-size:12px; font-weight:750; cursor:pointer; list-style:none; }
+    .profile summary { width:42px; height:42px; display:grid; place-items:center; color:#fff; background:linear-gradient(135deg,var(--navy),var(--teal)); border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px var(--line),0 5px 14px rgba(15,42,56,.16); font-size:16px; font-weight:850; cursor:pointer; list-style:none; }
     .profile summary::-webkit-details-marker { display:none; }
-    .profile summary::after { content:"\25BE"; color:var(--muted); font-size:10px; }
-    .profile-menu { position:absolute; top:calc(100% + 8px); right:0; width:180px; padding:7px; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 16px 38px rgba(15,42,56,.16); }
+    .profile[open] summary { box-shadow:0 0 0 3px rgba(54,174,180,.18),0 5px 14px rgba(15,42,56,.16); }
+    .profile-menu { position:absolute; top:calc(100% + 10px); right:0; width:200px; padding:7px; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 16px 38px rgba(15,42,56,.16); }
+    .profile-menu-head { padding:9px 11px 11px; border-bottom:1px solid var(--line); margin-bottom:5px; }
+    .profile-menu-title { display:block; color:var(--navy); font-size:12px; font-weight:800; }
+    .profile-menu-user { display:block; margin-top:3px; overflow:hidden; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
     .profile-menu a,.profile-menu button { width:100%; min-height:38px; padding:0 11px; display:flex; align-items:center; color:var(--ink); background:transparent; border:0; border-radius:8px; box-shadow:none; font-size:12px; font-weight:700; text-align:left; text-decoration:none; }
     .profile-menu a:hover,.profile-menu button:hover { color:var(--navy); background:#f3f7f8; transform:none; }
     .profile-menu form { margin:0; }
-    .page { width:min(1800px,100%); margin:0 auto; padding:34px 28px 52px; }
+    .page { width:min(1800px,100%); margin:0 auto; padding:34px 28px 52px; flex:1; }
     .intro { position:relative; display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:22px; padding:22px 24px; overflow:hidden; color:#fff; background:linear-gradient(135deg,var(--navy),var(--navy-soft)); border-radius:18px; box-shadow:0 16px 34px rgba(15,42,56,.16); }
     .intro::after { content:""; position:absolute; width:150px; height:150px; right:-46px; bottom:-90px; border:26px solid rgba(255,106,61,.25); border-radius:50%; pointer-events:none; }
     .intro > * { position:relative; z-index:1; }
@@ -111,12 +140,25 @@
     .empty strong { display:block; margin-bottom:7px; color:var(--navy); font-size:16px; }
     .pager { display:flex; align-items:center; justify-content:center; gap:18px; margin-top:20px; color:var(--muted); font-size:13px; }
     .pager a { padding:8px 12px; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:9px; font-weight:700; text-decoration:none; }
+    .site-footer { margin-top:20px; color:#f7efe4; background:linear-gradient(180deg,var(--footer-start),var(--footer-end)); }
+    .footer-panel { width:min(1800px,100%); margin:0 auto; padding:38px 28px 20px; }
+    .footer-main { display:grid; grid-template-columns:minmax(280px,1.6fr) repeat(2,minmax(150px,.55fr)); gap:42px; align-items:start; }
+    .footer-brand img { display:block; width:170px; height:64px; margin-bottom:12px; object-fit:contain; object-position:left center; filter:drop-shadow(0 3px 8px rgba(0,0,0,.18)); }
+    .footer-kicker { display:block; margin-bottom:8px; color:#d9a441; font-size:11px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
+    .footer-copy { max-width:590px; margin:0; color:rgba(247,239,228,.7); font-size:13px; line-height:1.65; }
+    .footer-title { margin:0 0 13px; color:#fff; font-size:12px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .footer-links { margin:0; padding:0; list-style:none; }
+    .footer-links li { margin-bottom:10px; }
+    .footer-links a { color:rgba(247,239,228,.72); font-size:12px; text-decoration:none; }
+    .footer-links a:hover,.footer-links a:focus { color:#fff; }
+    .footer-bottom { display:flex; justify-content:space-between; gap:20px; margin-top:28px; padding-top:16px; color:rgba(247,239,228,.58); border-top:1px solid rgba(247,239,228,.12); font-size:11px; }
     @media (max-width:980px) { .stats{grid-template-columns:repeat(3,1fr)} .toolbar{align-items:stretch;flex-direction:column} form.search{width:100%} .grid-wrap{max-height:none} }
-    @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column} .activity-platforms,.range-scroll{width:100%} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px} .brand img{width:135px;height:48px} .service-tag,.gateway span:last-child{display:none} .page{padding:25px 15px 40px} .intro{align-items:flex-start;flex-direction:column;padding:19px 17px} .timezone{display:none} .activity{padding:16px} .activity-head{margin-bottom:20px} .activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px} .stats{grid-template-columns:repeat(2,1fr)} .stat{min-height:88px;padding:15px} .stat-value{font-size:23px} form.search button{padding:0 12px} }
+    @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column} .activity-platforms,.range-scroll{width:100%} .footer-main{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px} .brand img{width:135px;height:48px} .service-tag,.gateway span:last-child{display:none} .page{padding:25px 15px 40px} .intro{align-items:flex-start;flex-direction:column;padding:19px 17px} .timezone{display:none} .activity{padding:16px} .activity-head{margin-bottom:20px} .activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px} .stats{grid-template-columns:repeat(2,1fr)} .stat{min-height:88px;padding:15px} .stat-value{font-size:23px} form.search button{padding:0 12px} .footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column} }
   </style>
 </head>
-<body>
+<body class="theme-{{ platform or 'all' }}">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
   <header class="topbar">
     <a class="brand" href="/">
       <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
@@ -125,8 +167,9 @@
     <div class="topbar-actions">
       <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway operational</span></a>
       <details class="profile">
-        <summary>My Profile</summary>
+        <summary aria-label="Open My Profile menu" title="My Profile">{{ profile_initial }}</summary>
         <div class="profile-menu">
+          <div class="profile-menu-head"><span class="profile-menu-title">My Profile</span><span class="profile-menu-user">{{ dashboard_username }}</span></div>
           <a href="/profile/password">Reset password</a>
           <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Log out</button></form>
         </div>
@@ -134,7 +177,7 @@
     </div>
   </header>
 
-  <main class="page">
+  <main class="page" id="main-content" tabindex="-1">
     <section class="intro">
       <div>
         <p class="eyebrow">Community workspace</p>
@@ -202,6 +245,26 @@
       {% if page < pages %}<a href="/?status={{ status }}&amp;page={{ page + 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">Next →</a>{% endif %}
     </nav>{% endif %}
   </main>
+  <footer class="site-footer">
+    <div class="footer-panel">
+      <div class="footer-main">
+        <div class="footer-brand">
+          <span class="footer-kicker">Content-led community management</span>
+          <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
+          <p class="footer-copy">Social Comment Studio helps Content My Trip review conversations and publish timely responses across YouTube, Facebook, and Instagram.</p>
+        </div>
+        <nav aria-label="Footer navigation">
+          <h2 class="footer-title">Workspace</h2>
+          <ul class="footer-links"><li><a href="/">Dashboard</a></li><li><a href="/health">Gateway health</a></li></ul>
+        </nav>
+        <nav aria-label="Footer account navigation">
+          <h2 class="footer-title">Account</h2>
+          <ul class="footer-links"><li><a href="/profile/password">Reset password</a></li><li><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="min-height:0;padding:0;color:rgba(247,239,228,.72);background:transparent;box-shadow:none;font-size:12px;">Log out</button></form></li></ul>
+        </nav>
+      </div>
+      <div class="footer-bottom"><span>&copy; {{ current_year }} Content My Trip. All rights reserved.</span><span>Capture. Curate. Publish.</span></div>
+    </div>
+  </footer>
   <script>
     document.querySelectorAll('.range-button').forEach((button) => {
       button.addEventListener('click', () => {
