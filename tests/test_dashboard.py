@@ -1,3 +1,4 @@
+import socket
 import tempfile
 import unittest
 from pathlib import Path
@@ -86,6 +87,15 @@ class DashboardTests(unittest.TestCase):
         self.assertIn("status=posted", response.headers["Location"])
         with db.connect() as conn:
             self.assertEqual(db.get_comment(conn, "c1")["draft_reply"], "Updated")
+
+    def test_pick_free_port_skips_occupied_port(self):
+        occupied = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        occupied.bind(("127.0.0.1", 0))
+        self.addCleanup(occupied.close)
+        busy = occupied.getsockname()[1]
+        chosen = dashboard.pick_free_port("127.0.0.1", busy, attempts=5)
+        self.assertNotEqual(chosen, busy)
+        self.assertGreater(chosen, busy)
 
 
 if __name__ == "__main__":

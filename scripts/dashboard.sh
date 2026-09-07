@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$ROOT"
+SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$SCRIPT_DIR"
 
-export PYTHONPATH="$ROOT"
-HOST="${DASHBOARD_HOST:-127.0.0.1}"
-PORT="${DASHBOARD_PORT:-8765}"
-
-echo "Admin dashboard: http://${HOST}:${PORT}/"
-exec "$ROOT/.venv/bin/python" -m app.cli dashboard
+export PYTHONPATH="$SCRIPT_DIR"
+exec "$SCRIPT_DIR/.venv/bin/python" -m app.cli dashboard

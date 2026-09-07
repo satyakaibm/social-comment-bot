@@ -149,7 +149,7 @@ python -m app.cli run
 
 ## Admin dashboard
 
-Open a browser review UI on this machine. It reads `data/comments.db` and stays on localhost (default `http://127.0.0.1:8765/`).
+Open a browser review UI on this machine. It reads `data/comments.db` and stays on localhost (default `http://127.0.0.1:9000/`). If that port is already in use, the server takes the next free port and prints the URL.
 
 ```bash
 chmod +x scripts/dashboard.sh
