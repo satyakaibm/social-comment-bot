@@ -30,28 +30,24 @@ class DashboardTests(unittest.TestCase):
                 draft_reply="Aarti time is in the description.",
             )
 
-    def test_pending_list_and_approve(self):
-        page = self.client.get("/?status=pending_review")
+    def test_default_view_hides_pending_and_approved_tabs(self):
+        page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b"What time is aarti?", page.data)
-        self.assertIn(b"pending review", page.data)
-        response = self.client.post(
-            "/comments/c1/approve?status=pending_review",
-            data={"draft_reply": "Aarti is at 6pm."},
-            follow_redirects=True,
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(b"Approved", response.data)
-        with db.connect() as conn:
-            row = db.get_comment(conn, "c1")
-        self.assertEqual(row["status"], "approved")
-        self.assertEqual(row["draft_reply"], "Aarti is at 6pm.")
+        self.assertIn(b"status=posted", page.data)
+        self.assertIn(b"already replied", page.data)
+        self.assertNotIn(b"status=pending_review", page.data)
+        self.assertNotIn(b"status=approved", page.data)
+        self.assertNotIn(b"What time is aarti?", page.data)
+        remapped = self.client.get("/?status=pending_review")
+        self.assertNotIn(b"What time is aarti?", remapped.data)
+        self.assertNotIn(b"pending review", remapped.data)
 
     def test_posted_failed_and_already_replied_tabs(self):
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="r1", error="")
         posted = self.client.get("/?status=posted")
-        self.assertIn(b"Reply id: r1", posted.data)
+        self.assertIn(b"posted_at_ist", posted.data)
+        self.assertIn(b">r1<", posted.data)
         with db.connect() as conn:
             db.insert_comment(
                 conn, comment_id="c2", platform="facebook", video_id="post",
@@ -68,10 +64,13 @@ class DashboardTests(unittest.TestCase):
         failed = self.client.get("/?status=failed")
         self.assertIn(b"token expired", failed.data)
         already = self.client.get("/?status=already_replied")
-        self.assertIn(b"already replied", already.data)
-        self.assertIn(b"Reply id: manual", already.data)
+        self.assertIn(b"already_replied", already.data)
+        self.assertIn(b">manual<", already.data)
 
-    def test_publish_posts_pending_comment(self):
+    def test_retry_posts_failed_comment(self):
+        with db.connect() as conn:
+            db.update_status(conn, "c1", "failed", error="token expired")
+
         def fake_post(**_kwargs):
             with db.connect() as conn:
                 db.update_status(conn, "c1", "posted", reply_comment_id="r1", error="")
@@ -79,7 +78,7 @@ class DashboardTests(unittest.TestCase):
 
         with patch.object(dashboard, "post_approved", side_effect=fake_post) as send:
             response = self.client.post(
-                "/comments/c1/publish?status=pending_review",
+                "/comments/c1/publish?status=failed",
                 data={"draft_reply": "Updated"},
             )
         send.assert_called_once()
@@ -96,6 +95,31 @@ class DashboardTests(unittest.TestCase):
         chosen = dashboard.pick_free_port("127.0.0.1", busy, attempts=5)
         self.assertNotEqual(chosen, busy)
         self.assertGreater(chosen, busy)
+
+    def test_posted_tab_trims_title_and_hides_updated_at(self):
+        long_title = "A" * 80
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id="c-long", platform="youtube", video_id="vid2",
+                video_title=long_title, author="viewer", text="hello",
+                published_at="", draft_reply="🙏",
+            )
+            db.update_status(conn, "c-long", "posted", reply_comment_id="r2", error="")
+        posted = self.client.get("/?status=posted")
+        self.assertIn(b"A" * 50, posted.data)
+        self.assertNotIn(b"A" * 51, posted.data)
+        self.assertIn(b"created_at_ist", posted.data)
+        self.assertNotIn(b"<th>updated_at</th>", posted.data)
+
+    def test_list_comments_converts_timestamps_to_ist(self):
+        with db.connect() as conn:
+            conn.execute(
+                """UPDATE comments SET created_at = '2026-09-07 00:00:00',
+                   updated_at = '2026-09-07 01:00:00' WHERE comment_id = 'c1'"""
+            )
+            row = db.list_comments(conn, status="pending_review")[0]
+        self.assertEqual(row["created_at_ist"], "2026-09-07 05:30:00")
+        self.assertEqual(row["posted_at_ist"], "2026-09-07 06:30:00")
 
 
 if __name__ == "__main__":

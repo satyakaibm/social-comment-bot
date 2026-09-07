@@ -9,8 +9,6 @@ from app import config, db
 from app.post import post_approved
 
 STATUSES = (
-    "pending_review",
-    "approved",
     "posted",
     "failed",
     "already_replied",
@@ -26,9 +24,9 @@ CONTAINER_LABELS = {
 
 
 def _filters():
-    status = request.args.get("status", "pending_review")
+    status = request.args.get("status", "posted")
     if status not in STATUSES:
-        status = "pending_review"
+        status = "posted"
     platform = request.args.get("platform", "").strip()
     if platform not in PLATFORMS:
         platform = ""
@@ -106,64 +104,20 @@ def create_app() -> Flask:
             query_string=request.query_string.decode(),
         )
 
-    def _missing(comment_id: str) -> bool:
+    @app.post("/comments/<comment_id>/publish")
+    def publish(comment_id: str):
         with db.connect() as conn:
-            return db.get_comment(conn, comment_id) is None
-
-    def _save_draft_if_present(comment_id: str) -> str | None:
-        if "draft_reply" not in request.form:
-            return None
-        draft = request.form.get("draft_reply", "").strip()
-        with db.connect() as conn:
-            row = db.get_comment(conn, comment_id)
-            if row is None:
-                return None
-            db.update_status(conn, comment_id, row["status"], draft_reply=draft)
-        return draft
-
-    @app.post("/comments/<comment_id>/save")
-    def save_draft(comment_id: str):
-        if _missing(comment_id):
+            current = db.get_comment(conn, comment_id)
+        if current is None:
             flash("Comment not found.", "error")
             return redirect(_index_url())
-        _save_draft_if_present(comment_id)
-        flash("Draft saved.", "ok")
-        return redirect(_index_url())
-
-    @app.post("/comments/<comment_id>/approve")
-    def approve(comment_id: str):
-        if _missing(comment_id):
-            flash("Comment not found.", "error")
+        if current["status"] != "failed":
+            flash("Only failed comments can be retried. New replies post automatically.", "error")
             return redirect(_index_url())
         draft = request.form.get("draft_reply", "").strip() or None
         with db.connect() as conn:
-            db.update_status(conn, comment_id, "approved", draft_reply=draft, error="")
-        flash("Approved. Use Post reply here or `python -m app.cli post`.", "ok")
-        return redirect(_index_url(status="approved"))
-
-    @app.post("/comments/<comment_id>/reject")
-    def reject(comment_id: str):
-        if _missing(comment_id):
-            flash("Comment not found.", "error")
-            return redirect(_index_url())
-        with db.connect() as conn:
-            db.update_status(conn, comment_id, "rejected")
-        flash("Rejected.", "ok")
-        return redirect(_index_url(status="rejected"))
-
-    @app.post("/comments/<comment_id>/publish")
-    def publish(comment_id: str):
-        if _missing(comment_id):
-            flash("Comment not found.", "error")
-            return redirect(_index_url())
-        draft = _save_draft_if_present(comment_id)
-        with db.connect() as conn:
-            current = db.get_comment(conn, comment_id)
-            next_status = current["status"]
-            if next_status in ("pending_review", "failed", "rejected"):
-                next_status = "approved"
             db.update_status(
-                conn, comment_id, next_status, draft_reply=draft, error=""
+                conn, comment_id, "approved", draft_reply=draft, error=""
             )
         posted = post_approved(comment_id=comment_id, include_pending=True, limit=1)
         with db.connect() as conn:

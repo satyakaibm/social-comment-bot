@@ -156,7 +156,7 @@ chmod +x scripts/dashboard.sh
 ./scripts/dashboard.sh
 ```
 
-Tabs cover **pending review**, **approved**, **posted**, **failed**, **already replied**, and **rejected**. From pending you can save a draft, approve, approve-and-post, or reject. Failed posts keep the API error and can be retried. Override `DASHBOARD_HOST` / `DASHBOARD_PORT` in `.env` if needed. This is separate from the Meta webhook server on port 8080.
+Tabs cover **posted**, **failed**, **already replied**, and **rejected**. Drafts are posted automatically by the webhook receiver and cron; this dashboard does not approve pending comments. Failed posts keep the API error and can be retried. Override `DASHBOARD_HOST` / `DASHBOARD_PORT` in `.env` if needed. This is separate from the Meta webhook server on port 8080.
 
 Posting failures are stored as `failed` so they show up in the dashboard. Checking whether you already replied still skips a comment for that run without marking it failed.
 
