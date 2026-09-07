@@ -154,6 +154,48 @@ def count_by_status(conn: sqlite3.Connection) -> dict[str, int]:
     return {row["status"]: row["n"] for row in rows}
 
 
+def activity_summary(
+    conn: sqlite3.Connection, *, reference_time: datetime | None = None
+) -> list[dict]:
+    """Return received and handled comment totals for dashboard time windows."""
+    reference_time = reference_time or datetime.now(timezone.utc)
+    windows = (
+        ("Last 24 hours", timedelta(hours=24)),
+        ("Last 7 days", timedelta(days=7)),
+        ("Last 1 year", timedelta(days=365)),
+    )
+    summaries = []
+    for label, duration in windows:
+        cutoff = (reference_time - duration).isoformat()
+        row = conn.execute(
+            """
+            SELECT
+                SUM(CASE WHEN datetime(created_at) >= datetime(?) THEN 1 ELSE 0 END)
+                    AS received,
+                SUM(CASE WHEN status = 'posted'
+                          AND datetime(updated_at) >= datetime(?) THEN 1 ELSE 0 END)
+                    AS posted,
+                SUM(CASE WHEN status = 'already_replied'
+                          AND datetime(updated_at) >= datetime(?) THEN 1 ELSE 0 END)
+                    AS already_replied
+            FROM comments
+            """,
+            (cutoff, cutoff, cutoff),
+        ).fetchone()
+        posted = int(row["posted"] or 0)
+        already_replied = int(row["already_replied"] or 0)
+        summaries.append(
+            {
+                "label": label,
+                "received": int(row["received"] or 0),
+                "posted": posted,
+                "already_replied": already_replied,
+                "handled": posted + already_replied,
+            }
+        )
+    return summaries
+
+
 def list_comments(
     conn: sqlite3.Connection,
     *,
