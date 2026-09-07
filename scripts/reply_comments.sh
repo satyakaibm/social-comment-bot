@@ -6,10 +6,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
-LOG="${CRON_LOG:-$SCRIPT_DIR/data/polling.log}"
-mkdir -p "$(dirname "$LOG")"
-exec >>"$LOG" 2>&1
-
 POLLING_CONFIG_FILE="${POLLING_CONFIG_FILE:-$SCRIPT_DIR/config/polling.env}"
 if [[ ! -f "$POLLING_CONFIG_FILE" ]]; then
   echo "Polling config file not found: $POLLING_CONFIG_FILE" >&2
@@ -21,6 +17,13 @@ set -a
 # shellcheck disable=SC1090
 source "$POLLING_CONFIG_FILE"
 set +a
+
+LOG_FILE="${POLLING_LOG_FILE:-${CRON_LOG:-data/polling.log}}"
+if [[ "$LOG_FILE" != /* ]]; then
+  LOG_FILE="$SCRIPT_DIR/$LOG_FILE"
+fi
+mkdir -p "$(dirname "$LOG_FILE")"
+exec >>"$LOG_FILE" 2>&1
 
 required_limits=(
   YOUTUBE_VIDEO_LIMIT
@@ -91,6 +94,7 @@ meta_webhook_enabled="$(python -c 'from app import config; print(str(config.META
 echo ""
 echo "==== Polling cycle started: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
 echo "Config: $POLLING_CONFIG_FILE"
+echo "Log: $LOG_FILE"
 echo "Limits: YouTube ${YOUTUBE_VIDEO_LIMIT} videos/${YOUTUBE_COMMENT_LIMIT} comments/${YOUTUBE_PUBLISH_LIMIT} publishes; Facebook ${FACEBOOK_POST_LIMIT} posts/${FACEBOOK_COMMENT_LIMIT} comments/${FACEBOOK_PUBLISH_LIMIT} publishes; Instagram ${INSTAGRAM_MEDIA_LIMIT} media/${INSTAGRAM_COMMENT_LIMIT} comments/${INSTAGRAM_PUBLISH_LIMIT} publishes; stop after ${PUBLISH_ERROR_LIMIT} consecutive publish errors."
 failures=0
 youtube_poll_ok=false

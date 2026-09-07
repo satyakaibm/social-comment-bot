@@ -134,12 +134,24 @@ Meta can deliver new comments immediately, so the bot does not need to rescan hi
 
 Webhook delivery state is visible in the `webhook_events` SQLite table. Run one dashboard process because its background processor owns this local SQLite queue. YouTube does not offer comment webhooks, so it still requires polling.
 
-Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. Its output is appended to `data/polling.log`; follow a running cycle with `tail -f data/polling.log`.
+### Dashboard login
+
+The dashboard and browser health page require a login. Meta webhooks and `/api/health` remain public for delivery and container monitoring. Generate a password hash without storing the plaintext password:
+
+```bash
+./.venv/bin/python scripts/generate_dashboard_password.py
+```
+
+Set `DASHBOARD_USERNAME` and the generated `DASHBOARD_PASSWORD_HASH_B64` in `.env`, and use a strong random `DASHBOARD_SECRET` for session signing. The Base64 encoding keeps Docker Compose from interpreting characters inside the password hash. Set `DASHBOARD_COOKIE_SECURE=true` when users access the dashboard through HTTPS. Login sessions expire after `DASHBOARD_SESSION_HOURS` (12 by default), and repeated invalid attempts are temporarily rate limited.
+
+After signing in, use **My Profile → Reset password** to change the password. The replacement hash is stored in the SQLite database and persists through container restarts. Changing the password invalidates existing dashboard sessions.
+
+Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. Its output is appended to the `POLLING_LOG_FILE` configured in `config/polling.env` (`data/polling.log` by default); follow a running cycle with `tail -f data/polling.log`.
 
 Each cron cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. The three `*_PUBLISH_LIMIT` values control how many replies can be attempted in that cycle. New work is processed first, then failed replies are retried after a remote duplicate check. `PUBLISH_ERROR_LIMIT` stops a platform after repeated consecutive API errors. The script prevents overlapping cron runs, and webhook and cron publishers atomically claim each comment before posting. Interrupted claims become retryable after ten minutes. The cron entry does not need limit variables:
 
 ```cron
-0 * * * * /Users/satyakaran/Documents/D/myproject/social-comment-bot/scripts/reply_comments.sh
+0 * * * * /Users/satyakaran/Documents/D/myproject/social-comment-bot/scripts/reply_comments.sh 2>&1
 ```
 
 For another environment, create a file with the same variables and select it with `POLLING_CONFIG_FILE=/path/to/polling.env`. Set `FACEBOOK_POST_IDS` or `INSTAGRAM_MEDIA_IDS` in `.env` to stay on specific content.

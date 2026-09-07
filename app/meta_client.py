@@ -139,6 +139,16 @@ def find_own_reply(comment_id: str, *, platform: str) -> str | None:
         for reply in replies:
             if reply.get("from", {}).get("id") == config.FACEBOOK_PAGE_ID:
                 return reply["id"]
+
+        # Facebook's comments edge can occasionally return an empty result even
+        # when a Page reply exists. Check the same relationship through the
+        # comment object's nested comments field before declaring it unanswered.
+        # This independent read prevents a transient edge result from creating
+        # a duplicate automated reply.
+        data = graph_get(comment_id, fields="comments.limit(100){id,from}")
+        for reply in (data.get("comments") or {}).get("data", []):
+            if reply.get("from", {}).get("id") == config.FACEBOOK_PAGE_ID:
+                return reply["id"]
     elif platform == "instagram":
         username = get_instagram_username()
         if not username:

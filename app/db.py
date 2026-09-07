@@ -30,6 +30,13 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS dashboard_auth (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    password_hash TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+);
 """
 
 
@@ -59,6 +66,37 @@ def init_db() -> None:
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def initialize_dashboard_auth(conn: sqlite3.Connection, password_hash: str) -> None:
+    """Seed persistent dashboard authentication from the environment once."""
+    if password_hash:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO dashboard_auth
+                (singleton, password_hash, version, updated_at)
+            VALUES (1, ?, 1, ?)
+            """,
+            (password_hash, now()),
+        )
+
+
+def get_dashboard_auth(conn: sqlite3.Connection):
+    return conn.execute(
+        "SELECT password_hash, version FROM dashboard_auth WHERE singleton = 1"
+    ).fetchone()
+
+
+def update_dashboard_password(conn: sqlite3.Connection, password_hash: str) -> int:
+    conn.execute(
+        """
+        UPDATE dashboard_auth
+        SET password_hash = ?, version = version + 1, updated_at = ?
+        WHERE singleton = 1
+        """,
+        (password_hash, now()),
+    )
+    return int(get_dashboard_auth(conn)["version"])
 
 
 def comment_exists(conn: sqlite3.Connection, comment_id: str) -> bool:
