@@ -3,6 +3,7 @@ from itertools import islice
 from googleapiclient.errors import HttpError
 
 from app import config, db
+from app.comment_age import is_within_comment_age_limit
 from app.generate import draft_reply
 from app.youtube_client import (
     find_own_reply,
@@ -86,6 +87,13 @@ def poll_and_draft() -> int:
                     top = thread["snippet"]["topLevelComment"]
                     comment_id = top["id"]
                     snippet = top["snippet"]
+
+                    if not is_within_comment_age_limit(snippet.get("publishedAt", "")):
+                        print(
+                            f"Skipped YouTube comment {comment_id}: older than "
+                            f"{config.COMMENT_MAX_AGE_DAYS} days."
+                        )
+                        continue
 
                     if db.comment_exists(conn, comment_id):
                         continue

@@ -63,6 +63,19 @@ class WebhookTests(unittest.TestCase):
         self.assertEqual(first.json["queued"], 1)
         self.assertEqual(second.json["queued"], 0)
 
+    def test_old_comment_payload_is_not_queued(self):
+        payload = {
+            "object": "instagram",
+            "entry": [{"changes": [{"field": "comments", "value": {
+                "id": "old-comment", "text": "Jai Maa",
+                "timestamp": "2020-01-01T00:00:00Z",
+                "from": {"username": "viewer"}, "media": {"id": "media"},
+            }}]}],
+        }
+        self.assertEqual(webhook.queue_payload(payload), 0)
+        with db.connect() as conn:
+            self.assertIsNone(db.get_comment(conn, "old-comment"))
+
     def test_unsigned_payload_is_rejected(self):
         app = webhook.create_app(start_worker=False)
         with patch.object(config, "META_APP_SECRET", "secret"):

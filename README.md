@@ -110,7 +110,7 @@ python scripts/youtube_oauth_setup.py
 
 ### Facebook and Instagram
 
-Use a Facebook Page access token (or a user token with `pages_show_list`; the bot exchanges it for the Page token via `/me/accounts`). Instagram must be a professional account linked to that Page.
+Use a Facebook **user** access token with `pages_show_list` (the bot exchanges it for a Page token via `/me/accounts`). A Page-only token can reply on Facebook and Instagram, but Instagram comment likes need the User token. Instagram must be a professional account linked to that Page.
 
 Typical Graph permissions include Page read/manage engagement, `pages_show_list`, Instagram comment management (`instagram_basic`, `instagram_manage_comments`), and Instagram comment likes (`instagram_manage_engagement`).
 
@@ -216,7 +216,7 @@ python -m app.cli run
 
 `poll-all` continues if one platform fails and prints the error.
 
-`--like-comments` likes the original Facebook or Instagram comment after a successful reply. Facebook uses `pages_manage_engagement`; Instagram uses `POST /{INSTAGRAM_USER_ID}/likes` and needs `instagram_manage_engagement`. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's Data API has no comment-like endpoint.
+`--like-comments` likes the original Facebook or Instagram comment after a successful reply. Facebook likes use the Page token (`pages_manage_engagement`). Instagram likes use `POST /{INSTAGRAM_USER_ID}/likes` with the original User token in `FACEBOOK_PAGE_ACCESS_TOKEN` (`instagram_basic` and `instagram_manage_engagement`); a Page-only token can reply but cannot like. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's Data API has no comment-like endpoint.
 
 Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]uit`.
 
