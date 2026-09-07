@@ -1,6 +1,7 @@
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from app.config import DB_PATH
 
@@ -49,7 +50,19 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS seen_comments (
+    comment_id TEXT PRIMARY KEY,
+    platform TEXT,
+    status TEXT,
+    recorded_at TEXT NOT NULL,
+    created_at TEXT,
+    updated_at TEXT
+);
+
 """
+
+PRUNEABLE_COMMENT_STATUSES = ("posted", "already_replied", "rejected")
+PRUNEABLE_WEBHOOK_STATUSES = ("processed", "failed")
 
 
 @contextmanager
@@ -105,10 +118,84 @@ def init_db() -> None:
                ON dashboard_users(email COLLATE NOCASE)
                WHERE email IS NOT NULL AND email <> ''"""
         )
+        _migrate_seen_comments(conn)
+        sync_seen_stats_from_comments(conn)
 
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _migrate_seen_comments(conn: sqlite3.Connection) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(seen_comments)")}
+    if "created_at" not in columns:
+        conn.execute("ALTER TABLE seen_comments ADD COLUMN created_at TEXT")
+    if "updated_at" not in columns:
+        conn.execute("ALTER TABLE seen_comments ADD COLUMN updated_at TEXT")
+    conn.execute(
+        """
+        UPDATE seen_comments
+        SET created_at = COALESCE(created_at, recorded_at),
+            updated_at = COALESCE(updated_at, recorded_at)
+        WHERE created_at IS NULL OR updated_at IS NULL
+        """
+    )
+
+
+def sync_seen_stats_from_comments(conn: sqlite3.Connection) -> None:
+    """Copy ids, statuses, and timestamps from live comment rows into seen_comments."""
+    conn.execute(
+        """
+        INSERT INTO seen_comments
+            (comment_id, platform, status, recorded_at, created_at, updated_at)
+        SELECT comment_id, platform, status,
+               COALESCE(updated_at, created_at), created_at, updated_at
+        FROM comments
+        WHERE true
+        ON CONFLICT(comment_id) DO UPDATE SET
+            platform = excluded.platform,
+            status = excluded.status,
+            created_at = excluded.created_at,
+            updated_at = excluded.updated_at
+        """
+    )
+
+
+def import_seen_stats_from_backup(backup_path) -> int:
+    """Restore dashboard count timestamps from a comments.db backup without text."""
+    path = Path(backup_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Backup not found: {path}")
+    init_db()
+    imported = 0
+    bak = sqlite3.connect(path)
+    bak.row_factory = sqlite3.Row
+    try:
+        tables = {
+            row[0] for row in bak.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        if "comments" not in tables:
+            raise RuntimeError(f"No comments table in {path}")
+        rows = bak.execute(
+            """
+            SELECT comment_id, platform, status, created_at, updated_at
+            FROM comments
+            """
+        ).fetchall()
+        with connect() as conn:
+            for row in rows:
+                remember_seen_comment(
+                    conn,
+                    row["comment_id"],
+                    platform=row["platform"],
+                    status=row["status"],
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                )
+                imported += 1
+    finally:
+        bak.close()
+    return imported
 
 
 def initialize_dashboard_auth(conn: sqlite3.Connection, password_hash: str) -> None:
@@ -229,9 +316,59 @@ def dashboard_email_registered(
     return row is not None
 
 
+def remember_seen_comment(
+    conn: sqlite3.Connection,
+    comment_id: str,
+    *,
+    platform: str | None = None,
+    status: str | None = None,
+    created_at: str | None = None,
+    updated_at: str | None = None,
+) -> None:
+    """Keep a tiny fingerprint so pruned comments are not drafted or posted again.
+
+    created_at / updated_at power dashboard 1 Hour–365 Day counts after prune.
+    """
+    ts = now()
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO seen_comments
+            (comment_id, platform, status, recorded_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (comment_id, platform, status, ts, created_at or ts, updated_at or ts),
+    )
+    fields = []
+    params: list = []
+    if platform is not None:
+        fields.append("platform = ?")
+        params.append(platform)
+    if status is not None:
+        fields.append("status = ?")
+        params.append(status)
+    if created_at is not None:
+        fields.append("created_at = ?")
+        params.append(created_at)
+    if updated_at is not None:
+        fields.append("updated_at = ?")
+        params.append(updated_at)
+    if fields:
+        params.append(comment_id)
+        conn.execute(
+            f"UPDATE seen_comments SET {', '.join(fields)} WHERE comment_id = ?",
+            params,
+        )
+
+
 def comment_exists(conn: sqlite3.Connection, comment_id: str) -> bool:
     row = conn.execute(
-        "SELECT 1 FROM comments WHERE comment_id = ?", (comment_id,)
+        """
+        SELECT 1 FROM comments WHERE comment_id = ?
+        UNION ALL
+        SELECT 1 FROM seen_comments WHERE comment_id = ?
+        LIMIT 1
+        """,
+        (comment_id, comment_id),
     ).fetchone()
     return row is not None
 
@@ -251,7 +388,7 @@ def insert_comment(
     # video_id/video_title double as the generic "container" id/title for
     # non-YouTube platforms (Facebook post id/message, Instagram media id/caption).
     ts = now()
-    conn.execute(
+    cursor = conn.execute(
         """
         INSERT OR IGNORE INTO comments (
             comment_id, platform, video_id, video_title, author, text, published_at,
@@ -270,6 +407,14 @@ def insert_comment(
             ts,
             ts,
         ),
+    )
+    remember_seen_comment(
+        conn,
+        comment_id,
+        platform=platform,
+        status="pending_review" if cursor.rowcount == 1 else None,
+        created_at=ts if cursor.rowcount == 1 else None,
+        updated_at=ts if cursor.rowcount == 1 else None,
     )
 
 
@@ -345,7 +490,7 @@ def activity_summary(
     summaries = []
     for label, duration in windows:
         cutoff = (reference_time - duration).isoformat()
-        platform_filter = "AND platform = ?" if platform else ""
+        platform_filter = "AND COALESCE(c.platform, s.platform) = ?" if platform else ""
         params = (
             [cutoff, platform, cutoff, platform, cutoff, platform]
             if platform
@@ -354,18 +499,19 @@ def activity_summary(
         row = conn.execute(
             f"""
             SELECT
-                SUM(CASE WHEN datetime(created_at) >= datetime(?)
+                SUM(CASE WHEN datetime(COALESCE(c.created_at, s.created_at)) >= datetime(?)
                           {platform_filter} THEN 1 ELSE 0 END)
                     AS received,
-                SUM(CASE WHEN status = 'posted'
-                          AND datetime(updated_at) >= datetime(?)
+                SUM(CASE WHEN COALESCE(c.status, s.status) = 'posted'
+                          AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(?)
                           {platform_filter} THEN 1 ELSE 0 END)
                     AS posted,
-                SUM(CASE WHEN status = 'already_replied'
-                          AND datetime(updated_at) >= datetime(?)
+                SUM(CASE WHEN COALESCE(c.status, s.status) = 'already_replied'
+                          AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(?)
                           {platform_filter} THEN 1 ELSE 0 END)
                     AS already_replied
-            FROM comments
+            FROM seen_comments s
+            LEFT JOIN comments c ON c.comment_id = s.comment_id
             """,
             params,
         ).fetchone()
@@ -499,6 +645,7 @@ def update_status(
         params.append(error)
     params.append(comment_id)
     conn.execute(f"UPDATE comments SET {', '.join(fields)} WHERE comment_id = ?", params)
+    remember_seen_comment(conn, comment_id, status=status, updated_at=now())
 
 
 def enqueue_webhook_event(conn, *, event_key: str, platform: str, payload: str) -> bool:
@@ -538,3 +685,40 @@ def finish_webhook_event(conn, event_key: str, *, error: str | None = None) -> N
         "UPDATE webhook_events SET status=?, error=?, updated_at=? WHERE event_key=?",
         ("failed" if error else "processed", error, now(), event_key),
     )
+
+
+def prune_storage(conn: sqlite3.Connection, *, older_than_days: int = 0) -> dict[str, int]:
+    """Remove bulky handled rows while keeping comment_id fingerprints.
+
+    Dashboard lists come from `comments`, so pruned history goes blank.
+    Polling and webhooks still skip those IDs via `seen_comments`.
+    Pending, approved, failed, and posting rows are left in place.
+    """
+    sync_seen_stats_from_comments(conn)
+    placeholders = ",".join("?" * len(PRUNEABLE_COMMENT_STATUSES))
+    comment_sql = f"DELETE FROM comments WHERE status IN ({placeholders})"
+    comment_params: list = list(PRUNEABLE_COMMENT_STATUSES)
+    if older_than_days > 0:
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=older_than_days)
+        ).isoformat()
+        comment_sql += " AND updated_at < ?"
+        comment_params.append(cutoff)
+    comments_deleted = conn.execute(comment_sql, comment_params).rowcount
+    webhook_placeholders = ",".join("?" * len(PRUNEABLE_WEBHOOK_STATUSES))
+    webhooks_deleted = conn.execute(
+        f"DELETE FROM webhook_events WHERE status IN ({webhook_placeholders})",
+        PRUNEABLE_WEBHOOK_STATUSES,
+    ).rowcount
+    return {
+        "comments_deleted": comments_deleted,
+        "webhooks_deleted": webhooks_deleted,
+    }
+
+
+def vacuum_db() -> None:
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        conn.execute("VACUUM")
+    finally:
+        conn.close()

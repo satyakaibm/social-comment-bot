@@ -199,6 +199,16 @@ python -m app.cli post --platform youtube --pending --limit 1
 # Rebuild pending drafts with the current REPLY_PERSONA and example files
 python -m app.cli redraft
 
+# Restore dashboard 1 Hour–365 Day counts from a backup after prune
+python -m app.cli import-stats --backup data/comments.db.bak
+
+# Reclaim disk: delete handled comment text and processed webhooks.
+# Comment IDs and timestamps stay in seen_comments so they are not drafted
+# again and activity counts still work. Stop the dashboard first.
+# Pending/approved/failed rows are kept.
+python -m app.cli prune
+python -m app.cli prune --older-than-days 90
+
 # Continuously poll YouTube only (drafts, no posting)
 python -m app.cli run
 ```
@@ -214,4 +224,5 @@ Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]u
 - Replies stay in `pending_review` until you run `review`, then `post`.
 - `run` only polls YouTube. Use `poll-all` (or a cron job) for Facebook and Instagram.
 - Instagram polling is capped so the first run does not draft replies for every historical comment.
+- `prune` clears handled dashboard comment text (`posted`, `already_replied`, `rejected`) and processed webhook payloads. `seen_comments` keeps each `comment_id` plus `created_at` / `updated_at` / `status`, so polling will not re-reply and the 1 Hour–365 Day activity counts still work. Use `import-stats` to restore those timestamps from a `comments.db.bak` file.
 - Do not commit `.env` or `data/comments.db`.

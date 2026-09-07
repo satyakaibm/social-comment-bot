@@ -102,6 +102,43 @@ class WebhookTests(unittest.TestCase):
             ).fetchone()
         self.assertEqual((row["status"], row["reply_comment_id"]), ("posted", "reply"))
 
+    def test_pruned_comment_id_is_not_queued_again(self):
+        payload = {
+            "object": "instagram",
+            "entry": [{"changes": [{"field": "comments", "value": {
+                "id": "old-comment", "text": "Jai Maa",
+                "from": {"username": "viewer"}, "media": {"id": "media"},
+            }}]}],
+        }
+        with db.connect() as conn:
+            db.remember_seen_comment(
+                conn, "old-comment", platform="instagram", status="posted"
+            )
+        queued = webhook.queue_payload(payload)
+        self.assertEqual(queued, 0)
+        with db.connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM webhook_events WHERE event_key = 'instagram:old-comment'"
+            ).fetchone()
+        self.assertIsNone(row)
+
+    def test_process_event_skips_seen_comment_without_drafting(self):
+        event = {
+            "platform": "instagram", "comment_id": "old-comment",
+            "container_id": "media", "text": "Jai Maa",
+            "author": "viewer", "author_id": "viewer-id", "published_at": "now",
+        }
+        with db.connect() as conn:
+            db.remember_seen_comment(
+                conn, "old-comment", platform="instagram", status="posted"
+            )
+        with patch.object(webhook, "draft_reply") as draft, \
+             patch.object(webhook.meta_client, "get_instagram_username", return_value="owner"):
+            webhook.process_event(event)
+        draft.assert_not_called()
+        with db.connect() as conn:
+            self.assertIsNone(db.get_comment(conn, "old-comment"))
+
 
 if __name__ == "__main__":
     unittest.main()
