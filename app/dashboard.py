@@ -139,6 +139,10 @@ def create_app() -> Flask:
 
     @app.get("/health")
     def health():
+        return render_template("health.html")
+
+    @app.get("/api/health")
+    def health_api():
         return {"status": "ok"}
 
     register_meta_routes(app)
@@ -149,9 +153,20 @@ def create_app() -> Flask:
 app = create_app()
 
 
+def create_serving_app() -> Flask:
+    """Build the combined dashboard and Meta webhook service for Gunicorn."""
+    config.require("META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN")
+    serving_app = create_app()
+    start_event_worker(serving_app)
+    return serving_app
+
+
 def require_port(host: str, port: int) -> None:
     """Fail if the configured dashboard port is already bound."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        # Permit an immediate restart while macOS is releasing the old socket.
+        # An active listener still prevents this bind and raises the error below.
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host, port))
         except OSError as exc:

@@ -92,7 +92,7 @@ Meta can deliver new comments immediately, so the bot does not need to rescan hi
    ./scripts/dashboard.sh
    ```
 
-3. Expose dashboard port 9001 through a stable public HTTPS address. Use `https://YOUR_HOST/webhooks/meta` as the callback URL. The dashboard remains at `/` and `/health` is available for monitoring.
+3. Expose dashboard port 9001 through a stable public HTTPS address. Use `https://YOUR_HOST/webhooks/meta` as the callback URL. The dashboard remains at `/`, `/health` shows a browser-friendly status page, and `/api/health` returns JSON for monitoring.
 4. In the Meta app dashboard, configure the callback and the same verify token.
 5. Subscribe the Facebook Page webhook to `feed` and the Instagram webhook to `comments`, then subscribe the Hindolroad Page and Instagram professional account to the app.
 6. After a real test comment is received successfully, set `META_WEBHOOK_ENABLED=true`. Until then, cron continues polling Meta as a fallback.

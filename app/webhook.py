@@ -221,14 +221,3 @@ def create_app(*, start_worker: bool = True) -> Flask:
     if start_worker:
         start_event_worker(app)
     return app
-
-
-def create_serving_app() -> Flask:
-    config.require("META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN")
-    return create_app(start_worker=True)
-
-
-def run() -> None:
-    create_serving_app().run(
-        host=config.WEBHOOK_HOST, port=config.WEBHOOK_PORT, threaded=True
-    )

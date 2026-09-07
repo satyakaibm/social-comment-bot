@@ -75,12 +75,6 @@ def cmd_run(_args) -> None:
         time.sleep(config.POLL_INTERVAL_SECONDS)
 
 
-def cmd_webhook(_args) -> None:
-    from app.webhook import run as run_webhook
-
-    run_webhook()
-
-
 def cmd_dashboard(_args) -> None:
     from app.dashboard import run as run_dashboard
 
@@ -139,9 +133,6 @@ def main() -> None:
     sub.add_parser(
         "run", help="Continuously poll on an interval (drafting only, no posting)"
     ).set_defaults(func=cmd_run)
-    sub.add_parser(
-        "webhook", help="Run the Facebook and Instagram webhook receiver"
-    ).set_defaults(func=cmd_webhook)
     sub.add_parser(
         "dashboard", help="Open the dashboard with the Meta webhook receiver"
     ).set_defaults(func=cmd_dashboard)
