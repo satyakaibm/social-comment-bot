@@ -92,7 +92,7 @@ class WebhookTests(unittest.TestCase):
              patch.object(webhook.meta_client, "get_instagram_media_caption", return_value="Caption"), \
              patch.object(webhook, "draft_reply", return_value="@viewer 🙏"), \
              patch.object(webhook.meta_client, "reply_to_comment", return_value="reply") as reply, \
-             patch.object(webhook.meta_client, "like_meta_comment") as like:
+             patch.object(webhook.meta_client, "like_comment") as like:
             webhook.process_event(event)
         reply.assert_called_once_with("comment", "@viewer 🙏", platform="instagram")
         like.assert_called_once_with("comment")

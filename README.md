@@ -86,18 +86,18 @@ Typical Graph permissions include Page read/manage engagement, `pages_show_list`
 Meta can deliver new comments immediately, so the bot does not need to rescan historical Facebook posts or Instagram media. The receiver validates Meta's `X-Hub-Signature-256`, stores each delivery in SQLite before processing, ignores duplicate deliveries and existing replies, then drafts and posts a reply and likes the original comment. Set `META_WEBHOOK_AUTO_POST=false` to save drafts for manual review.
 
 1. Copy the Meta app secret into `META_APP_SECRET`. Generate a separate private random value for `META_WEBHOOK_VERIFY_TOKEN`.
-2. Start the receiver:
+2. Start the review dashboard. It now hosts the webhook receiver in the same process:
 
    ```bash
-   ./scripts/webhook_server.sh
+   ./scripts/dashboard.sh
    ```
 
-3. Expose port 8081 through a stable public HTTPS address. Use `https://YOUR_HOST/webhooks/meta` as the callback URL. `/health` is available for monitoring.
+3. Expose dashboard port 9001 through a stable public HTTPS address. Use `https://YOUR_HOST/webhooks/meta` as the callback URL. The dashboard remains at `/` and `/health` is available for monitoring.
 4. In the Meta app dashboard, configure the callback and the same verify token.
 5. Subscribe the Facebook Page webhook to `feed` and the Instagram webhook to `comments`, then subscribe the Hindolroad Page and Instagram professional account to the app.
 6. After a real test comment is received successfully, set `META_WEBHOOK_ENABLED=true`. Until then, cron continues polling Meta as a fallback.
 
-Webhook delivery state is visible in the `webhook_events` SQLite table. Run exactly one Gunicorn worker because the background processor owns this local SQLite queue. YouTube does not offer comment webhooks, so it still requires polling.
+Webhook delivery state is visible in the `webhook_events` SQLite table. Run one dashboard process because its background processor owns this local SQLite queue. YouTube does not offer comment webhooks, so it still requires polling.
 
 If `FACEBOOK_POST_IDS` / `INSTAGRAM_MEDIA_IDS` are empty, Facebook polls all Page posts and Instagram polls the most recent `INSTAGRAM_MEDIA_LIMIT` media items. Set those ID lists to stay on specific posts.
 

@@ -33,6 +33,9 @@ META_WEBHOOK_ENABLED = os.environ.get("META_WEBHOOK_ENABLED", "false").lower() i
 )
 WEBHOOK_HOST = os.environ.get("WEBHOOK_HOST", "127.0.0.1")
 WEBHOOK_PORT = int(os.environ.get("WEBHOOK_PORT", "8081"))
+DASHBOARD_HOST = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
+DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "9001"))
+DASHBOARD_SECRET = os.environ.get("DASHBOARD_SECRET", "localhost-dashboard")
 
 # Optional: comma-separated Facebook post IDs / Instagram media IDs to
 # restrict polling to. Leave blank to poll all posts/media on the account.

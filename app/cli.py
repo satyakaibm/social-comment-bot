@@ -81,6 +81,12 @@ def cmd_webhook(_args) -> None:
     run_webhook()
 
 
+def cmd_dashboard(_args) -> None:
+    from app.dashboard import run as run_dashboard
+
+    run_dashboard()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="social-comment-bot")
     sub = parser.add_subparsers(required=True)
@@ -136,6 +142,9 @@ def main() -> None:
     sub.add_parser(
         "webhook", help="Run the Facebook and Instagram webhook receiver"
     ).set_defaults(func=cmd_webhook)
+    sub.add_parser(
+        "dashboard", help="Open the dashboard with the Meta webhook receiver"
+    ).set_defaults(func=cmd_dashboard)
     sub.add_parser(
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",

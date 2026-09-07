@@ -134,7 +134,7 @@ def like_facebook_comment(comment_id: str) -> None:
         raise GraphAPIError(f"{comment_id}/likes: like was not confirmed")
 
 
-def like_meta_comment(comment_id: str) -> None:
+def like_comment(comment_id: str) -> None:
     """Like a Facebook or Instagram comment with the connected Page token."""
     result = graph_post(f"{comment_id}/likes")
     if result.get("success") is not True:

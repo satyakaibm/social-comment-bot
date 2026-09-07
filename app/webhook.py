@@ -135,7 +135,7 @@ def process_event(event: dict) -> None:
             db.update_status(conn, comment_id, "posted", reply_comment_id=reply_id)
         print(f"Posted webhook reply to {platform} comment {comment_id}.", flush=True)
         try:
-            meta_client.like_meta_comment(comment_id)
+            meta_client.like_comment(comment_id)
             print(f"Liked {platform} comment {comment_id}.", flush=True)
         except Exception as exc:
             # A reply must remain recorded even when Meta rejects the optional like.
@@ -169,22 +169,14 @@ def worker_loop(stop: threading.Event) -> None:
             stop.wait(0.5)
 
 
-def create_app(*, start_worker: bool = True) -> Flask:
-    app = Flask(__name__)
+def start_event_worker(app: Flask) -> threading.Event:
+    stop = threading.Event()
+    threading.Thread(target=worker_loop, args=(stop,), daemon=True).start()
+    app.extensions["webhook_worker_stop"] = stop
+    return stop
 
-    @app.get("/")
-    def index():
-        return {
-            "service": "social-comment-bot webhook",
-            "status": "ok",
-            "health": "/health",
-            "meta_callback": "/webhooks/meta",
-        }
 
-    @app.get("/health")
-    def health():
-        return {"status": "ok"}
-
+def register_meta_routes(app: Flask) -> None:
     @app.get("/webhooks/meta")
     def verify_meta():
         if (
@@ -207,10 +199,27 @@ def create_app(*, start_worker: bool = True) -> Flask:
             return Response("invalid JSON", status=400)
         return {"received": True, "queued": queue_payload(payload)}
 
+
+def create_app(*, start_worker: bool = True) -> Flask:
+    app = Flask(__name__)
+
+    @app.get("/")
+    def index():
+        return {
+            "service": "social-comment-bot webhook",
+            "status": "ok",
+            "health": "/health",
+            "meta_callback": "/webhooks/meta",
+        }
+
+    @app.get("/health")
+    def health():
+        return {"status": "ok"}
+
+    register_meta_routes(app)
+
     if start_worker:
-        stop = threading.Event()
-        threading.Thread(target=worker_loop, args=(stop,), daemon=True).start()
-        app.extensions["webhook_worker_stop"] = stop
+        start_event_worker(app)
     return app
 
 

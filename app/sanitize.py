@@ -30,10 +30,13 @@ _EN_THANKS = re.compile(
     r"our (?:heartfelt |sincere )?thanks)"
     r"[^.!\n]{0,160}"
     r"(?:watch(?:ing)?|video|commenting|devotion|supporting our channel|"
-    r"tuning in|stopping by|sharing your)"
+    r"tuning in|stopping by|sharing your|touched your heart)"
     r"[^.!\n]*"
     r"|"
-    r"we(?:'re| are) glad you enjoyed the video[^.!\n]*"
+    r"we(?:['’]re| are) (?:so )?glad "
+    r"(?:you enjoyed the video|this video touched your heart)[^.!\n]*"
+    r"|"
+    r"thanks for watching[^.!\n]*"
     r"|"
     r"our video shares[^.!\n]*"
     r"|"
@@ -50,6 +53,7 @@ _ODIA_THANKS_MARKERS = (
     "ମତାମତ ପାଇଁ",
     "ଭିଡିଓ ଦେଖ",
     "ଭିଡିଓଟି ଦେଖ",
+    "କୃପା ସମସ୍ତଙ୍କୁ ଉପରେ ରହୁ",
 )
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[।.!?])\s+")
@@ -100,3 +104,26 @@ def sanitize_draft(text: str) -> str:
     if not rest:
         rest = "🙏"
     return f"{mention}{rest}".strip()
+
+
+def sanitize_stored_drafts(*, platform: str = "youtube") -> int:
+    """Rewrite stored draft_reply text after sanitize_draft. Returns rows changed."""
+    from app import db
+
+    db.init_db()
+    updated = 0
+    with db.connect() as conn:
+        rows = conn.execute(
+            "SELECT comment_id, draft_reply FROM comments WHERE platform = ?",
+            (platform,),
+        ).fetchall()
+        for row in rows:
+            old = row["draft_reply"] or ""
+            new = sanitize_draft(old)
+            if new != old:
+                conn.execute(
+                    "UPDATE comments SET draft_reply = ? WHERE comment_id = ?",
+                    (new, row["comment_id"]),
+                )
+                updated += 1
+    return updated
