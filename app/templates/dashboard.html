@@ -94,6 +94,7 @@
     table.db tbody tr:hover { background: #fff7ed; }
     td.wrap { white-space: pre-wrap; max-width: 260px; word-break: break-word; }
     td.narrow { max-width: 140px; word-break: break-all; }
+    td.title { max-width: 22em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
     .error-box { color: var(--err); }
     .empty { color: var(--muted); padding: 1.5rem 0; }
@@ -169,7 +170,7 @@
                 <td class="narrow">{{ row.comment_id }}</td>
                 <td>{{ row.platform }}</td>
                 <td class="narrow">{{ row.video_id }}</td>
-                <td class="wrap">{{ (row.video_title or '')[:50] }}</td>
+                <td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td>
                 <td>{{ row.author }}</td>
                 <td class="wrap">{{ row.text }}</td>
                 <td>{{ row.published_at }}</td>

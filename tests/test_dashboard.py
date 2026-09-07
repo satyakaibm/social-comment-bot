@@ -96,18 +96,32 @@ class DashboardTests(unittest.TestCase):
         self.assertNotEqual(chosen, busy)
         self.assertGreater(chosen, busy)
 
-    def test_posted_tab_trims_title_and_hides_updated_at(self):
+    def test_every_tab_trims_video_title_to_50_chars(self):
         long_title = "A" * 80
         with db.connect() as conn:
-            db.insert_comment(
-                conn, comment_id="c-long", platform="youtube", video_id="vid2",
-                video_title=long_title, author="viewer", text="hello",
-                published_at="", draft_reply="🙏",
-            )
-            db.update_status(conn, "c-long", "posted", reply_comment_id="r2", error="")
+            for status in dashboard.STATUSES:
+                comment_id = f"title-{status}"
+                db.insert_comment(
+                    conn,
+                    comment_id=comment_id,
+                    platform="youtube",
+                    video_id="vid2",
+                    video_title=long_title,
+                    author="viewer",
+                    text="hello",
+                    published_at="",
+                    draft_reply="🙏",
+                )
+                db.update_status(conn, comment_id, status, reply_comment_id="r2", error="")
+        for status in dashboard.STATUSES:
+            page = self.client.get(f"/?status={status}")
+            self.assertIn(b"A" * 50, page.data, status)
+            self.assertNotIn(b"A" * 51, page.data, status)
+
+    def test_posted_tab_hides_updated_at(self):
+        with db.connect() as conn:
+            db.update_status(conn, "c1", "posted", reply_comment_id="r2", error="")
         posted = self.client.get("/?status=posted")
-        self.assertIn(b"A" * 50, posted.data)
-        self.assertNotIn(b"A" * 51, posted.data)
         self.assertIn(b"created_at_ist", posted.data)
         self.assertNotIn(b"<th>updated_at</th>", posted.data)
 

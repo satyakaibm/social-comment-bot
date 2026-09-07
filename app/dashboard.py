@@ -57,6 +57,7 @@ def _index_url(**overrides) -> str:
 def _row_dict(row) -> dict:
     item = dict(row)
     item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
+    item["video_title"] = (item.get("video_title") or "")[:50]
     return item
 
 
