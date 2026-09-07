@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from app import db, dashboard
+from app import config, db, dashboard
 
 
 class DashboardTests(unittest.TestCase):
@@ -92,6 +92,27 @@ class DashboardTests(unittest.TestCase):
         busy = occupied.getsockname()[1]
         with self.assertRaisesRegex(RuntimeError, "already in use"):
             dashboard.require_port("127.0.0.1", busy)
+
+    def test_dashboard_hosts_meta_webhook_verification(self):
+        with patch.object(config, "META_WEBHOOK_VERIFY_TOKEN", "verify"):
+            response = self.client.get(
+                "/webhooks/meta?hub.mode=subscribe&hub.verify_token=verify&hub.challenge=321"
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, "321")
+
+    def test_health_page_and_machine_readable_endpoint(self):
+        page = self.client.get("/health")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Gateway is healthy", page.data)
+        self.assertEqual(self.client.get("/api/health").json, {"status": "ok"})
+
+    def test_serving_app_starts_webhook_worker(self):
+        with patch.object(config, "META_APP_SECRET", "secret"), \
+             patch.object(config, "META_WEBHOOK_VERIFY_TOKEN", "verify"), \
+             patch.object(dashboard, "start_event_worker") as start:
+            serving_app = dashboard.create_serving_app()
+        start.assert_called_once_with(serving_app)
 
     def test_every_tab_trims_video_title_to_50_chars(self):
         long_title = "A" * 80

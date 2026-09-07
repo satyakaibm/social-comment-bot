@@ -45,13 +45,6 @@ def cmd_redraft(_args) -> None:
     print(f"Redrafted {n} comment(s) using the current REPLY_PERSONA.")
 
 
-def cmd_sanitize_drafts(_args) -> None:
-    from app.sanitize import sanitize_stored_drafts
-
-    n = sanitize_stored_drafts(platform="youtube")
-    print(f"Sanitized {n} YouTube draft(s).")
-
-
 def cmd_review(_args) -> None:
     review_loop()
 
@@ -80,12 +73,6 @@ def cmd_run(_args) -> None:
         except Exception as e:  # keep the loop alive across transient API errors
             print(f"Poll cycle failed: {e}")
         time.sleep(config.POLL_INTERVAL_SECONDS)
-
-
-def cmd_webhook(_args) -> None:
-    from app.webhook import run as run_webhook
-
-    run_webhook()
 
 
 def cmd_dashboard(_args) -> None:
@@ -141,29 +128,22 @@ def main() -> None:
     post_p.add_argument(
         "--like-comments",
         action="store_true",
-        help="Like each original comment after replying (Facebook or Instagram)",
+        help="Like each original comment after posting its reply (requires --platform facebook)",
     )
     sub.add_parser(
         "run", help="Continuously poll on an interval (drafting only, no posting)"
     ).set_defaults(func=cmd_run)
     sub.add_parser(
-        "webhook", help="Run the Facebook and Instagram webhook receiver"
-    ).set_defaults(func=cmd_webhook)
-    sub.add_parser(
-        "dashboard", help="Open the localhost admin dashboard for comment review"
+        "dashboard", help="Open the dashboard with the Meta webhook receiver"
     ).set_defaults(func=cmd_dashboard)
     sub.add_parser(
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",
     ).set_defaults(func=cmd_redraft)
-    sub.add_parser(
-        "sanitize-drafts",
-        help="Strip thanks-for-watching filler from stored YouTube drafts",
-    ).set_defaults(func=cmd_sanitize_drafts)
 
     args = parser.parse_args()
-    if getattr(args, "like_comments", False) and args.platform not in ("facebook", "instagram"):
-        parser.error("--like-comments requires --platform facebook or instagram")
+    if getattr(args, "like_comments", False) and args.platform != "facebook":
+        parser.error("--like-comments requires --platform facebook")
     args.func(args)
 
 
