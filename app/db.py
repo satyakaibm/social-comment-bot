@@ -133,7 +133,10 @@ def list_comments(
     limit: int = 50,
     offset: int = 0,
 ):
-    sql = "SELECT * FROM comments WHERE 1=1"
+    sql = """SELECT *,
+        datetime(created_at, '+5 hours', '+30 minutes') AS created_at_ist,
+        datetime(updated_at, '+5 hours', '+30 minutes') AS posted_at_ist
+        FROM comments WHERE 1=1"""
     params: list = []
     if status:
         sql += " AND status = ?"
