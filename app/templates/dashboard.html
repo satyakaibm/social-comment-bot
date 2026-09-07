@@ -39,6 +39,19 @@
     .flash { padding:13px 16px; border-radius:12px; margin:0 0 18px; border:1px solid; font-size:14px; }
     .flash.ok { color:#086142; background:#e9f8f1; border-color:#c9ecdd; }
     .flash.error { color:#98253d; background:#fff0f3; border-color:#f5ccd5; }
+    .activity { margin-bottom:22px; padding:18px 20px; background:linear-gradient(145deg,#fff,#f9fbfc); border:1px solid var(--line); border-radius:17px; box-shadow:0 5px 18px rgba(15,42,56,.035); }
+    .activity-head { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:18px; }
+    .activity-title { margin:0; color:var(--navy); font-size:14px; font-weight:800; }
+    .range-scroll { max-width:100%; overflow-x:auto; scrollbar-width:thin; }
+    .range-buttons { display:flex; width:max-content; padding:3px; gap:4px; background:#eef3f5; border-radius:11px; }
+    .range-button { min-height:34px; padding:0 13px; color:var(--muted); background:transparent; border:0; border-radius:8px; box-shadow:none; font-size:11px; white-space:nowrap; }
+    .range-button:hover { color:var(--navy); transform:none; }
+    .range-button.active { color:#fff; background:var(--navy); box-shadow:0 4px 10px rgba(15,42,56,.18); }
+    .activity-values { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+    .activity-metric { min-width:0; }
+    .activity-number { display:block; color:var(--navy); font-size:23px; font-weight:850; line-height:1; }
+    .activity-name { display:block; margin-top:7px; color:var(--muted); font-size:10px; font-weight:700; line-height:1.25; text-transform:uppercase; }
+    .activity-metric.highlight .activity-number { color:var(--coral); }
     .stats { display:grid; grid-template-columns:repeat(5,minmax(135px,1fr)); gap:12px; margin-bottom:22px; }
     .stat { position:relative; min-height:102px; padding:18px; overflow:hidden; text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:17px; box-shadow:0 5px 18px rgba(15,42,56,.035); transition:.18s ease; }
     .stat:hover { transform:translateY(-2px); border-color:#b9c9d1; box-shadow:var(--shadow); }
@@ -86,7 +99,7 @@
     .pager { display:flex; align-items:center; justify-content:center; gap:18px; margin-top:20px; color:var(--muted); font-size:13px; }
     .pager a { padding:8px 12px; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:9px; font-weight:700; text-decoration:none; }
     @media (max-width:980px) { .stats{grid-template-columns:repeat(3,1fr)} .toolbar{align-items:stretch;flex-direction:column} form.search{width:100%} .grid-wrap{max-height:none} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px} .brand img{width:135px;height:48px} .service-tag,.gateway span:last-child{display:none} .page{padding:25px 15px 40px} .intro{align-items:flex-start;flex-direction:column} .timezone{display:none} .stats{grid-template-columns:repeat(2,1fr)} .stat{min-height:88px;padding:15px} .stat-value{font-size:23px} form.search button{padding:0 12px} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px} .brand img{width:135px;height:48px} .service-tag,.gateway span:last-child{display:none} .page{padding:25px 15px 40px} .intro{align-items:flex-start;flex-direction:column} .timezone{display:none} .activity{padding:16px} .activity-head{align-items:flex-start;flex-direction:column;margin-bottom:20px} .range-scroll{width:100%} .activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px} .stats{grid-template-columns:repeat(2,1fr)} .stat{min-height:88px;padding:15px} .stat-value{font-size:23px} form.search button{padding:0 12px} }
   </style>
 </head>
 <body>
@@ -105,6 +118,24 @@
     </section>
 
     {% for category, message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+
+    <section class="activity" aria-label="Reply activity by time range">
+      <div class="activity-head">
+        <h2 class="activity-title">Channel activity</h2>
+        <div class="range-scroll">
+          <div class="range-buttons" role="group" aria-label="Analytics period">
+            {% for period in activity %}<button class="range-button {% if loop.index == 2 %}active{% endif %}" type="button" data-label="{{ period.label }}" data-received="{{ period.received }}" data-posted="{{ period.posted }}" data-already="{{ period.already_replied }}" data-handled="{{ period.handled }}" aria-pressed="{{ 'true' if loop.index == 2 else 'false' }}">{{ period.label }}</button>{% endfor %}
+          </div>
+        </div>
+      </div>
+      {% set selected = activity[1] %}
+      <div class="activity-values" aria-live="polite">
+        <div class="activity-metric"><span class="activity-number" id="activity-received">{{ selected.received }}</span><span class="activity-name">Comments captured</span></div>
+        <div class="activity-metric highlight"><span class="activity-number" id="activity-posted">{{ selected.posted }}</span><span class="activity-name">Replies posted</span></div>
+        <div class="activity-metric"><span class="activity-number" id="activity-already">{{ selected.already_replied }}</span><span class="activity-name">Already answered</span></div>
+        <div class="activity-metric"><span class="activity-number" id="activity-handled">{{ selected.handled }}</span><span class="activity-name">Handled total</span></div>
+      </div>
+    </section>
 
     <nav class="stats" aria-label="Comment status">
       {% for s in statuses %}
@@ -130,11 +161,11 @@
     {% if not rows %}
       <div class="empty"><strong>No comments found</strong>Try another status, platform, or search term.</div>
     {% else %}
-      {% set qs = query_string and ('?' + query_string) or '' %}{% set show_updated = status != 'posted' %}
+      {% set qs = query_string and ('?' + query_string) or '' %}
       <div class="grid-wrap"><table class="db">
-        <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th>{% if show_updated %}<th>Updated</th>{% endif %}<th>Posted (IST)</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th><th>Posted (IST)</th><th>Actions</th></tr></thead>
         <tbody>{% for row in rows %}<tr>
-          <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span></td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status.replace('_', ' ') }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td>{% if show_updated %}<td>{{ row.updated_at }}</td>{% endif %}<td>{{ row.posted_at_ist or '—' }}</td>
+          <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span></td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status.replace('_', ' ') }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td><td>{{ row.posted_at_ist or '—' }}</td>
           <td>{% if row.status == 'failed' %}<form method="post"><textarea name="draft_reply" rows="3">{{ row.draft_reply or '' }}</textarea><div class="actions"><button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Retry reply</button></div></form>{% else %}—{% endif %}</td>
         </tr>{% endfor %}</tbody>
       </table></div>
@@ -146,5 +177,20 @@
       {% if page < pages %}<a href="/?status={{ status }}&amp;page={{ page + 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">Next →</a>{% endif %}
     </nav>{% endif %}
   </main>
+  <script>
+    document.querySelectorAll('.range-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.range-button').forEach((item) => {
+          const selected = item === button;
+          item.classList.toggle('active', selected);
+          item.setAttribute('aria-pressed', String(selected));
+        });
+        document.getElementById('activity-received').textContent = button.dataset.received;
+        document.getElementById('activity-posted').textContent = button.dataset.posted;
+        document.getElementById('activity-already').textContent = button.dataset.already;
+        document.getElementById('activity-handled').textContent = button.dataset.handled;
+      });
+    });
+  </script>
 </body>
 </html>

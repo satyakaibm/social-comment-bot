@@ -1,6 +1,7 @@
 import socket
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -39,6 +40,42 @@ class DashboardTests(unittest.TestCase):
         pending = self.client.get("/?status=pending_review")
         self.assertIn(b"What time is aarti?", pending.data)
         self.assertIn(b"pending review", pending.data)
+
+    def test_activity_summary_shows_24_hour_week_and_year_totals(self):
+        reference = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+        with db.connect() as conn:
+            db.update_status(conn, "c1", "posted", reply_comment_id="reply")
+            conn.execute(
+                "UPDATE comments SET created_at = ?, updated_at = ? WHERE comment_id = 'c1'",
+                ("2026-09-07T10:00:00+00:00", "2026-09-07T11:00:00+00:00"),
+            )
+            db.insert_comment(
+                conn, comment_id="week", platform="facebook", video_id="post",
+                video_title="Post", author="viewer", text="Hello",
+                published_at="", draft_reply="🙏",
+            )
+            db.update_status(conn, "week", "already_replied", reply_comment_id="manual")
+            conn.execute(
+                "UPDATE comments SET created_at = ?, updated_at = ? WHERE comment_id = 'week'",
+                ("2026-09-03T10:00:00+00:00", "2026-09-03T11:00:00+00:00"),
+            )
+            activity = db.activity_summary(conn, reference_time=reference)
+
+        self.assertEqual(
+            activity,
+            [
+                {"label": "Last 24 hours", "received": 1, "posted": 1, "already_replied": 0, "handled": 1},
+                {"label": "Last 7 days", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
+                {"label": "Last 1 year", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
+            ],
+        )
+        page = self.client.get("/")
+        self.assertIn(b"Last 24 hours", page.data)
+        self.assertIn(b"Last 7 days", page.data)
+        self.assertIn(b"Last 1 year", page.data)
+        self.assertEqual(page.data.count(b'<button class="range-button'), 3)
+        self.assertIn(b"Replies posted", page.data)
+        self.assertIn(b"Handled total", page.data)
 
     def test_posted_failed_and_already_replied_tabs(self):
         with db.connect() as conn:
@@ -136,12 +173,12 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(b"A" * 50, page.data, status)
             self.assertNotIn(b"A" * 51, page.data, status)
 
-    def test_posted_tab_hides_updated_at(self):
+    def test_dashboard_uses_posted_ist_without_updated_column(self):
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="r2", error="")
-        posted = self.client.get("/?status=posted")
-        self.assertIn(b"Created (IST)", posted.data)
-        self.assertNotIn(b"<th>Updated</th>", posted.data)
+        page = self.client.get("/?status=posted")
+        self.assertIn(b"Posted (IST)", page.data)
+        self.assertNotIn(b"<th>Updated</th>", page.data)
 
     def test_list_comments_converts_timestamps_to_ist(self):
         with db.connect() as conn:

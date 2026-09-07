@@ -75,6 +75,7 @@ def create_app() -> Flask:
         offset = (page - 1) * PAGE_SIZE
         with db.connect() as conn:
             counts = db.count_by_status(conn)
+            activity = db.activity_summary(conn)
             total = db.count_comments(
                 conn,
                 status=status,
@@ -97,6 +98,7 @@ def create_app() -> Flask:
             "dashboard.html",
             rows=rows,
             counts=counts,
+            activity=activity,
             statuses=STATUSES,
             platforms=PLATFORMS,
             status=status,
