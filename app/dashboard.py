@@ -79,21 +79,27 @@ def _filters():
         page = max(1, int(request.args.get("page", "1")))
     except ValueError:
         page = 1
-    return status, platform, query, page
+    sort_order = request.args.get("sort", "desc").lower()
+    if sort_order not in {"asc", "desc"}:
+        sort_order = "desc"
+    return status, platform, query, page, sort_order
 
 
 def _index_url(**overrides) -> str:
-    status, platform, query, page = _filters()
+    status, platform, query, page, sort_order = _filters()
     params = {
         "status": overrides.get("status", status),
         "platform": overrides.get("platform", platform),
         "q": overrides.get("q", query),
         "page": str(overrides.get("page", page)),
+        "sort": overrides.get("sort", sort_order),
     }
     cleaned = {
         key: value
         for key, value in params.items()
-        if value and not (key == "page" and value == "1")
+        if value
+        and not (key == "page" and value == "1")
+        and not (key == "sort" and value == "desc")
     }
     return "/?" + urlencode(cleaned) if cleaned else "/"
 
@@ -320,7 +326,7 @@ def create_app() -> Flask:
 
     @app.get("/")
     def index():
-        status, platform, query, page = _filters()
+        status, platform, query, page, sort_order = _filters()
         offset = (page - 1) * PAGE_SIZE
         with db.connect() as conn:
             counts = db.count_by_status(conn, platform=platform or None)
@@ -338,6 +344,7 @@ def create_app() -> Flask:
                     status=status,
                     platform=platform or None,
                     query=query or None,
+                    sort_order=sort_order,
                     limit=PAGE_SIZE,
                     offset=offset,
                 )
@@ -356,6 +363,8 @@ def create_app() -> Flask:
             page=page,
             pages=pages,
             total=total,
+            sort_order=sort_order,
+            next_sort_order="asc" if sort_order == "desc" else "desc",
             query_string=request.query_string.decode(),
             dashboard_username=session["dashboard_username"],
             profile_initial=session["dashboard_username"][:1].upper(),
