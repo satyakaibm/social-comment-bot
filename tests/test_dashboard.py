@@ -44,7 +44,7 @@ class DashboardTests(unittest.TestCase):
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="r1", error="")
         posted = self.client.get("/?status=posted")
-        self.assertIn(b"posted_at_ist", posted.data)
+        self.assertIn(b"Posted (IST)", posted.data)
         self.assertIn(b">r1<", posted.data)
         with db.connect() as conn:
             db.insert_comment(
@@ -140,8 +140,8 @@ class DashboardTests(unittest.TestCase):
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="r2", error="")
         posted = self.client.get("/?status=posted")
-        self.assertIn(b"created_at_ist", posted.data)
-        self.assertNotIn(b"<th>updated_at</th>", posted.data)
+        self.assertIn(b"Created (IST)", posted.data)
+        self.assertNotIn(b"<th>Updated</th>", posted.data)
 
     def test_list_comments_converts_timestamps_to_ist(self):
         with db.connect() as conn:
