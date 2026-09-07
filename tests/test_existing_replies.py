@@ -275,6 +275,18 @@ class ExistingReplyTests(unittest.TestCase):
             with self.assertRaisesRegex(meta_client.GraphAPIError, 'User access token'):
                 meta_client.get_user_access_token()
 
+    def test_user_token_is_the_configured_non_page_token(self):
+        meta_client._user_token_cache = None
+        self.addCleanup(setattr, meta_client, '_user_token_cache', None)
+        identity = MagicMock()
+        identity.json.return_value = {'id': 'user'}
+        with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
+             patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'user-token'), \
+             patch.object(meta_client.requests, 'get', return_value=identity) as get:
+            self.assertEqual(meta_client.get_user_access_token(), 'user-token')
+            self.assertEqual(meta_client.get_user_access_token(), 'user-token')
+            get.assert_called_once()
+
     def test_facebook_likes_use_comment_likes_edge(self):
         with patch.object(meta_client, 'graph_post', return_value={'success': True}) as send:
             meta_client.like_comment('fb-comment', platform='facebook')

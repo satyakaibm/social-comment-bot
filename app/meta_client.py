@@ -11,6 +11,7 @@ GET_RETRIES = 3
 
 _ig_username_cache: str | None = None
 _page_token_cache: str | None = None
+_user_token_cache: str | None = None
 
 
 class GraphAPIError(RuntimeError):
@@ -66,6 +67,35 @@ def get_page_access_token() -> str:
     # Fall back to the configured token in case it's already a Page token.
     _page_token_cache = config.FACEBOOK_PAGE_ACCESS_TOKEN
     return _page_token_cache
+
+
+def get_user_access_token() -> str:
+    """Return a User token for IG User edges that reject Page tokens.
+
+    FACEBOOK_PAGE_ACCESS_TOKEN is often a user token that we later exchange
+    for a Page token. Instagram likes require the original User token with
+    instagram_manage_engagement.
+    """
+    global _user_token_cache
+    if _user_token_cache is not None:
+        return _user_token_cache
+
+    config.require("FACEBOOK_PAGE_ACCESS_TOKEN")
+    token = config.FACEBOOK_PAGE_ACCESS_TOKEN
+    identity_resp = requests.get(
+        _url("me"),
+        params={"fields": "id", "access_token": token},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    identity = identity_resp.json()
+    _raise_if_error("me", identity)
+    if config.FACEBOOK_PAGE_ID and identity.get("id") == config.FACEBOOK_PAGE_ID:
+        raise GraphAPIError(
+            "Instagram comment likes require a User access token with "
+            "instagram_manage_engagement; FACEBOOK_PAGE_ACCESS_TOKEN is a Page token."
+        )
+    _user_token_cache = token
+    return _user_token_cache
 
 
 def graph_get(path: str, **params) -> dict:
@@ -167,15 +197,22 @@ def like_facebook_comment(comment_id: str) -> None:
 
 
 def like_comment(comment_id: str, *, platform: str = "facebook") -> None:
-    """Like a Facebook or Instagram comment with the connected Page token."""
+    """Like a Facebook comment as the Page, or an Instagram comment as the user."""
     if platform == "facebook":
         result = graph_post(f"{comment_id}/likes")
     elif platform == "instagram":
         config.require("INSTAGRAM_USER_ID")
-        result = graph_post(
-            f"{config.INSTAGRAM_USER_ID}/likes",
-            comment_id=comment_id,
+        path = f"{config.INSTAGRAM_USER_ID}/likes"
+        resp = requests.post(
+            _url(path),
+            params={
+                "access_token": get_user_access_token(),
+                "comment_id": comment_id,
+            },
+            timeout=REQUEST_TIMEOUT_SECONDS,
         )
+        result = resp.json()
+        _raise_if_error(path, result)
     else:
         raise ValueError(f"Comment likes are not supported for {platform}.")
     if result.get("success") is not True:
