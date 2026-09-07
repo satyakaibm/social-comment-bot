@@ -8,6 +8,7 @@ venv/
 data/
 *.db
 *.sqlite3
+nohup.out
 token.json
 client_secret*.json
 *credentials*.json
