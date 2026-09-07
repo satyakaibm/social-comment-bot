@@ -125,8 +125,8 @@ youtube_poll_ok=false
       echo "[$(date +"%H:%M:%S")] Instagram: polling failed."
     fi
 
-    echo "[$(date +"%H:%M:%S")] Instagram: publishing pending replies..."
-    if run_cli post --platform instagram --pending --retry-failed --limit "$INSTAGRAM_PUBLISH_LIMIT"; then
+    echo "[$(date +"%H:%M:%S")] Instagram: publishing pending replies and likes..."
+    if run_cli post --platform instagram --pending --retry-failed --like-comments --limit "$INSTAGRAM_PUBLISH_LIMIT"; then
       echo "[$(date +"%H:%M:%S")] Instagram: publishing completed."
     else
       failures=$((failures + 1))

@@ -163,14 +163,21 @@ def find_own_reply(comment_id: str, *, platform: str) -> str | None:
 
 def like_facebook_comment(comment_id: str) -> None:
     """Like a Facebook comment as the configured Page."""
-    result = graph_post(f"{comment_id}/likes")
-    if result.get("success") is not True:
-        raise GraphAPIError(f"{comment_id}/likes: like was not confirmed")
+    like_comment(comment_id, platform="facebook")
 
 
-def like_comment(comment_id: str) -> None:
+def like_comment(comment_id: str, *, platform: str = "facebook") -> None:
     """Like a Facebook or Instagram comment with the connected Page token."""
-    result = graph_post(f"{comment_id}/likes")
+    if platform == "facebook":
+        result = graph_post(f"{comment_id}/likes")
+    elif platform == "instagram":
+        config.require("INSTAGRAM_USER_ID")
+        result = graph_post(
+            f"{config.INSTAGRAM_USER_ID}/likes",
+            comment_id=comment_id,
+        )
+    else:
+        raise ValueError(f"Comment likes are not supported for {platform}.")
     if result.get("success") is not True:
         raise GraphAPIError(f"{comment_id}/likes: like was not confirmed")
 

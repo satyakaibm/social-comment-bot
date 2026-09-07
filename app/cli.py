@@ -176,7 +176,7 @@ def main() -> None:
     post_p.add_argument(
         "--like-comments",
         action="store_true",
-        help="Like each original comment after posting its reply (requires --platform facebook)",
+        help="Like each original Facebook or Instagram comment after posting its reply",
     )
     sub.add_parser(
         "run", help="Continuously poll on an interval (drafting only, no posting)"
@@ -227,8 +227,6 @@ def main() -> None:
     ).set_defaults(func=cmd_redraft)
 
     args = parser.parse_args()
-    if getattr(args, "like_comments", False) and args.platform != "facebook":
-        parser.error("--like-comments requires --platform facebook")
     try:
         args.func(args)
     except KeyboardInterrupt:

@@ -95,7 +95,7 @@ class WebhookTests(unittest.TestCase):
              patch.object(webhook.meta_client, "like_comment") as like:
             webhook.process_event(event)
         reply.assert_called_once_with("comment", "@viewer 🙏", platform="instagram")
-        like.assert_called_once_with("comment")
+        like.assert_called_once_with("comment", platform="instagram")
         with db.connect() as conn:
             row = conn.execute(
                 "SELECT status, reply_comment_id FROM comments WHERE comment_id='comment'"

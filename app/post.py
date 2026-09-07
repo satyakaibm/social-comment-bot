@@ -30,11 +30,10 @@ def post_approved(
 
     Returns the number posted.
     """
-    if like_comments and platform not in ("facebook", "instagram"):
-        raise ValueError("Comment likes require --platform facebook or instagram.")
     db.init_db()
     posted = 0
     consecutive_platform_errors = 0
+    youtube_like_notice_printed = False
     youtube = None  # lazily created only if a YouTube reply needs posting
     channel_id = None
     statuses = ["approved"]
@@ -169,15 +168,27 @@ def post_approved(
                 posted += 1
                 consecutive_platform_errors = 0
                 print(f"Posted reply to {platform} comment {row['comment_id']}.")
-                if like_comments:
+                if like_comments and platform in ("facebook", "instagram"):
                     try:
-                        meta_client.like_comment(row["comment_id"])
+                        meta_client.like_comment(
+                            row["comment_id"], platform=platform
+                        )
                         print(f"Liked {platform} comment {row['comment_id']}.")
-                    except (meta_client.GraphAPIError, RequestException, ValueError):
+                    except (meta_client.GraphAPIError, RequestException, ValueError) as exc:
                         print(
                             f"Reply was posted, but liking {platform} comment "
-                            f"{row['comment_id']} failed. Check Page permissions or like it manually."
+                            f"{row['comment_id']} failed: {exc}. "
+                            "Check Page permissions "
+                            "(instagram_manage_engagement for Instagram) "
+                            "or like it manually."
                         )
+                elif like_comments and platform == "youtube":
+                    if not youtube_like_notice_printed:
+                        print(
+                            "YouTube comments cannot be liked by this automation; "
+                            "the YouTube Data API has no comment-like endpoint."
+                        )
+                        youtube_like_notice_printed = True
             except HttpError as e:
                 if is_quota_exceeded(e):
                     print(
