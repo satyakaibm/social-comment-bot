@@ -12,6 +12,7 @@ def post_approved(
     limit: int | None = None,
     include_pending: bool = False,
     like_comments: bool = False,
+    comment_id: str | None = None,
 ) -> int:
     """Post draft replies to YouTube, Facebook, and Instagram.
 
@@ -20,8 +21,8 @@ def post_approved(
 
     Returns the number posted.
     """
-    if like_comments and platform != "facebook":
-        raise ValueError("Comment likes require --platform facebook.")
+    if like_comments and platform not in ("facebook", "instagram"):
+        raise ValueError("Comment likes require --platform facebook or instagram.")
     db.init_db()
     posted = 0
     youtube = None  # lazily created only if a YouTube reply needs posting
@@ -34,6 +35,7 @@ def post_approved(
             statuses=statuses,
             platform=platform,
             video_id=video_id,
+            comment_id=comment_id,
             limit=limit,
         )
         for row in rows:
@@ -84,22 +86,32 @@ def post_approved(
                     print(f"Unknown platform {platform!r} for comment {row['comment_id']}, skipping.")
                     continue
 
-                db.update_status(conn, row["comment_id"], "posted", reply_comment_id=reply_id)
+                db.update_status(
+                    conn,
+                    row["comment_id"],
+                    "posted",
+                    reply_comment_id=reply_id,
+                    error="",
+                )
                 conn.commit()
                 posted += 1
                 print(f"Posted reply to {platform} comment {row['comment_id']}.")
                 if like_comments:
                     try:
-                        meta_client.like_facebook_comment(row["comment_id"])
-                        print(f"Liked Facebook comment {row['comment_id']}.")
+                        meta_client.like_comment(row["comment_id"])
+                        print(f"Liked {platform} comment {row['comment_id']}.")
                     except (meta_client.GraphAPIError, RequestException, ValueError):
                         print(
-                            f"Reply was posted, but liking Facebook comment "
+                            f"Reply was posted, but liking {platform} comment "
                             f"{row['comment_id']} failed. Check Page permissions or like it manually."
                         )
             except HttpError as e:
+                db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
+                conn.commit()
                 print(f"Failed to post reply to YouTube comment {row['comment_id']}: {e}")
             except meta_client.GraphAPIError as e:
+                db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
+                conn.commit()
                 print(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
 
     return posted

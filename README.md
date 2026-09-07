@@ -2,7 +2,7 @@
 
 Human-in-the-loop auto-replies for **YouTube**, **Facebook Pages**, and **Instagram**. The bot fetches new comments, drafts replies with Gemini, and only publishes after you approve them.
 
-Nothing is posted automatically.
+Nothing is posted automatically unless you run `post` or install `scripts/reply_cron.sh`.
 
 ## How it works
 
@@ -50,6 +50,9 @@ META_GRAPH_VERSION=v21.0
 FACEBOOK_PAGE_ID=
 FACEBOOK_PAGE_ACCESS_TOKEN=
 INSTAGRAM_USER_ID=
+META_APP_SECRET=
+META_WEBHOOK_VERIFY_TOKEN=
+META_WEBHOOK_AUTO_POST=true
 # Optional: restrict polling to specific posts/media. Leave blank to poll the account.
 FACEBOOK_POST_IDS=
 INSTAGRAM_MEDIA_IDS=
@@ -77,6 +80,23 @@ Typical Graph permissions include Page read/manage engagement, `pages_show_list`
 
 `FACEBOOK_PAGE_ID` is the Page's numeric ID. `INSTAGRAM_USER_ID` is the Instagram professional account ID (not the username).
 
+### Facebook and Instagram webhooks
+
+Meta comments can be received immediately without scanning historical posts. The receiver validates Meta's `X-Hub-Signature-256`, saves each delivery to SQLite before processing it, ignores duplicate deliveries and replies, then drafts, replies, and likes the original comment. Set `META_WEBHOOK_AUTO_POST=false` to queue drafts for manual review instead.
+
+1. Copy the Meta app secret into `META_APP_SECRET` and create a private random `META_WEBHOOK_VERIFY_TOKEN`.
+2. Start the receiver:
+
+   ```bash
+   ./scripts/webhook_server.sh
+   ```
+
+3. Expose local port 8080 through a stable public HTTPS URL. The callback is `https://YOUR_HOST/webhooks/meta`; `/health` is available for monitoring.
+4. In the Meta app dashboard, configure that callback and the same verify token.
+5. Subscribe the Facebook Page webhook to `feed` and the Instagram webhook to `comments`, then subscribe the Hindolroad Page/account to the app.
+
+Webhook delivery state is stored in the `webhook_events` table. Use one Gunicorn worker because its background processor owns this SQLite queue.
+
 If `FACEBOOK_POST_IDS` / `INSTAGRAM_MEDIA_IDS` are empty, Facebook polls all Page posts and Instagram polls the most recent `INSTAGRAM_MEDIA_LIMIT` media items. Set those ID lists to stay on specific posts.
 
 ## Reply examples
@@ -103,14 +123,19 @@ python -m app.cli poll-facebook
 python -m app.cli poll-instagram
 python -m app.cli poll-all
 
-# Approve, edit, or reject drafts
+# Approve, edit, or reject drafts in the terminal
 python -m app.cli review
+
+# Localhost admin dashboard (pending, posted, failed, already-replied)
+python -m app.cli dashboard
+# or: ./scripts/dashboard.sh
 
 # Publish approved replies (all platforms)
 python -m app.cli post
 
 # Post approved Facebook replies and like their original comments as the Page
 python -m app.cli post --platform facebook --like-comments
+python -m app.cli post --platform instagram --like-comments
 
 # Post YouTube drafts straight from poll records (skip review), limited batch
 python -m app.cli post --platform youtube --pending --limit 1
@@ -122,15 +147,46 @@ python -m app.cli redraft
 python -m app.cli run
 ```
 
+## Admin dashboard
+
+Open a browser review UI on this machine. It reads `data/comments.db` and stays on localhost (default `http://127.0.0.1:8765/`).
+
+```bash
+chmod +x scripts/dashboard.sh
+./scripts/dashboard.sh
+```
+
+Tabs cover **pending review**, **approved**, **posted**, **failed**, **already replied**, and **rejected**. From pending you can save a draft, approve, approve-and-post, or reject. Failed posts keep the API error and can be retried. Override `DASHBOARD_HOST` / `DASHBOARD_PORT` in `.env` if needed. This is separate from the Meta webhook server on port 8080.
+
+Posting failures are stored as `failed` so they show up in the dashboard. Checking whether you already replied still skips a comment for that run without marking it failed.
+
 `poll-all` continues if one platform fails and prints the error.
 
-`--like-comments` is Facebook-only and requires a Page token with the appropriate engagement permissions (`pages_manage_engagement`). Likes are attempted after successful replies. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's API has no comment-like endpoint; Instagram likes are not implemented.
+## Cron (auto-reply)
+
+`scripts/reply_cron.sh` polls YouTube because YouTube has no comment webhook. Meta polling is disabled when webhooks are used. Set `META_POLL_FALLBACK=true` only while the webhook receiver is unavailable. YouTube posts at most `YOUTUBE_CRON_LIMIT` replies per tick (default 50) so one run cannot exhaust the daily Data API quota.
+
+Make it executable once:
+
+```bash
+chmod +x scripts/reply_cron.sh
+```
+
+Install on this Mac (every 30 minutes). Crontab has no `.env`; the script loads `.venv` and the app loads `.env` from the repo root.
+
+```cron
+*/30 * * * * /Users/satyakaran/Documents/D/myproject/social-comment-bot/scripts/reply_cron.sh
+```
+
+Logs append to `data/cron.log` (that folder is gitignored). Override with `CRON_LOG` / `YOUTUBE_CRON_LIMIT` if needed.
+
+`--like-comments` works for Facebook and Instagram. It uses the Page token and the platform's comment-management permission. Likes are attempted after successful replies. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's API has no comment-like endpoint.
 
 Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]uit`.
 
 ## Notes
 
-- Replies stay in `pending_review` until you run `review`, then `post`.
-- `run` only polls YouTube. Use `poll-all` (or a cron job) for Facebook and Instagram.
+- Manual flow: drafts stay in `pending_review` until `review`, then `post`. The cron script posts pending drafts without that review step.
+- `run` only polls YouTube. Use `poll-all` or `scripts/reply_cron.sh` for Facebook and Instagram (and to post pending drafts).
 - Instagram polling is capped so the first run does not draft replies for every historical comment.
 - Do not commit `.env` or `data/comments.db`.

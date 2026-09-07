@@ -35,6 +35,19 @@ def get_page_access_token() -> str:
         return _page_token_cache
 
     config.require("FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN")
+    # A configured Page token already represents the Page and cannot use the
+    # user-only /me/accounts edge. Detect it before attempting an exchange.
+    identity_resp = requests.get(
+        _url("me"),
+        params={"fields": "id", "access_token": config.FACEBOOK_PAGE_ACCESS_TOKEN},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    identity = identity_resp.json()
+    _raise_if_error("me", identity)
+    if identity.get("id") == config.FACEBOOK_PAGE_ID:
+        _page_token_cache = config.FACEBOOK_PAGE_ACCESS_TOKEN
+        return _page_token_cache
+
     resp = requests.get(
         _url("me/accounts"),
         params={"fields": "id,access_token", "access_token": config.FACEBOOK_PAGE_ACCESS_TOKEN},
@@ -116,8 +129,8 @@ def find_own_reply(comment_id: str, *, platform: str) -> str | None:
     return None
 
 
-def like_facebook_comment(comment_id: str) -> None:
-    """Like a Facebook comment as the configured Page."""
+def like_comment(comment_id: str) -> None:
+    """Like a Facebook or Instagram comment using the Page access token."""
     result = graph_post(f"{comment_id}/likes")
     if result.get("success") is not True:
         raise GraphAPIError(f"{comment_id}/likes: like was not confirmed")
