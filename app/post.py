@@ -1,7 +1,7 @@
 from googleapiclient.errors import HttpError
 from requests import RequestException
 
-from app import db, meta_client
+from app import config, db, meta_client
 from app.sanitize import sanitize_draft
 from app.youtube_client import (
     find_own_reply,
@@ -32,6 +32,7 @@ def post_approved(
         raise ValueError("Comment likes require --platform facebook or instagram.")
     db.init_db()
     posted = 0
+    consecutive_platform_errors = 0
     youtube = None  # lazily created only if a YouTube reply needs posting
     channel_id = None
     statuses = ["approved", "pending_review"] if include_pending else ["approved"]
@@ -141,6 +142,7 @@ def post_approved(
                 )
                 conn.commit()
                 posted += 1
+                consecutive_platform_errors = 0
                 print(f"Posted reply to {platform} comment {row['comment_id']}.")
                 if like_comments:
                     try:
@@ -165,6 +167,14 @@ def post_approved(
                 db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
                 conn.commit()
                 print(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
+                consecutive_platform_errors += 1
+                if consecutive_platform_errors >= config.PUBLISH_ERROR_LIMIT:
+                    print(
+                        f"Stopped {platform} publishing after "
+                        f"{consecutive_platform_errors} consecutive API errors; "
+                        "remaining comments were left unchanged."
+                    )
+                    break
             except RequestException as e:
                 # A timed-out write may still have reached Meta. Keep the row
                 # pending so the next run checks for that reply before retrying.

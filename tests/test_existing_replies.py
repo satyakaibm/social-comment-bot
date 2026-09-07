@@ -77,6 +77,35 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(row['status'], 'failed')
             self.assertIn('token expired', row['error'])
 
+    def test_repeated_graph_errors_stop_the_platform_batch(self):
+        with db.connect() as conn:
+            for index in range(5):
+                comment_id = f'instagram-{index}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='instagram',
+                    video_id='media', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+
+        with patch.object(post.config, 'PUBLISH_ERROR_LIMIT', 3), \
+             patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(
+                 meta_client, 'reply_to_comment',
+                 side_effect=meta_client.GraphAPIError('comment not added'),
+             ) as send:
+            self.assertEqual(post.post_approved(platform='instagram'), 0)
+
+        self.assertEqual(send.call_count, 3)
+        with db.connect() as conn:
+            statuses = {
+                row['status']
+                for row in conn.execute(
+                    "SELECT status FROM comments WHERE platform = 'instagram'"
+                )
+            }
+            self.assertEqual(statuses, {'failed', 'approved'})
+
     def test_meta_write_timeout_stays_pending_for_duplicate_check(self):
         self.seed('facebook')
         with patch.object(meta_client, 'find_own_reply', return_value=None), \

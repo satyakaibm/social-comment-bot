@@ -20,6 +20,7 @@ YOUTUBE_VIDEO_IDS = [
 ]
 YOUTUBE_VIDEO_LIMIT = int(os.environ.get("YOUTUBE_VIDEO_LIMIT", "10"))
 YOUTUBE_COMMENT_LIMIT = int(os.environ.get("YOUTUBE_COMMENT_LIMIT", "100"))
+PUBLISH_ERROR_LIMIT = int(os.environ.get("PUBLISH_ERROR_LIMIT", "3"))
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
@@ -44,6 +45,7 @@ FACEBOOK_POST_IDS = [
 ]
 FACEBOOK_POST_LIMIT = int(os.environ.get("FACEBOOK_POST_LIMIT", "10"))
 FACEBOOK_COMMENT_LIMIT = int(os.environ.get("FACEBOOK_COMMENT_LIMIT", "100"))
+FACEBOOK_PUBLISH_LIMIT = int(os.environ.get("FACEBOOK_PUBLISH_LIMIT", "25"))
 INSTAGRAM_MEDIA_IDS = [
     v.strip() for v in os.environ.get("INSTAGRAM_MEDIA_IDS", "").split(",") if v.strip()
 ]
@@ -54,6 +56,7 @@ INSTAGRAM_MEDIA_IDS = [
 # comment across all of them in one go.
 INSTAGRAM_MEDIA_LIMIT = int(os.environ.get("INSTAGRAM_MEDIA_LIMIT", "10"))
 INSTAGRAM_COMMENT_LIMIT = int(os.environ.get("INSTAGRAM_COMMENT_LIMIT", "100"))
+INSTAGRAM_PUBLISH_LIMIT = int(os.environ.get("INSTAGRAM_PUBLISH_LIMIT", "25"))
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")

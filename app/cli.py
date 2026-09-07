@@ -164,6 +164,9 @@ def main() -> None:
         parser.error("--like-comments requires --platform facebook")
     try:
         args.func(args)
+    except KeyboardInterrupt:
+        print("Interrupted; current operation stopped cleanly.", file=sys.stderr)
+        raise SystemExit(130) from None
     except Exception as exc:
         print(f"{type(exc).__name__}: {exc}", file=sys.stderr)
         raise SystemExit(1) from None
