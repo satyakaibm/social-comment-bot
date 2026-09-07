@@ -3,214 +3,148 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Comment review</title>
+  <meta name="theme-color" content="#0f2a38">
+  <title>Comment Review · Content My Trip</title>
   <style>
     :root {
-      --bg: #f4f1ea;
-      --ink: #1c1917;
-      --muted: #57534e;
-      --card: #fffcf7;
-      --line: #d6d3d1;
-      --accent: #9a3412;
-      --ok: #166534;
-      --err: #9f1239;
-      --head: #e7e5e4;
+      --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --pink:#e23670;
+      --teal:#36aeb4; --canvas:#f5f7f8; --surface:#fff; --ink:#17252c;
+      --muted:#667984; --line:#dce4e8; --danger:#c43d55;
+      --shadow:0 14px 40px rgba(15,42,56,.08);
     }
-    * { box-sizing: border-box; }
+    * { box-sizing:border-box; }
+    html { background:var(--canvas); }
     body {
-      margin: 0;
-      font-family: "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--ink);
+      margin:0; min-height:100vh; color:var(--ink);
+      background:radial-gradient(circle at 94% 4%,rgba(255,106,61,.08),transparent 26rem),radial-gradient(circle at 5% 45%,rgba(54,174,180,.06),transparent 24rem),var(--canvas);
+      font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
     }
-    header, main { padding-left: 1rem; padding-right: 1rem; }
-    header { padding-top: 1.1rem; }
-    h1 { margin: 0 0 0.25rem; font-size: 1.35rem; }
-    .sub { color: var(--muted); margin: 0; font-size: 0.9rem; }
-    main { padding-bottom: 3rem; }
-    .flash { padding: 0.7rem 0.9rem; border-radius: 8px; margin: 0.8rem 0; }
-    .flash.ok { background: #dcfce7; color: var(--ok); }
-    .flash.error { background: #ffe4e6; color: var(--err); }
-    .tabs, .filters { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0.8rem 0; }
-    .tab, .chip {
-      text-decoration: none;
-      color: var(--ink);
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 0.35rem 0.75rem;
-      font-size: 0.85rem;
+    a { color:inherit; }
+    .topbar {
+      height:74px; padding:0 28px; display:flex; align-items:center; justify-content:space-between; gap:24px;
+      background:rgba(255,255,255,.92); border-bottom:1px solid rgba(15,42,56,.09);
+      backdrop-filter:blur(16px); position:sticky; top:0; z-index:20;
     }
-    .tab.active, .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-    .count { opacity: 0.75; }
-    form.search { display: flex; gap: 0.5rem; margin: 0.5rem 0 1rem; max-width: 640px; }
-    input[type=search], textarea {
-      font: inherit;
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 0.4rem 0.55rem;
-      background: #fff;
-      width: 100%;
-    }
-    button {
-      font: inherit;
-      border: 0;
-      border-radius: 6px;
-      padding: 0.3rem 0.55rem;
-      cursor: pointer;
-      background: var(--accent);
-      color: #fff;
-      white-space: nowrap;
-    }
-    button.secondary { background: #44403c; }
-    button.danger { background: var(--err); }
-    .grid-wrap {
-      overflow: auto;
-      max-height: calc(100vh - 280px);
-      border: 1px solid var(--line);
-      background: #fff;
-    }
-    table.db {
-      border-collapse: collapse;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 12px;
-      min-width: 1400px;
-      width: 100%;
-    }
-    table.db th {
-      background: var(--head);
-      text-align: left;
-      font-weight: 600;
-      position: sticky;
-      top: 0;
-      z-index: 1;
-    }
-    table.db th, table.db td {
-      border: 1px solid var(--line);
-      padding: 6px 8px;
-      vertical-align: top;
-    }
-    table.db tbody tr:nth-child(even) { background: #fafaf9; }
-    table.db tbody tr:hover { background: #fff7ed; }
-    td.wrap { white-space: pre-wrap; max-width: 260px; word-break: break-word; }
-    td.narrow { max-width: 140px; word-break: break-all; }
-    td.title { max-width: 22em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .actions { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
-    .error-box { color: var(--err); }
-    .empty { color: var(--muted); padding: 1.5rem 0; }
-    .pager { display: flex; gap: 0.8rem; align-items: center; margin-top: 1rem; }
-    .pager a { color: var(--accent); }
+    .brand { display:flex; align-items:center; min-width:0; text-decoration:none; }
+    .brand img { display:block; width:178px; height:58px; object-fit:contain; object-position:left center; }
+    .service-tag { margin-left:17px; padding-left:17px; border-left:1px solid var(--line); color:var(--muted); font-size:13px; font-weight:650; white-space:nowrap; }
+    .gateway { display:inline-flex; align-items:center; gap:8px; padding:9px 13px; border-radius:999px; color:#086142; background:#e9f8f1; border:1px solid #c9ecdd; font-size:12px; font-weight:750; text-decoration:none; }
+    .gateway-dot { width:8px; height:8px; border-radius:50%; background:#20b878; box-shadow:0 0 0 4px rgba(32,184,120,.12); }
+    .page { width:min(1800px,100%); margin:0 auto; padding:34px 28px 52px; }
+    .intro { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:25px; }
+    .eyebrow { margin:0 0 8px; color:var(--coral); font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+    h1 { margin:0; color:var(--navy); font-size:clamp(28px,4vw,42px); line-height:1.08; letter-spacing:-.035em; }
+    .intro-copy { margin:10px 0 0; color:var(--muted); font-size:14px; line-height:1.6; }
+    .timezone { color:var(--muted); font-size:12px; white-space:nowrap; }
+    .flash { padding:13px 16px; border-radius:12px; margin:0 0 18px; border:1px solid; font-size:14px; }
+    .flash.ok { color:#086142; background:#e9f8f1; border-color:#c9ecdd; }
+    .flash.error { color:#98253d; background:#fff0f3; border-color:#f5ccd5; }
+    .stats { display:grid; grid-template-columns:repeat(5,minmax(135px,1fr)); gap:12px; margin-bottom:22px; }
+    .stat { position:relative; min-height:102px; padding:18px; overflow:hidden; text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:17px; box-shadow:0 5px 18px rgba(15,42,56,.035); transition:.18s ease; }
+    .stat:hover { transform:translateY(-2px); border-color:#b9c9d1; box-shadow:var(--shadow); }
+    .stat.active { color:#fff; background:linear-gradient(135deg,var(--navy),var(--navy-soft)); border-color:transparent; box-shadow:0 16px 32px rgba(15,42,56,.18); }
+    .stat.active::after { content:""; position:absolute; width:95px; height:95px; right:-32px; bottom:-46px; border:20px solid rgba(255,106,61,.34); border-radius:50%; }
+    .stat-label { display:block; color:var(--muted); font-size:11px; font-weight:750; letter-spacing:.08em; text-transform:uppercase; }
+    .stat.active .stat-label { color:rgba(255,255,255,.68); }
+    .stat-value { display:block; margin-top:8px; color:var(--navy); font-size:28px; font-weight:800; line-height:1; }
+    .stat.active .stat-value { color:#fff; }
+    .toolbar { padding:15px; display:flex; align-items:center; justify-content:space-between; gap:15px; background:var(--surface); border:1px solid var(--line); border-radius:17px 17px 0 0; }
+    .platforms { display:flex; flex-wrap:wrap; gap:7px; }
+    .chip { padding:8px 12px; color:var(--muted); background:#f7f9fa; border:1px solid var(--line); border-radius:10px; font-size:12px; font-weight:700; text-decoration:none; text-transform:capitalize; }
+    .chip:hover,.chip.active { color:var(--navy); background:#fff4ef; border-color:#ffc7b6; }
+    form.search { display:flex; gap:8px; width:min(520px,100%); }
+    .search-wrap { position:relative; flex:1; }
+    .search-icon { position:absolute; left:13px; top:50%; width:17px; height:17px; transform:translateY(-50%); color:#82939c; pointer-events:none; }
+    input[type=search],textarea { width:100%; color:var(--ink); background:#f8fafb; border:1px solid var(--line); border-radius:10px; font:inherit; outline:none; }
+    input[type=search] { height:40px; padding:0 13px 0 40px; font-size:13px; }
+    input[type=search]:focus,textarea:focus { background:#fff; border-color:var(--teal); box-shadow:0 0 0 3px rgba(54,174,180,.12); }
+    button { min-height:40px; padding:0 16px; color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; border-radius:10px; font:inherit; font-size:13px; font-weight:750; cursor:pointer; box-shadow:0 5px 14px rgba(255,106,61,.2); }
+    button:hover { filter:brightness(.97); transform:translateY(-1px); }
+    .table-meta { padding:11px 16px; color:var(--muted); background:#fbfcfc; border:1px solid var(--line); border-top:0; font-size:12px; }
+    .grid-wrap { max-height:calc(100vh - 390px); overflow:auto; background:#fff; border:1px solid var(--line); border-top:0; border-radius:0 0 17px 17px; box-shadow:var(--shadow); }
+    table.db { width:100%; min-width:1510px; border-collapse:separate; border-spacing:0; font-size:12px; }
+    table.db th { position:sticky; top:0; z-index:2; padding:12px 11px; color:#61737c; background:#f1f5f6; border-bottom:1px solid var(--line); text-align:left; font-size:10px; font-weight:800; letter-spacing:.065em; text-transform:uppercase; }
+    table.db td { padding:12px 11px; border-bottom:1px solid #e9eef0; vertical-align:top; line-height:1.45; }
+    table.db tbody tr { transition:background .15s ease; }
+    table.db tbody tr:hover { background:#fffaf8; }
+    table.db tbody tr:last-child td { border-bottom:0; }
+    td.wrap { max-width:260px; white-space:pre-wrap; word-break:break-word; }
+    td.narrow { max-width:150px; color:#61737c; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; word-break:break-all; }
+    td.title { max-width:240px; overflow:hidden; color:var(--navy); font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .platform-badge,.status-badge { display:inline-flex; align-items:center; padding:5px 8px; border-radius:7px; font-size:10px; font-weight:800; text-transform:capitalize; }
+    .platform-youtube { color:#bd2335; background:#fff0f2; }
+    .platform-facebook { color:#2459a8; background:#eef4ff; }
+    .platform-instagram { color:#a52f68; background:#fff0f7; }
+    .status-posted,.status-already_replied { color:#08714b; background:#e8f8f1; }
+    .status-pending_review,.status-approved { color:#996010; background:#fff6e7; }
+    .status-failed,.status-rejected { color:#aa3048; background:#fff0f3; }
+    .error-box { color:var(--danger); }
+    textarea { min-width:210px; padding:9px; resize:vertical; font-size:12px; }
+    .actions { margin-top:7px; }
+    .empty { padding:64px 24px; color:var(--muted); background:#fff; border:1px solid var(--line); border-top:0; border-radius:0 0 17px 17px; text-align:center; box-shadow:var(--shadow); }
+    .empty strong { display:block; margin-bottom:7px; color:var(--navy); font-size:16px; }
+    .pager { display:flex; align-items:center; justify-content:center; gap:18px; margin-top:20px; color:var(--muted); font-size:13px; }
+    .pager a { padding:8px 12px; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:9px; font-weight:700; text-decoration:none; }
+    @media (max-width:980px) { .stats{grid-template-columns:repeat(3,1fr)} .toolbar{align-items:stretch;flex-direction:column} form.search{width:100%} .grid-wrap{max-height:none} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px} .brand img{width:135px;height:48px} .service-tag,.gateway span:last-child{display:none} .page{padding:25px 15px 40px} .intro{align-items:flex-start;flex-direction:column} .timezone{display:none} .stats{grid-template-columns:repeat(2,1fr)} .stat{min-height:88px;padding:15px} .stat-value{font-size:23px} form.search button{padding:0 12px} }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Comment review</h1>
-    <p class="sub">Pending review, posted, failed, already-replied, and rejected comments. Replies post automatically via webhook and cron. Times are IST (UTC+5:30).</p>
+  <header class="topbar">
+    <a class="brand" href="/">
+      <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
+      <span class="service-tag">Social Comment Studio</span>
+    </a>
+    <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway operational</span></a>
   </header>
-  <main>
-    {% for category, message in get_flashed_messages(with_categories=true) %}
-      <div class="flash {{ category }}">{{ message }}</div>
-    {% endfor %}
 
-    <nav class="tabs">
+  <main class="page">
+    <section class="intro">
+      <div><p class="eyebrow">Community workspace</p><h1>Comment review</h1><p class="intro-copy">Review conversations and monitor automated replies across every connected channel.</p></div>
+      <span class="timezone">All timestamps shown in IST · UTC+5:30</span>
+    </section>
+
+    {% for category, message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+
+    <nav class="stats" aria-label="Comment status">
       {% for s in statuses %}
-          <a class="tab {% if s == status %}active{% endif %}" href="/?status={{ s }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">
-          {{ s.replace('_', ' ') }} <span class="count">{{ counts.get(s, 0) }}</span>
+        <a class="stat {% if s == status %}active{% endif %}" href="/?status={{ s }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">
+          <span class="stat-label">{{ s.replace('_', ' ') }}</span><span class="stat-value">{{ counts.get(s, 0) }}</span>
         </a>
       {% endfor %}
     </nav>
 
-    <div class="filters">
-      <a class="chip {% if not platform %}active{% endif %}" href="/?status={{ status }}{% if query %}&amp;q={{ query }}{% endif %}">All platforms</a>
-      {% for p in platforms %}
-        <a class="chip {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query }}{% endif %}">{{ p }}</a>
-      {% endfor %}
-    </div>
+    <section class="toolbar" aria-label="Comment filters">
+      <div class="platforms">
+        <a class="chip {% if not platform %}active{% endif %}" href="/?status={{ status }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All platforms</a>
+        {% for p in platforms %}<a class="chip {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p }}</a>{% endfor %}
+      </div>
+      <form class="search" method="get">
+        <input type="hidden" name="status" value="{{ status }}">{% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
+        <div class="search-wrap"><svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><input type="search" name="q" value="{{ query }}" placeholder="Search comments, authors, replies or titles"></div>
+        <button type="submit">Search</button>
+      </form>
+    </section>
 
-    <form class="search" method="get">
-      <input type="hidden" name="status" value="{{ status }}">
-      {% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
-      <input type="search" name="q" value="{{ query }}" placeholder="Search author, comment, draft, or post title">
-      <button type="submit">Search</button>
-    </form>
-
-    <p class="sub">{{ total }} comment{{ '' if total == 1 else 's' }} in this view.</p>
-
+    <div class="table-meta">Showing {{ total }} comment{{ '' if total == 1 else 's' }} · {{ status.replace('_', ' ')|title }}</div>
     {% if not rows %}
-      <p class="empty">No comments in this view.</p>
+      <div class="empty"><strong>No comments found</strong>Try another status, platform, or search term.</div>
     {% else %}
-      {% set qs = query_string and ('?' + query_string) or '' %}
-      {% set show_updated = status != 'posted' %}
-      <div class="grid-wrap">
-        <table class="db">
-          <thead>
-            <tr>
-              <th>comment_id</th>
-              <th>platform</th>
-              <th>video_id</th>
-              <th>video_title</th>
-              <th>author</th>
-              <th>text</th>
-              <th>published_at_ist</th>
-              <th>status</th>
-              <th>draft_reply</th>
-              <th>reply_comment_id</th>
-              <th>error</th>
-              <th>created_at_ist</th>
-              {% if show_updated %}
-              <th>updated_at</th>
-              {% endif %}
-              <th>posted_at_ist</th>
-              <th>actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for row in rows %}
-              <tr>
-                <td class="narrow">{{ row.comment_id }}</td>
-                <td>{{ row.platform }}</td>
-                <td class="narrow">{{ row.video_id }}</td>
-                <td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td>
-                <td>{{ row.author }}</td>
-                <td class="wrap">{{ row.text }}</td>
-                <td>{{ row.published_at_ist or '' }}</td>
-                <td>{{ row.status }}</td>
-                <td class="wrap">{{ row.draft_reply or '' }}</td>
-                <td class="narrow">{{ row.reply_comment_id or '' }}</td>
-                <td class="wrap error-box">{{ row.error or '' }}</td>
-                <td>{{ row.created_at_ist or '' }}</td>
-                {% if show_updated %}
-                <td>{{ row.updated_at }}</td>
-                {% endif %}
-                <td>{{ row.posted_at_ist or '' }}</td>
-                <td>
-                  {% if row.status == 'failed' %}
-                    <form method="post">
-                      <textarea name="draft_reply" rows="3">{{ row.draft_reply or '' }}</textarea>
-                      <div class="actions">
-                        <button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Retry post</button>
-                      </div>
-                    </form>
-                  {% endif %}
-                </td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+      {% set qs = query_string and ('?' + query_string) or '' %}{% set show_updated = status != 'posted' %}
+      <div class="grid-wrap"><table class="db">
+        <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th>{% if show_updated %}<th>Updated</th>{% endif %}<th>Posted (IST)</th><th>Actions</th></tr></thead>
+        <tbody>{% for row in rows %}<tr>
+          <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span></td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status.replace('_', ' ') }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td>{% if show_updated %}<td>{{ row.updated_at }}</td>{% endif %}<td>{{ row.posted_at_ist or '—' }}</td>
+          <td>{% if row.status == 'failed' %}<form method="post"><textarea name="draft_reply" rows="3">{{ row.draft_reply or '' }}</textarea><div class="actions"><button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Retry reply</button></div></form>{% else %}—{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
     {% endif %}
 
-    {% if pages > 1 %}
-      <div class="pager">
-        {% if page > 1 %}
-          <a href="/?status={{ status }}&amp;page={{ page - 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query }}{% endif %}">Previous</a>
-        {% endif %}
-        <span>Page {{ page }} of {{ pages }}</span>
-        {% if page < pages %}
-          <a href="/?status={{ status }}&amp;page={{ page + 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query }}{% endif %}">Next</a>
-        {% endif %}
-      </div>
-    {% endif %}
+    {% if pages > 1 %}<nav class="pager" aria-label="Pagination">
+      {% if page > 1 %}<a href="/?status={{ status }}&amp;page={{ page - 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">← Previous</a>{% endif %}
+      <span>Page {{ page }} of {{ pages }}</span>
+      {% if page < pages %}<a href="/?status={{ status }}&amp;page={{ page + 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">Next →</a>{% endif %}
+    </nav>{% endif %}
   </main>
 </body>
 </html>

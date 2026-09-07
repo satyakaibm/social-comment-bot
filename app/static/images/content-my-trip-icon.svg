@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" width="240" height="240">
+  <defs>
+    <linearGradient id="cRingGradGIcon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E23670"/>
+      <stop offset="100%" stop-color="#FF6A3D"/>
+    </linearGradient>
+    <linearGradient id="triGradGIcon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF4B3E"/>
+      <stop offset="100%" stop-color="#A5122B"/>
+    </linearGradient>
+    <filter id="softShadowGIcon" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2.4" stdDeviation="2.6" flood-color="#7a0f22" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <g transform="translate(80,80) scale(1.28)">
+    <path d="M 41.4 34.7 A 54 54 0 1 1 41.4 -34.7" fill="none" stroke="url(#cRingGradGIcon)" stroke-width="30" stroke-linecap="round"/>
+    <g filter="url(#softShadowGIcon)">
+      <path d="M -17 -24 L -17 24 L 27 0 Z" fill="url(#triGradGIcon)"/>
+      <path d="M -17 -24 L 9 -10 L -17 -2 Z" fill="#FFFFFF" opacity="0.35"/>
+    </g>
+  </g>
+</svg>
