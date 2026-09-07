@@ -125,6 +125,9 @@
     .grid-wrap { height:clamp(360px,58vh,760px); max-width:100%; overflow:auto; overscroll-behavior:contain; -webkit-overflow-scrolling:touch; background:#fff; border:1px solid var(--line); border-top:0; border-radius:0 0 17px 17px; box-shadow:var(--shadow); }
     table.db { width:100%; min-width:1510px; border-collapse:separate; border-spacing:0; font-size:12px; }
     table.db th { position:sticky; top:0; z-index:2; padding:12px 11px; color:#61737c; background:#f1f5f6; border-bottom:1px solid var(--line); text-align:left; font-size:10px; font-weight:800; letter-spacing:.065em; text-transform:uppercase; }
+    .sort-button { min-height:30px; padding:0 9px; display:inline-flex; align-items:center; gap:6px; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:none; font-size:10px; letter-spacing:.065em; text-decoration:none; white-space:nowrap; }
+    .sort-button:hover { border-color:var(--teal); transform:none; }
+    .sort-arrow { font-size:14px; line-height:1; }
     table.db td { padding:12px 11px; border-bottom:1px solid #e9eef0; vertical-align:top; line-height:1.45; }
     table.db tbody tr { transition:background .15s ease; }
     table.db tbody tr:hover { background:#fffaf8; }
@@ -236,7 +239,7 @@
 
     <section class="toolbar" aria-label="Comment filters">
       <form class="search" method="get">
-        <input type="hidden" name="status" value="{{ status }}">{% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
+        <input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="sort" value="{{ sort_order }}">{% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
         <div class="search-wrap"><svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><input type="search" name="q" value="{{ query }}" placeholder="Search comments, authors, replies or titles"></div>
         <button type="submit">Search</button>
       </form>
@@ -248,7 +251,7 @@
     {% else %}
       {% set qs = query_string and ('?' + query_string) or '' %}
       <div class="grid-wrap"><table class="db">
-        <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th><th>Posted (IST)</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th><th><a class="sort-button" href="/?status={{ status }}&amp;sort={{ next_sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}" title="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}" aria-label="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}">Posted (IST) <span class="sort-arrow" aria-hidden="true">{{ '↓' if sort_order == 'desc' else '↑' }}</span></a></th><th>Actions</th></tr></thead>
         <tbody>{% for row in rows %}<tr>
           <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span></td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status.replace('_', ' ') }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td><td>{{ row.posted_at_ist or '—' }}</td>
           <td>{% if row.status == 'failed' %}<form method="post"><textarea name="draft_reply" rows="3">{{ row.draft_reply or '' }}</textarea><div class="actions"><button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Retry reply</button></div></form>{% else %}—{% endif %}</td>
@@ -257,9 +260,9 @@
     {% endif %}
 
     {% if pages > 1 %}<nav class="pager" aria-label="Pagination">
-      {% if page > 1 %}<a href="/?status={{ status }}&amp;page={{ page - 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">← Previous</a>{% endif %}
+      {% if page > 1 %}<a href="/?status={{ status }}&amp;page={{ page - 1 }}&amp;sort={{ sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">← Previous</a>{% endif %}
       <span>Page {{ page }} of {{ pages }}</span>
-      {% if page < pages %}<a href="/?status={{ status }}&amp;page={{ page + 1 }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">Next →</a>{% endif %}
+      {% if page < pages %}<a href="/?status={{ status }}&amp;page={{ page + 1 }}&amp;sort={{ sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">Next →</a>{% endif %}
     </nav>{% endif %}
   </main>
   <footer class="site-footer">

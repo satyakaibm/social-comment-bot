@@ -389,6 +389,7 @@ def list_comments(
     status: str | None = None,
     platform: str | None = None,
     query: str | None = None,
+    sort_order: str = "desc",
     limit: int = 50,
     offset: int = 0,
 ):
@@ -414,7 +415,8 @@ def list_comments(
         params.extend([like, like, like, like])
     # posted_at_ist is the IST rendering of updated_at, so this keeps the most
     # recently posted or otherwise handled comments at the top of the table.
-    sql += " ORDER BY updated_at DESC, created_at DESC LIMIT ? OFFSET ?"
+    direction = "ASC" if sort_order == "asc" else "DESC"
+    sql += f" ORDER BY updated_at {direction}, created_at {direction} LIMIT ? OFFSET ?"
     params.extend([limit, offset])
     return conn.execute(sql, params).fetchall()
 
