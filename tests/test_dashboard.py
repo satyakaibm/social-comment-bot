@@ -31,6 +31,7 @@ class DashboardTests(unittest.TestCase):
         with self.client.session_transaction() as auth_session:
             auth_session["dashboard_authenticated"] = True
             auth_session["dashboard_auth_version"] = 1
+            auth_session["dashboard_username"] = "admin"
         with db.connect() as conn:
             db.insert_comment(
                 conn,
@@ -47,10 +48,20 @@ class DashboardTests(unittest.TestCase):
     def test_pending_review_tab_is_shown(self):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b'<header class="topbar">', page.data)
+        self.assertIn(b'<header class="site-header">', page.data)
+        self.assertIn(b'<div class="topbar">', page.data)
+        self.assertIn(b'class="service-nav"', page.data)
+        self.assertIn(b"Social Comment Studio", page.data)
+        self.assertIn(b"Gateway Health", page.data)
+        self.assertNotIn(b"Gateway operational", page.data)
         self.assertIn(b'<footer class="site-footer">', page.data)
         self.assertIn(b"Capture. Curate. Publish.", page.data)
         self.assertIn(b"Gateway health", page.data)
+        self.assertIn(b'id="auto-refresh"', page.data)
+        self.assertIn(b'aria-label="Enable auto refresh"', page.data)
+        self.assertIn(b"comment-dashboard-auto-refresh", page.data)
+        self.assertNotIn(b">Auto refresh</button>", page.data)
+        self.assertNotIn(b"All timestamps shown in IST", page.data)
         self.assertIn(b"Community workspace", page.data)
         self.assertNotIn(
             b"Review conversations and monitor automated replies", page.data
@@ -85,16 +96,18 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(
             activity,
             [
-                {"label": "Last 24 hours", "received": 1, "posted": 1, "already_replied": 0, "handled": 1},
-                {"label": "Last 7 days", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
-                {"label": "Last 1 year", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
+                {"label": "1 Hour", "received": 0, "posted": 1, "already_replied": 0, "handled": 1},
+                {"label": "24 Hours", "received": 1, "posted": 1, "already_replied": 0, "handled": 1},
+                {"label": "7 Day", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
+                {"label": "365 Days", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
             ],
         )
         page = self.client.get("/")
-        self.assertIn(b"Last 24 hours", page.data)
-        self.assertIn(b"Last 7 days", page.data)
-        self.assertIn(b"Last 1 year", page.data)
-        self.assertEqual(page.data.count(b'<button class="range-button'), 3)
+        self.assertIn(b"1 Hour", page.data)
+        self.assertIn(b"24 Hours", page.data)
+        self.assertIn(b"7 Day", page.data)
+        self.assertIn(b"365 Days", page.data)
+        self.assertEqual(page.data.count(b'<button class="range-button'), 4)
         self.assertIn(b"Replies posted", page.data)
         self.assertIn(b"Handled total", page.data)
 
@@ -159,6 +172,37 @@ class DashboardTests(unittest.TestCase):
 
         self.assertEqual([row["comment_id"] for row in rows], ["newest", "c1"])
 
+    def test_comment_table_paginates_in_batches_of_one_hundred(self):
+        with db.connect() as conn:
+            db.update_status(conn, "c1", "posted", reply_comment_id="reply-c1")
+            for index in range(100):
+                comment_id = f"page-comment-{index:03d}"
+                db.insert_comment(
+                    conn,
+                    comment_id=comment_id,
+                    platform="youtube",
+                    video_id="video",
+                    video_title="Title",
+                    author="viewer",
+                    text=f"Comment {index}",
+                    published_at="",
+                    draft_reply="🙏",
+                )
+                db.update_status(
+                    conn, comment_id, "posted", reply_comment_id=f"reply-{index}"
+                )
+
+        first_page = self.client.get("/?status=posted")
+        self.assertIn(b"Page 1 of 2", first_page.data)
+        self.assertIn(b"Next", first_page.data)
+        self.assertEqual(first_page.data.count(b"<tbody>") , 1)
+        self.assertEqual(first_page.data.count(b"<tr>"), 101)
+
+        second_page = self.client.get("/?status=posted&page=2")
+        self.assertIn(b"Page 2 of 2", second_page.data)
+        self.assertIn(b"Previous", second_page.data)
+        self.assertEqual(second_page.data.count(b"<tr>"), 2)
+
     def test_retry_posts_failed_comment(self):
         with db.connect() as conn:
             db.update_status(conn, "c1", "failed", error="token expired")
@@ -199,6 +243,9 @@ class DashboardTests(unittest.TestCase):
         page = self.client.get("/health")
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Gateway is healthy", page.data)
+        self.assertIn(b'aria-label="Back to Comment Dashboard"', page.data)
+        self.assertIn(b"event.key === 'Backspace'", page.data)
+        self.assertIn(b"window.location.assign('/')", page.data)
         self.assertEqual(self.client.get("/api/health").json, {"status": "ok"})
 
     def test_dashboard_requires_login_and_accepts_valid_credentials(self):
@@ -209,6 +256,7 @@ class DashboardTests(unittest.TestCase):
 
         login_page = client.get("/login?next=/?status=posted")
         self.assertIn(b"Welcome back", login_page.data)
+        self.assertIn(b"Create an account", login_page.data)
         with client.session_transaction() as login_session:
             csrf_token = login_session["csrf_token"]
         invalid = client.post(
@@ -232,6 +280,57 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(valid.status_code, 302)
         self.assertTrue(valid.headers["Location"].endswith("/?status=posted"))
         self.assertEqual(client.get("/?status=posted").status_code, 200)
+
+    def test_signup_creates_unique_user_and_redirects_to_login(self):
+        client = self.app.test_client()
+        signup_page = client.get("/signup")
+        self.assertEqual(signup_page.status_code, 200)
+        self.assertIn(b"Create account", signup_page.data)
+        self.assertIn(b'minlength="8"', signup_page.data)
+        self.assertIn(
+            b"one uppercase letter, one number, and one special character",
+            signup_page.data,
+        )
+        with client.session_transaction() as signup_session:
+            token = signup_session["csrf_token"]
+        created = client.post(
+            "/signup",
+            data={
+                "username": "new.user",
+                "password": "Fresh1!x",
+                "confirm_password": "Fresh1!x",
+                "csrf_token": token,
+            },
+        )
+        self.assertEqual(created.status_code, 302)
+        self.assertIn("/login?registered=1", created.headers["Location"])
+
+        duplicate = client.post(
+            "/signup",
+            data={
+                "username": "NEW.USER",
+                "password": "Fresh1!x",
+                "confirm_password": "Fresh1!x",
+                "csrf_token": token,
+            },
+        )
+        self.assertEqual(duplicate.status_code, 409)
+        self.assertIn(b"already registered", duplicate.data)
+
+        login_page = client.get("/login?registered=1")
+        self.assertIn(b"Account created", login_page.data)
+        with client.session_transaction() as login_session:
+            login_token = login_session["csrf_token"]
+        logged_in = client.post(
+            "/login",
+            data={
+                "username": "new.user",
+                "password": "Fresh1!x",
+                "csrf_token": login_token,
+            },
+        )
+        self.assertEqual(logged_in.status_code, 302)
+        self.assertEqual(client.get("/").status_code, 200)
 
     def test_machine_health_and_meta_webhook_remain_public(self):
         client = self.app.test_client()
@@ -260,10 +359,80 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Reset password", page.data)
         self.assertIn(b"Log out", page.data)
 
+        profile_page = self.client.get("/profile")
+        self.assertEqual(profile_page.status_code, 200)
+        self.assertIn(b"Manage your portal account details", profile_page.data)
+        self.assertIn(b'value="admin" readonly', profile_page.data)
+        self.assertIn(b'<a class="back" href="/">BACK</a>', profile_page.data)
+        self.assertNotIn(b"Back to dashboard", profile_page.data)
+        with self.client.session_transaction() as auth_session:
+            auth_session["csrf_token"] = "profile-token"
+        updated_profile = self.client.post(
+            "/profile",
+            data={
+                "csrf_token": "profile-token",
+                "display_name": "Portal Admin",
+                "email": "admin@example.com",
+            },
+        )
+        self.assertEqual(updated_profile.status_code, 200)
+        self.assertIn(b"Profile details updated", updated_profile.data)
+        with db.connect() as conn:
+            user = db.get_dashboard_user(conn, "admin")
+        self.assertEqual(user["display_name"], "Portal Admin")
+        self.assertEqual(user["email"], "admin@example.com")
+
+        with db.connect() as conn:
+            db.create_dashboard_user(
+                conn, "second-user", generate_password_hash("Second1!")
+            )
+            self.assertTrue(
+                db.update_dashboard_user_profile(
+                    conn,
+                    "second-user",
+                    display_name="Second User",
+                    email="second@example.com",
+                )
+            )
+        duplicate_email = self.client.post(
+            "/profile",
+            data={
+                "csrf_token": "profile-token",
+                "display_name": "Portal Admin",
+                "email": "SECOND@example.com",
+            },
+        )
+        self.assertEqual(duplicate_email.status_code, 409)
+        self.assertIn(b"already registered to another account", duplicate_email.data)
+        self.assertIn(b'value="SECOND@example.com"', duplicate_email.data)
+        with db.connect() as conn:
+            self.assertEqual(
+                db.get_dashboard_user(conn, "admin")["email"], "admin@example.com"
+            )
+
+        reset_page = self.client.get("/profile/password")
+        self.assertIn(b'minlength="8"', reset_page.data)
+        self.assertIn(b"one uppercase letter, one number, and one special character", reset_page.data)
+
+        with self.client.session_transaction() as auth_session:
+            auth_session["csrf_token"] = "weak-token"
+        weak = self.client.post(
+            "/profile/password",
+            data={
+                "csrf_token": "weak-token",
+                "current_password": "secret",
+                "new_password": "lowercase1",
+                "confirm_password": "lowercase1",
+            },
+        )
+        self.assertEqual(weak.status_code, 400)
+        self.assertIn(b"one uppercase letter, one number, and one special character", weak.data)
+
         other_client = self.app.test_client()
         with other_client.session_transaction() as other_session:
             other_session["dashboard_authenticated"] = True
             other_session["dashboard_auth_version"] = 1
+            other_session["dashboard_username"] = "admin"
         with self.client.session_transaction() as auth_session:
             auth_session["csrf_token"] = "reset-token"
         response = self.client.post(
@@ -271,8 +440,8 @@ class DashboardTests(unittest.TestCase):
             data={
                 "csrf_token": "reset-token",
                 "current_password": "secret",
-                "new_password": "new-secret-123",
-                "confirm_password": "new-secret-123",
+                "new_password": "New-secret1",
+                "confirm_password": "New-secret1",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -286,7 +455,7 @@ class DashboardTests(unittest.TestCase):
             "/login",
             data={
                 "username": "admin",
-                "password": "new-secret-123",
+                "password": "New-secret1",
                 "csrf_token": token,
             },
         )

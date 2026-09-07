@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2a38">
+  <title>My Profile · Content My Trip</title>
+  <style>
+    :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
+    * { box-sizing:border-box; }
+    body { min-height:100vh; margin:0; padding:32px 20px; color:#17252c; background:radial-gradient(circle at 90% 5%,rgba(255,106,61,.14),transparent 30rem),#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(760px,100%); margin:auto; }
+    .brand { display:block; width:190px; height:64px; margin:0 auto 24px; object-fit:contain; }
+    .card { padding:34px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.12); }
+    .profile-head { display:flex; align-items:center; gap:16px; margin-bottom:28px; }
+    .avatar { width:58px; height:58px; display:grid; place-items:center; flex:0 0 auto; color:#fff; background:linear-gradient(135deg,var(--navy),#36aeb4); border-radius:50%; font-size:22px; font-weight:850; }
+    h1 { margin:0; color:var(--navy); font-size:29px; letter-spacing:-.03em; }
+    .sub { margin:5px 0 0; color:var(--muted); font-size:13px; }
+    .message { padding:11px 13px; margin:0 0 18px; border:1px solid; border-radius:10px; font-size:13px; }
+    .error { color:#98253d; background:#fff0f3; border-color:#f5ccd5; }
+    .success { color:#086142; background:#e9f8f1; border-color:#c9ecdd; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    label { display:block; margin:0 0 7px; color:var(--navy); font-size:12px; font-weight:750; }
+    input { width:100%; height:46px; padding:0 13px; color:#17252c; background:#f8fafb; border:1px solid var(--line); border-radius:11px; font:inherit; outline:none; }
+    input:focus { background:#fff; border-color:#36aeb4; box-shadow:0 0 0 3px rgba(54,174,180,.12); }
+    input[readonly] { color:var(--muted); cursor:not-allowed; }
+    .details { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:24px 0; padding:18px; background:#f8fafb; border:1px solid var(--line); border-radius:14px; }
+    .detail-label { display:block; color:var(--muted); font-size:10px; font-weight:750; text-transform:uppercase; }
+    .detail-value { display:block; margin-top:5px; font-size:12px; word-break:break-word; }
+    .actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    button,.secondary { min-height:44px; padding:0 17px; display:inline-flex; align-items:center; justify-content:center; border-radius:11px; font:inherit; font-size:13px; font-weight:800; text-decoration:none; cursor:pointer; }
+    button { color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; }
+    .secondary { color:var(--navy); background:#fff; border:1px solid var(--line); }
+    .back { width:max-content; min-width:120px; min-height:46px; margin:22px auto 0; padding:0 20px; display:flex; align-items:center; justify-content:center; color:#fff; background:var(--navy); border-radius:12px; box-shadow:0 8px 22px rgba(15,42,56,.2); font-size:15px; font-weight:850; letter-spacing:.08em; text-align:center; text-decoration:none; }
+    .back:hover { background:#173b4c; transform:translateY(-1px); }
+    @media (max-width:600px) { .card{padding:25px 20px}.grid,.details{grid-template-columns:1fr}.actions{align-items:stretch;flex-direction:column}.actions>*{width:100%} }
+  </style>
+</head>
+<body>
+  <main>
+    <img class="brand" src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
+    <section class="card">
+      <div class="profile-head"><span class="avatar">{{ user.username[:1]|upper }}</span><div><h1>My Profile</h1><p class="sub">Manage your portal account details and security.</p></div></div>
+      {% if error %}<p class="message error">{{ error }}</p>{% endif %}
+      {% if success %}<p class="message success">{{ success }}</p>{% endif %}
+      <form method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="grid">
+          <div><label for="username">User ID</label><input id="username" value="{{ user.username }}" readonly></div>
+          <div><label for="display-name">Display name</label><input id="display-name" name="display_name" value="{{ user.display_name or '' }}" maxlength="100" autocomplete="name"></div>
+          <div><label for="email">Email address</label><input id="email" name="email" type="email" value="{{ user.email or '' }}" maxlength="254" autocomplete="email"></div>
+        </div>
+        <div class="details"><div><span class="detail-label">Account created</span><span class="detail-value">{{ user.created_at }}</span></div><div><span class="detail-label">Last updated</span><span class="detail-value">{{ user.updated_at }}</span></div></div>
+        <div class="actions"><a class="secondary" href="/profile/password">Reset password</a><button type="submit">Save profile</button></div>
+      </form>
+    </section>
+    <a class="back" href="/">BACK</a>
+  </main>
+</body>
+</html>
