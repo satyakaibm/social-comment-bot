@@ -106,6 +106,41 @@ class ExistingReplyTests(unittest.TestCase):
             }
             self.assertEqual(statuses, {'failed', 'approved'})
 
+    def test_failed_reply_is_checked_and_retried(self):
+        self.seed('instagram')
+        with db.connect() as conn:
+            db.update_status(
+                conn, 'instagram', 'failed',
+                draft_reply='@viewer {"reply": 🙏 }}', error='interrupted',
+            )
+        with patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
+            self.assertEqual(
+                post.post_approved(platform='instagram', include_failed=True), 1
+            )
+
+        send.assert_called_once_with('instagram', '@viewer 🙏', platform='instagram')
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'instagram')
+            self.assertEqual(row['status'], 'posted')
+            self.assertEqual(row['error'], '')
+
+    def test_failed_reply_is_not_duplicated_when_remote_reply_exists(self):
+        self.seed('instagram')
+        with db.connect() as conn:
+            db.update_status(conn, 'instagram', 'failed', error='interrupted')
+        with patch.object(meta_client, 'find_own_reply', return_value='remote'), \
+             patch.object(meta_client, 'reply_to_comment') as send:
+            self.assertEqual(
+                post.post_approved(platform='instagram', include_failed=True), 0
+            )
+
+        send.assert_not_called()
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'instagram')
+            self.assertEqual(row['status'], 'already_replied')
+            self.assertEqual(row['reply_comment_id'], 'remote')
+
     def test_meta_write_timeout_stays_pending_for_duplicate_check(self):
         self.seed('facebook')
         with patch.object(meta_client, 'find_own_reply', return_value=None), \

@@ -121,7 +121,7 @@ youtube_poll_ok=false
     fi
 
     echo "[$(date +"%H:%M:%S")] Instagram: publishing pending replies..."
-    if run_cli post --platform instagram --pending --limit "$INSTAGRAM_PUBLISH_LIMIT"; then
+    if run_cli post --platform instagram --pending --retry-failed --limit "$INSTAGRAM_PUBLISH_LIMIT"; then
       echo "[$(date +"%H:%M:%S")] Instagram: publishing completed."
     else
       failures=$((failures + 1))
@@ -129,7 +129,7 @@ youtube_poll_ok=false
     fi
 
     echo "[$(date +"%H:%M:%S")] Facebook: publishing pending replies and likes..."
-    if run_cli post --platform facebook --pending --like-comments --limit "$FACEBOOK_PUBLISH_LIMIT"; then
+    if run_cli post --platform facebook --pending --retry-failed --like-comments --limit "$FACEBOOK_PUBLISH_LIMIT"; then
       echo "[$(date +"%H:%M:%S")] Facebook: publishing completed."
     else
       failures=$((failures + 1))
@@ -141,7 +141,7 @@ youtube_poll_ok=false
 
   if [[ "$youtube_poll_ok" == "true" ]]; then
     echo "[$(date +"%H:%M:%S")] YouTube: publishing up to $YOUTUBE_PUBLISH_LIMIT pending replies..."
-    if run_cli post --platform youtube --pending --limit "$YOUTUBE_PUBLISH_LIMIT"; then
+    if run_cli post --platform youtube --pending --retry-failed --limit "$YOUTUBE_PUBLISH_LIMIT"; then
       echo "[$(date +"%H:%M:%S")] YouTube: publishing completed."
     else
       failures=$((failures + 1))

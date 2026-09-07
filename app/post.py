@@ -18,13 +18,15 @@ def post_approved(
     video_id: str | None = None,
     limit: int | None = None,
     include_pending: bool = False,
+    include_failed: bool = False,
     like_comments: bool = False,
     comment_id: str | None = None,
 ) -> int:
     """Post draft replies to YouTube, Facebook, and Instagram.
 
-    By default only `approved` rows are posted. Pass include_pending=True to
-    also post `pending_review` drafts (useful for a live trial from poll records).
+    By default only `approved` rows are posted. Pending and failed rows can be
+    included explicitly. Every row is checked remotely before posting, so a
+    retry cannot duplicate a reply that succeeded before an interruption.
 
     Returns the number posted.
     """
@@ -35,7 +37,11 @@ def post_approved(
     consecutive_platform_errors = 0
     youtube = None  # lazily created only if a YouTube reply needs posting
     channel_id = None
-    statuses = ["approved", "pending_review"] if include_pending else ["approved"]
+    statuses = ["approved"]
+    if include_pending:
+        statuses.append("pending_review")
+    if include_failed:
+        statuses.append("failed")
 
     with db.connect() as conn:
         rows = db.list_for_post(

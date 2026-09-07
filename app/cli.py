@@ -56,6 +56,7 @@ def cmd_post(args) -> None:
         video_id=args.video_id,
         limit=args.limit,
         include_pending=args.pending,
+        include_failed=args.retry_failed,
         like_comments=args.like_comments,
     )
     print(f"Posted {n} reply(ies).")
@@ -137,6 +138,11 @@ def main() -> None:
         "--pending",
         action="store_true",
         help="Also post pending_review drafts (skip interactive review)",
+    )
+    post_p.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="Retry failed replies after checking that no reply already exists",
     )
     post_p.set_defaults(func=cmd_post)
     post_p.add_argument(

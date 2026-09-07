@@ -201,7 +201,13 @@ def list_for_post(
     if comment_id:
         sql += " AND comment_id = ?"
         params.append(comment_id)
-    sql += " ORDER BY created_at ASC"
+    # Process fresh work before retries so a permanently failing old comment
+    # cannot starve new replies when a per-cycle limit is used.
+    sql += """ ORDER BY CASE status
+        WHEN 'approved' THEN 0
+        WHEN 'pending_review' THEN 1
+        WHEN 'failed' THEN 2
+        ELSE 3 END, created_at ASC"""
     if limit is not None:
         sql += " LIMIT ?"
         params.append(limit)
