@@ -77,6 +77,16 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Replies posted", page.data)
         self.assertIn(b"Handled total", page.data)
 
+        facebook = self.client.get("/?status=already_replied&platform=facebook")
+        self.assertIn(b'class="activity-platform active" href="/?status=already_replied&amp;platform=facebook"', facebook.data)
+        self.assertIn(b'<span class="stat-label">already replied</span><span class="stat-value">1</span>', facebook.data)
+        self.assertIn(b'data-received="1"', facebook.data)
+        self.assertIn(b'data-already="1"', facebook.data)
+
+        youtube = self.client.get("/?status=posted&platform=youtube")
+        self.assertIn(b'<span class="stat-label">posted</span><span class="stat-value">1</span>', youtube.data)
+        self.assertIn(b'data-posted="1"', youtube.data)
+
     def test_posted_failed_and_already_replied_tabs(self):
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="r1", error="")

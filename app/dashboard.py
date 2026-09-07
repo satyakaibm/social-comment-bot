@@ -74,8 +74,8 @@ def create_app() -> Flask:
         status, platform, query, page = _filters()
         offset = (page - 1) * PAGE_SIZE
         with db.connect() as conn:
-            counts = db.count_by_status(conn)
-            activity = db.activity_summary(conn)
+            counts = db.count_by_status(conn, platform=platform or None)
+            activity = db.activity_summary(conn, platform=platform or None)
             total = db.count_comments(
                 conn,
                 status=status,

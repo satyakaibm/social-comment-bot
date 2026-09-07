@@ -147,15 +147,24 @@ def reset_stale_posting(conn: sqlite3.Connection, *, minutes: int = 10) -> int:
     return result.rowcount
 
 
-def count_by_status(conn: sqlite3.Connection) -> dict[str, int]:
-    rows = conn.execute(
-        "SELECT status, COUNT(*) AS n FROM comments GROUP BY status"
-    ).fetchall()
+def count_by_status(
+    conn: sqlite3.Connection, *, platform: str | None = None
+) -> dict[str, int]:
+    sql = "SELECT status, COUNT(*) AS n FROM comments"
+    params = []
+    if platform:
+        sql += " WHERE platform = ?"
+        params.append(platform)
+    sql += " GROUP BY status"
+    rows = conn.execute(sql, params).fetchall()
     return {row["status"]: row["n"] for row in rows}
 
 
 def activity_summary(
-    conn: sqlite3.Connection, *, reference_time: datetime | None = None
+    conn: sqlite3.Connection,
+    *,
+    reference_time: datetime | None = None,
+    platform: str | None = None,
 ) -> list[dict]:
     """Return received and handled comment totals for dashboard time windows."""
     reference_time = reference_time or datetime.now(timezone.utc)
@@ -167,20 +176,29 @@ def activity_summary(
     summaries = []
     for label, duration in windows:
         cutoff = (reference_time - duration).isoformat()
+        platform_filter = "AND platform = ?" if platform else ""
+        params = (
+            [cutoff, platform, cutoff, platform, cutoff, platform]
+            if platform
+            else [cutoff, cutoff, cutoff]
+        )
         row = conn.execute(
-            """
+            f"""
             SELECT
-                SUM(CASE WHEN datetime(created_at) >= datetime(?) THEN 1 ELSE 0 END)
+                SUM(CASE WHEN datetime(created_at) >= datetime(?)
+                          {platform_filter} THEN 1 ELSE 0 END)
                     AS received,
                 SUM(CASE WHEN status = 'posted'
-                          AND datetime(updated_at) >= datetime(?) THEN 1 ELSE 0 END)
+                          AND datetime(updated_at) >= datetime(?)
+                          {platform_filter} THEN 1 ELSE 0 END)
                     AS posted,
                 SUM(CASE WHEN status = 'already_replied'
-                          AND datetime(updated_at) >= datetime(?) THEN 1 ELSE 0 END)
+                          AND datetime(updated_at) >= datetime(?)
+                          {platform_filter} THEN 1 ELSE 0 END)
                     AS already_replied
             FROM comments
             """,
-            (cutoff, cutoff, cutoff),
+            params,
         ).fetchone()
         posted = int(row["posted"] or 0)
         already_replied = int(row["already_replied"] or 0)
