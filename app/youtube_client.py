@@ -7,6 +7,18 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
+def is_quota_exceeded(error: Exception) -> bool:
+    """Return whether a YouTube API error reports exhausted daily quota."""
+    quota_reasons = {"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"}
+    for detail in getattr(error, "error_details", []) or []:
+        if isinstance(detail, dict) and detail.get("reason") in quota_reasons:
+            return True
+    content = getattr(error, "content", b"")
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", errors="replace")
+    return any(reason in str(content) for reason in quota_reasons)
+
+
 def get_client() -> Resource:
     config.require(
         "YOUTUBE_OAUTH_CLIENT_ID", "YOUTUBE_OAUTH_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"

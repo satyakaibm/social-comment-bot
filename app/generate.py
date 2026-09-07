@@ -108,18 +108,19 @@ def draft_reply(*, platform: str = "youtube", context_title: str, author: str, c
         "Draft a reply in the same style as the examples when they apply. "
     )
     client = _get_client()
+    generation_config = types.GenerateContentConfig(
+        system_instruction=system_instruction,
+        max_output_tokens=300,
+        response_mime_type="application/json",
+    )
 
     for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
         try:
-            response = client.models.generate_content(
+            chat = client.chats.create(
                 model=config.GEMINI_MODEL,
-                contents=user_message,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    max_output_tokens=300,
-                    response_mime_type="application/json",
-                ),
+                config=generation_config,
             )
+            response = chat.send_message(user_message)
             reply = _parse_draft_payload(response.text.strip())
             if platform in _MENTION_PLATFORMS:
                 reply = f"@{author} {reply}"
