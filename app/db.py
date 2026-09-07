@@ -1,6 +1,6 @@
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.config import DB_PATH
 
@@ -115,6 +115,36 @@ def get_comment(conn: sqlite3.Connection, comment_id: str):
     return conn.execute(
         "SELECT * FROM comments WHERE comment_id = ?", (comment_id,)
     ).fetchone()
+
+
+def claim_comment_for_post(
+    conn: sqlite3.Connection, comment_id: str, expected_status: str
+) -> bool:
+    """Atomically reserve one comment for a single publishing process."""
+    result = conn.execute(
+        """
+        UPDATE comments
+        SET status = 'posting', updated_at = ?
+        WHERE comment_id = ? AND status = ?
+        """,
+        (now(), comment_id, expected_status),
+    )
+    return result.rowcount == 1
+
+
+def reset_stale_posting(conn: sqlite3.Connection, *, minutes: int = 10) -> int:
+    """Release claims left behind when a publisher was forcibly stopped."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+    result = conn.execute(
+        """
+        UPDATE comments
+        SET status = 'failed', error = 'Publishing was interrupted; safe to retry',
+            updated_at = ?
+        WHERE status = 'posting' AND updated_at < ?
+        """,
+        (now(), cutoff),
+    )
+    return result.rowcount
 
 
 def count_by_status(conn: sqlite3.Connection) -> dict[str, int]:

@@ -87,6 +87,7 @@ if [[ -f "$SCRIPT_DIR/.venv/bin/activate" ]]; then
 fi
 
 export PYTHONPATH="$SCRIPT_DIR"
+meta_webhook_enabled="$(python -c 'from app import config; print(str(config.META_WEBHOOK_ENABLED).lower())')"
 echo ""
 echo "==== Polling cycle started: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
 echo "Config: $POLLING_CONFIG_FILE"
@@ -103,7 +104,7 @@ youtube_poll_ok=false
     echo "[$(date +"%H:%M:%S")] YouTube: polling failed; publishing skipped for this cycle."
   fi
 
-  if [[ "${META_WEBHOOK_ENABLED:-false}" != "true" ]]; then
+  if [[ "$meta_webhook_enabled" != "true" ]]; then
     echo "[$(date +"%H:%M:%S")] Facebook: polling latest comments..."
     if run_cli poll-facebook; then
       echo "[$(date +"%H:%M:%S")] Facebook: polling completed."

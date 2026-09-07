@@ -141,6 +141,30 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(row['status'], 'already_replied')
             self.assertEqual(row['reply_comment_id'], 'remote')
 
+    def test_atomic_claim_allows_only_one_publisher(self):
+        self.seed('instagram')
+        with db.connect() as first:
+            self.assertTrue(
+                db.claim_comment_for_post(first, 'instagram', 'approved')
+            )
+        with db.connect() as second:
+            self.assertFalse(
+                db.claim_comment_for_post(second, 'instagram', 'approved')
+            )
+            self.assertEqual(
+                db.get_comment(second, 'instagram')['status'], 'posting'
+            )
+
+    def test_publisher_skips_row_claimed_by_another_process(self):
+        self.seed('instagram')
+        with patch.object(db, 'claim_comment_for_post', return_value=False), \
+             patch.object(meta_client, 'find_own_reply') as find, \
+             patch.object(meta_client, 'reply_to_comment') as send:
+            self.assertEqual(post.post_approved(platform='instagram'), 0)
+
+        find.assert_not_called()
+        send.assert_not_called()
+
     def test_meta_write_timeout_stays_pending_for_duplicate_check(self):
         self.seed('facebook')
         with patch.object(meta_client, 'find_own_reply', return_value=None), \

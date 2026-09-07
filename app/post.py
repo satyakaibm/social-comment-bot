@@ -44,6 +44,9 @@ def post_approved(
         statuses.append("failed")
 
     with db.connect() as conn:
+        recovered = db.reset_stale_posting(conn)
+        if recovered:
+            print(f"Recovered {recovered} interrupted publishing claim(s).")
         rows = db.list_for_post(
             conn,
             statuses=statuses,
@@ -71,6 +74,16 @@ def post_approved(
 
         for row in rows:
             platform = row["platform"]
+            original_status = row["status"]
+            if not db.claim_comment_for_post(
+                conn, row["comment_id"], original_status
+            ):
+                print(
+                    f"Skipped {platform} comment {row['comment_id']}: "
+                    "another process is already handling it."
+                )
+                continue
+            conn.commit()
             try:
                 if platform == "youtube":
                     video_owner_id = video_channel_ids.get(row["video_id"], "")
@@ -79,6 +92,8 @@ def post_approved(
                             "Could not confirm the video owner for YouTube comment "
                             f"{row['comment_id']}; skipping to prevent a duplicate reply."
                         )
+                        db.update_status(conn, row["comment_id"], original_status)
+                        conn.commit()
                         continue
                     if youtube is None:
                         youtube = get_client()
@@ -95,8 +110,12 @@ def post_approved(
                     existing_reply = meta_client.find_own_reply(row["comment_id"], platform=platform)
                 else:
                     print(f"Unknown platform {platform!r}, skipping.")
+                    db.update_status(conn, row["comment_id"], original_status)
+                    conn.commit()
                     continue
             except Exception:
+                db.update_status(conn, row["comment_id"], original_status)
+                conn.commit()
                 print(f"Could not verify existing replies for {platform} comment {row['comment_id']}; skipping this run.")
                 continue
             if existing_reply:
@@ -109,7 +128,7 @@ def post_approved(
                 db.update_status(
                     conn,
                     row["comment_id"],
-                    row["status"],
+                    "posting",
                     draft_reply=reply_text,
                 )
                 conn.commit()
@@ -186,8 +205,12 @@ def post_approved(
                 # pending so the next run checks for that reply before retrying.
                 print(
                     f"Meta request timed out for {platform} comment "
-                    f"{row['comment_id']}; left pending for verification: {e}"
+                    f"{row['comment_id']}; left retryable for verification: {e}"
                 )
+                db.update_status(
+                    conn, row["comment_id"], original_status, error=str(e)[:1000]
+                )
+                conn.commit()
 
     return posted
 

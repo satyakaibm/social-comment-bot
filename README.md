@@ -99,7 +99,7 @@ Webhook delivery state is visible in the `webhook_events` SQLite table. Run one 
 
 Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. Its output is appended to `data/polling.log`; follow a running cycle with `tail -f data/polling.log`.
 
-Each cron cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. The three `*_PUBLISH_LIMIT` values control how many replies can be attempted in that cycle. New work is processed first, then failed replies are retried after a remote duplicate check. `PUBLISH_ERROR_LIMIT` stops a platform after repeated consecutive API errors. The script also prevents overlapping cron runs and handles interruption without a Python traceback. The cron entry does not need limit variables:
+Each cron cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. The three `*_PUBLISH_LIMIT` values control how many replies can be attempted in that cycle. New work is processed first, then failed replies are retried after a remote duplicate check. `PUBLISH_ERROR_LIMIT` stops a platform after repeated consecutive API errors. The script prevents overlapping cron runs, and webhook and cron publishers atomically claim each comment before posting. Interrupted claims become retryable after ten minutes. The cron entry does not need limit variables:
 
 ```cron
 0 * * * * /Users/satyakaran/Documents/D/myproject/social-comment-bot/scripts/reply_comments.sh

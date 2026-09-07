@@ -11,6 +11,7 @@ from app.webhook import register_meta_routes, start_event_worker
 
 STATUSES = (
     "pending_review",
+    "posting",
     "posted",
     "failed",
     "already_replied",
