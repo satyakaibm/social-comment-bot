@@ -189,8 +189,8 @@ class DashboardTests(unittest.TestCase):
         markup = page.data.decode()
         banner_end = markup.index("</section>", markup.index('class="intro"'))
         self.assertLess(banner_end, markup.index('class="service-nav"'))
-        self.assertIn("Social Comment Studio", markup)
         self.assertIn("Gateway Health", markup)
+        self.assertNotIn('class="service-link"', markup)
 
     def test_comment_table_paginates_in_batches_of_one_hundred(self):
         with db.connect() as conn:

@@ -52,9 +52,8 @@
     }
     .brand { display:flex; align-items:center; min-width:0; text-decoration:none; }
     .brand img { display:block; width:178px; height:58px; object-fit:contain; object-position:left center; }
-    .service-nav { min-height:45px; margin:-10px 0 22px; padding:6px 2px; display:flex; align-items:center; gap:8px; overflow-x:auto; scrollbar-width:thin; }
-    .service-link,.gateway { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
-    .service-link { color:var(--navy); background:#fff; border:1px solid var(--line); }
+    .service-nav { min-height:45px; margin:-10px 0 22px; padding:6px 2px; display:flex; align-items:center; justify-content:flex-end; gap:8px; overflow-x:auto; scrollbar-width:thin; }
+    .gateway { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
     .gateway { color:#086142; background:#e9f8f1; border:1px solid #c9ecdd; }
     .gateway-dot { width:8px; height:8px; border-radius:50%; background:#20b878; box-shadow:0 0 0 4px rgba(32,184,120,.12); }
     .topbar-actions { display:flex; align-items:center; gap:9px; }
@@ -165,7 +164,7 @@
     @media (max-width:1280px) { .stats{grid-template-columns:repeat(3,minmax(150px,1fr))}.grid-wrap{height:55vh} }
     @media (max-width:980px) { .topbar{padding:0 22px}.toolbar{align-items:stretch;flex-direction:column}form.search{width:100%}.grid-wrap{height:58vh}.footer-main{grid-template-columns:1.4fr 1fr 1fr;gap:28px} }
     @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column}.activity-platforms,.range-scroll{width:100%}.activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px}.footer-main{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:135px;height:48px}.profile summary{width:40px;height:40px}.service-link,.gateway{flex:0 0 auto}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 60px 19px 17px}.intro-actions{position:absolute;top:16px;right:16px}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:135px;height:48px}.profile summary{width:40px;height:40px}.gateway{flex:0 0 auto}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 60px 19px 17px}.intro-actions{position:absolute;top:16px;right:16px}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
     @media (max-width:390px) { .activity-platform{padding:8px 10px}.range-button{padding:0 10px}.stat-label{font-size:9px}.search{flex-direction:column}.search button{width:100%}.grid-wrap{height:56vh} }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important} }
   </style>
@@ -205,7 +204,6 @@
     </section>
 
     <nav class="service-nav" aria-label="Service navigation">
-      <a class="service-link" href="/">Social Comment Studio</a>
       <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway Health</span></a>
     </nav>
 
