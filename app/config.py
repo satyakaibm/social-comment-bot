@@ -1,3 +1,4 @@
+import base64
 import os
 from pathlib import Path
 
@@ -37,6 +38,17 @@ META_WEBHOOK_ENABLED = os.environ.get("META_WEBHOOK_ENABLED", "false").lower() i
 DASHBOARD_HOST = os.environ.get("DASHBOARD_HOST", "127.0.0.1")
 DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "9001"))
 DASHBOARD_SECRET = os.environ.get("DASHBOARD_SECRET", "localhost-dashboard")
+DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "")
+_dashboard_password_hash_b64 = os.environ.get("DASHBOARD_PASSWORD_HASH_B64", "")
+DASHBOARD_PASSWORD_HASH = (
+    base64.urlsafe_b64decode(_dashboard_password_hash_b64.encode()).decode()
+    if _dashboard_password_hash_b64
+    else os.environ.get("DASHBOARD_PASSWORD_HASH", "")
+)
+DASHBOARD_SESSION_HOURS = int(os.environ.get("DASHBOARD_SESSION_HOURS", "12"))
+DASHBOARD_COOKIE_SECURE = os.environ.get(
+    "DASHBOARD_COOKIE_SECURE", "false"
+).lower() in ("1", "true", "yes", "on")
 
 # Optional: comma-separated Facebook post IDs / Instagram media IDs to
 # restrict polling to. Leave blank to poll all posts/media on the account.

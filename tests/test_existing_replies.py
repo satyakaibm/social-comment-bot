@@ -284,6 +284,45 @@ class ExistingReplyTests(unittest.TestCase):
                 self.assertEqual(meta_client.find_own_reply('parent', platform=platform), 'mine')
                 get.assert_called_once()
 
+    def test_facebook_uses_independent_lookup_when_comments_edge_misses_reply(self):
+        with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'owner'), \
+             patch.object(meta_client, 'iter_paged', return_value=iter([])), \
+             patch.object(
+                 meta_client,
+                 'graph_get',
+                 return_value={
+                     'comments': {
+                         'data': [
+                             {'id': 'viewer-reply', 'from': {'id': 'viewer'}},
+                             {'id': 'page-reply', 'from': {'id': 'owner'}},
+                         ]
+                     }
+                 },
+             ) as get:
+            self.assertEqual(
+                meta_client.find_own_reply('parent', platform='facebook'),
+                'page-reply',
+            )
+
+        get.assert_called_once_with(
+            'parent', fields='comments.limit(100){id,from}'
+        )
+
+    def test_facebook_does_not_run_fallback_when_edge_finds_reply(self):
+        with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'owner'), \
+             patch.object(
+                 meta_client,
+                 'iter_paged',
+                 return_value=iter([{'id': 'page-reply', 'from': {'id': 'owner'}}]),
+             ), \
+             patch.object(meta_client, 'graph_get') as get:
+            self.assertEqual(
+                meta_client.find_own_reply('parent', platform='facebook'),
+                'page-reply',
+            )
+
+        get.assert_not_called()
+
     def test_meta_reply_endpoints(self):
         with patch.object(meta_client, 'graph_post', return_value={'id':'new'}) as send:
             for platform, edge in (('facebook','comments'), ('instagram','replies')):

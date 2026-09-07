@@ -4,6 +4,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
+from werkzeug.security import generate_password_hash
 
 from app import config, db, dashboard
 
@@ -15,9 +16,21 @@ class DashboardTests(unittest.TestCase):
         patcher = patch.object(db, "DB_PATH", Path(self.temp.name) / "comments.db")
         patcher.start()
         self.addCleanup(patcher.stop)
+        username = patch.object(config, "DASHBOARD_USERNAME", "admin")
+        password = patch.object(
+            config, "DASHBOARD_PASSWORD_HASH", generate_password_hash("secret")
+        )
+        username.start()
+        password.start()
+        self.addCleanup(username.stop)
+        self.addCleanup(password.stop)
+        dashboard._login_failures.clear()
         db.init_db()
         self.app = dashboard.create_app()
         self.client = self.app.test_client()
+        with self.client.session_transaction() as auth_session:
+            auth_session["dashboard_authenticated"] = True
+            auth_session["dashboard_auth_version"] = 1
         with db.connect() as conn:
             db.insert_comment(
                 conn,
@@ -34,6 +47,10 @@ class DashboardTests(unittest.TestCase):
     def test_pending_review_tab_is_shown(self):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Community workspace", page.data)
+        self.assertNotIn(
+            b"Review conversations and monitor automated replies", page.data
+        )
         self.assertIn(b"status=pending_review", page.data)
         self.assertIn(b"status=posted", page.data)
         self.assertNotIn(b"status=approved", page.data)
@@ -153,6 +170,94 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Gateway is healthy", page.data)
         self.assertEqual(self.client.get("/api/health").json, {"status": "ok"})
+
+    def test_dashboard_requires_login_and_accepts_valid_credentials(self):
+        client = self.app.test_client()
+        redirect_response = client.get("/?status=posted")
+        self.assertEqual(redirect_response.status_code, 302)
+        self.assertIn("/login?next=", redirect_response.headers["Location"])
+
+        login_page = client.get("/login?next=/?status=posted")
+        self.assertIn(b"Welcome back", login_page.data)
+        with client.session_transaction() as login_session:
+            csrf_token = login_session["csrf_token"]
+        invalid = client.post(
+            "/login",
+            data={
+                "username": "admin",
+                "password": "wrong",
+                "csrf_token": csrf_token,
+            },
+        )
+        self.assertEqual(invalid.status_code, 401)
+        valid = client.post(
+            "/login",
+            data={
+                "username": "admin",
+                "password": "secret",
+                "csrf_token": csrf_token,
+                "next": "/?status=posted",
+            },
+        )
+        self.assertEqual(valid.status_code, 302)
+        self.assertTrue(valid.headers["Location"].endswith("/?status=posted"))
+        self.assertEqual(client.get("/?status=posted").status_code, 200)
+
+    def test_machine_health_and_meta_webhook_remain_public(self):
+        client = self.app.test_client()
+        self.assertEqual(client.get("/api/health").status_code, 200)
+        with patch.object(config, "META_WEBHOOK_VERIFY_TOKEN", "verify"):
+            response = client.get(
+                "/webhooks/meta?hub.mode=subscribe&hub.verify_token=verify&hub.challenge=321"
+            )
+        self.assertEqual(response.status_code, 200)
+
+    def test_logout_requires_csrf_and_ends_session(self):
+        with self.client.session_transaction() as auth_session:
+            auth_session["csrf_token"] = "token"
+        self.assertEqual(self.client.post("/logout").status_code, 400)
+        response = self.client.post("/logout", data={"csrf_token": "token"})
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/login", response.headers["Location"])
+        self.assertEqual(self.client.get("/").status_code, 302)
+
+    def test_profile_menu_resets_password_and_invalidates_sessions(self):
+        page = self.client.get("/")
+        self.assertIn(b"My Profile", page.data)
+        self.assertIn(b"Reset password", page.data)
+        self.assertIn(b"Log out", page.data)
+
+        other_client = self.app.test_client()
+        with other_client.session_transaction() as other_session:
+            other_session["dashboard_authenticated"] = True
+            other_session["dashboard_auth_version"] = 1
+        with self.client.session_transaction() as auth_session:
+            auth_session["csrf_token"] = "reset-token"
+        response = self.client.post(
+            "/profile/password",
+            data={
+                "csrf_token": "reset-token",
+                "current_password": "secret",
+                "new_password": "new-secret-123",
+                "confirm_password": "new-secret-123",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("password_changed=1", response.headers["Location"])
+        self.assertEqual(other_client.get("/").status_code, 302)
+
+        login_page = self.client.get("/login")
+        with self.client.session_transaction() as login_session:
+            token = login_session["csrf_token"]
+        logged_in = self.client.post(
+            "/login",
+            data={
+                "username": "admin",
+                "password": "new-secret-123",
+                "csrf_token": token,
+            },
+        )
+        self.assertEqual(logged_in.status_code, 302)
 
     def test_serving_app_starts_webhook_worker(self):
         with patch.object(config, "META_APP_SECRET", "secret"), \
