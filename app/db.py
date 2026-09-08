@@ -525,6 +525,46 @@ def reset_stale_posting(conn: sqlite3.Connection, *, minutes: int = 10) -> int:
     return result.rowcount
 
 
+def count_posted_today(conn: sqlite3.Connection, platform: str) -> int:
+    """Count replies posted so far in the current IST calendar day.
+
+    Used to enforce a configurable daily reply cap per platform, separate
+    from the per-cycle publish limit. `updated_at` is the time a row moved
+    to 'posted', which is the only status change that represents an actual
+    reply going out.
+    """
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n FROM comments
+        WHERE platform = ? AND status = 'posted'
+          AND date(updated_at, '+5 hours', '+30 minutes')
+              = date('now', '+5 hours', '+30 minutes')
+        """,
+        (platform,),
+    ).fetchone()
+    return row["n"]
+
+
+def count_drafted_today(conn: sqlite3.Connection) -> int:
+    """Count comments drafted so far in the current IST calendar day.
+
+    A row with a non-empty draft_reply corresponds to one Gemini draft call
+    (all platforms share the same billed API key); a comment found already
+    replied to gets inserted with an empty draft_reply and costs nothing, so
+    it is excluded here. Doubles as a cross-platform Gemini spend counter for
+    GEMINI_DAILY_DRAFT_LIMIT.
+    """
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n FROM comments
+        WHERE draft_reply IS NOT NULL AND draft_reply != ''
+          AND date(created_at, '+5 hours', '+30 minutes')
+              = date('now', '+5 hours', '+30 minutes')
+        """
+    ).fetchone()
+    return row["n"]
+
+
 def count_by_status(
     conn: sqlite3.Connection, *, platform: str | None = None
 ) -> dict[str, int]:

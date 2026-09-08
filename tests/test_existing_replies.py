@@ -224,6 +224,39 @@ class ExistingReplyTests(unittest.TestCase):
             }
             self.assertEqual(statuses, {'failed', 'approved'})
 
+    def test_daily_reply_limit_stops_posting_once_reached(self):
+        with db.connect() as conn:
+            for index in range(4):
+                comment_id = f'facebook-{index}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='facebook',
+                    video_id='media', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+
+        with patch.object(post.config, 'FACEBOOK_DAILY_REPLY_LIMIT', 2), \
+             patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
+            self.assertEqual(post.post_approved(platform='facebook'), 2)
+
+        self.assertEqual(send.call_count, 2)
+        with db.connect() as conn:
+            statuses = {
+                row['comment_id']: row['status']
+                for row in conn.execute(
+                    "SELECT comment_id, status FROM comments WHERE platform = 'facebook'"
+                )
+            }
+        self.assertEqual(list(statuses.values()).count('posted'), 2)
+        self.assertEqual(list(statuses.values()).count('approved'), 2)
+
+        # The cap already counts today's earlier posts, so a second run
+        # posts nothing more today.
+        with patch.object(post.config, 'FACEBOOK_DAILY_REPLY_LIMIT', 2), \
+             patch.object(meta_client, 'reply_to_comment') as send:
+            self.assertEqual(post.post_approved(platform='facebook'), 0)
+        send.assert_not_called()
+
     def test_failed_reply_is_checked_and_retried(self):
         self.seed('instagram')
         with db.connect() as conn:
@@ -634,6 +667,60 @@ class ExistingReplyTests(unittest.TestCase):
         with db.connect() as conn:
             self.assertEqual(len(db.list_by_status(conn, 'already_replied')), 2)
             self.assertIsNone(db.get_comment(conn, 'youtube'))
+
+    def test_youtube_poll_stops_drafting_once_daily_gemini_cap_is_reached(self):
+        threads = [
+            {'snippet': {'topLevelComment': {
+                'id': f'youtube-{i}', 'snippet': {'videoId': 'media'},
+            }}}
+            for i in range(3)
+        ]
+        with patch.object(fetch, 'get_client'), \
+             patch.object(fetch, 'get_my_channel_id', return_value='owner'), \
+             patch.object(fetch, 'get_uploads_playlist_id', return_value='uploads'), \
+             patch.object(fetch, 'iter_uploaded_video_ids', return_value=iter([])), \
+             patch.object(fetch.config, 'YOUTUBE_VIDEO_IDS', ['media']), \
+             patch.object(fetch.config, 'GEMINI_DAILY_DRAFT_LIMIT', 1), \
+             patch.object(fetch, '_video_title_cache', return_value=lambda _: 'Title'), \
+             patch.object(fetch, '_iter_top_level_threads', return_value=threads), \
+             patch.object(fetch, 'find_own_reply', return_value=None), \
+             patch.object(fetch, 'draft_reply', return_value='🙏') as draft:
+            self.assertEqual(fetch.poll_and_draft(), 1)
+        draft.assert_called_once()
+        with db.connect() as conn:
+            self.assertIsNotNone(db.get_comment(conn, 'youtube-0'))
+            self.assertIsNone(db.get_comment(conn, 'youtube-1'))
+            self.assertIsNone(db.get_comment(conn, 'youtube-2'))
+
+    def test_facebook_poll_stops_drafting_once_daily_gemini_cap_is_reached(self):
+        comments = [
+            {'id': f'facebook-{i}', 'message': 'Jai Maa', 'from': {'name': 'viewer'}}
+            for i in range(3)
+        ]
+        with patch.object(social_fetch.config, 'require'), \
+             patch.object(social_fetch.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', False), \
+             patch.object(social_fetch.config, 'GEMINI_DAILY_DRAFT_LIMIT', 1), \
+             patch.object(meta_client, 'iter_facebook_post_ids', return_value=['post']), \
+             patch.object(meta_client, 'iter_facebook_post_comments', return_value=comments), \
+             patch.object(meta_client, 'get_facebook_post_message', return_value='Title'), \
+             patch.object(social_fetch, 'draft_reply', return_value='🙏') as draft:
+            self.assertEqual(social_fetch.poll_facebook_and_draft(), 1)
+        draft.assert_called_once()
+        with db.connect() as conn:
+            self.assertIsNotNone(db.get_comment(conn, 'facebook-0'))
+            self.assertIsNone(db.get_comment(conn, 'facebook-1'))
+            self.assertIsNone(db.get_comment(conn, 'facebook-2'))
+
+        # Already-drafted comments count toward the cap on a later call too.
+        with patch.object(social_fetch.config, 'require'), \
+             patch.object(social_fetch.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', False), \
+             patch.object(social_fetch.config, 'GEMINI_DAILY_DRAFT_LIMIT', 1), \
+             patch.object(meta_client, 'iter_facebook_post_ids', return_value=['post']), \
+             patch.object(meta_client, 'iter_facebook_post_comments', return_value=comments), \
+             patch.object(meta_client, 'get_facebook_post_message', return_value='Title'), \
+             patch.object(social_fetch, 'draft_reply') as draft:
+            self.assertEqual(social_fetch.poll_facebook_and_draft(), 0)
+        draft.assert_not_called()
 
     def test_configured_youtube_ids_are_added_to_latest_uploads(self):
         with patch.object(fetch, 'get_client'), \

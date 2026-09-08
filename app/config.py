@@ -22,6 +22,9 @@ YOUTUBE_VIDEO_IDS = [
 YOUTUBE_VIDEO_LIMIT = int(os.environ.get("YOUTUBE_VIDEO_LIMIT", "10"))
 YOUTUBE_COMMENT_LIMIT = int(os.environ.get("YOUTUBE_COMMENT_LIMIT", "100"))
 YOUTUBE_DAILY_QUOTA_LIMIT = int(os.environ.get("YOUTUBE_DAILY_QUOTA_LIMIT", "10000"))
+# Cap how many replies this platform may post in one calendar day (IST),
+# independent of the *_PUBLISH_LIMIT per-cycle cap. 0 means no daily cap.
+YOUTUBE_DAILY_REPLY_LIMIT = int(os.environ.get("YOUTUBE_DAILY_REPLY_LIMIT", "0"))
 PUBLISH_ERROR_LIMIT = int(os.environ.get("PUBLISH_ERROR_LIMIT", "3"))
 COMMENT_MAX_AGE_DAYS = int(os.environ.get("COMMENT_MAX_AGE_DAYS", "90"))
 
@@ -91,6 +94,9 @@ FACEBOOK_POST_IDS = [
 FACEBOOK_POST_LIMIT = int(os.environ.get("FACEBOOK_POST_LIMIT", "10"))
 FACEBOOK_COMMENT_LIMIT = int(os.environ.get("FACEBOOK_COMMENT_LIMIT", "100"))
 FACEBOOK_PUBLISH_LIMIT = int(os.environ.get("FACEBOOK_PUBLISH_LIMIT", "25"))
+# Cap how many replies Facebook may post in one calendar day (IST),
+# independent of FACEBOOK_PUBLISH_LIMIT's per-cycle cap. 0 means no daily cap.
+FACEBOOK_DAILY_REPLY_LIMIT = int(os.environ.get("FACEBOOK_DAILY_REPLY_LIMIT", "0"))
 INSTAGRAM_MEDIA_IDS = [
     v.strip() for v in os.environ.get("INSTAGRAM_MEDIA_IDS", "").split(",") if v.strip()
 ]
@@ -102,9 +108,17 @@ INSTAGRAM_MEDIA_IDS = [
 INSTAGRAM_MEDIA_LIMIT = int(os.environ.get("INSTAGRAM_MEDIA_LIMIT", "10"))
 INSTAGRAM_COMMENT_LIMIT = int(os.environ.get("INSTAGRAM_COMMENT_LIMIT", "100"))
 INSTAGRAM_PUBLISH_LIMIT = int(os.environ.get("INSTAGRAM_PUBLISH_LIMIT", "25"))
+# Cap how many replies Instagram may post in one calendar day (IST),
+# independent of INSTAGRAM_PUBLISH_LIMIT's per-cycle cap. 0 means no daily cap.
+INSTAGRAM_DAILY_REPLY_LIMIT = int(os.environ.get("INSTAGRAM_DAILY_REPLY_LIMIT", "0"))
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
+# Every new comment across every platform costs one Gemini call to draft a
+# reply. Cap how many drafts (all platforms combined, since they share one
+# billed API key) may be generated in one IST calendar day. Comments beyond
+# the cap are left unseen and get drafted on a later cycle/day. 0 = no cap.
+GEMINI_DAILY_DRAFT_LIMIT = int(os.environ.get("GEMINI_DAILY_DRAFT_LIMIT", "0"))
 REPLY_PERSONA = os.environ.get(
     "REPLY_PERSONA",
     "You are a friendly, concise community manager. Keep replies under 3 sentences.",

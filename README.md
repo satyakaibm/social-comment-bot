@@ -163,6 +163,10 @@ Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. 
 
 Each cron cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. The three `*_PUBLISH_LIMIT` values control how many replies can be attempted in that cycle. New work is processed first, then failed replies are retried after a remote duplicate check. `PUBLISH_ERROR_LIMIT` stops a platform after repeated consecutive API errors. The script prevents overlapping cron runs, and webhook and cron publishers atomically claim each comment before posting. Interrupted claims become retryable after ten minutes. The cron entry does not need limit variables:
 
+In addition to the per-cycle `*_PUBLISH_LIMIT`, each platform has an optional daily cap: `YOUTUBE_DAILY_REPLY_LIMIT`, `FACEBOOK_DAILY_REPLY_LIMIT`, `INSTAGRAM_DAILY_REPLY_LIMIT`. Unlike the per-cycle limit, this counts replies actually posted across every cron cycle in the current IST calendar day; once it's reached, remaining comments for that platform are left untouched until the next day. Set one of these in `config/polling.env` (or `.env`) to cap daily reply volume; leave unset or `0` for no daily cap.
+
+Every new comment also costs one Gemini API call to draft its reply, billed on `GEMINI_API_KEY` regardless of platform. Set `GEMINI_DAILY_DRAFT_LIMIT` in `.env` to cap total drafts generated per IST calendar day across YouTube, Facebook, and Instagram combined. Once reached, cron polling leaves further new comments unseen for a later cycle (they're picked up again once the cap resets); a webhook-delivered comment can't be redelivered later, so it's saved with an empty draft and a note instead, for a manual reply from the dashboard. Leave unset or `0` for no cap.
+
 ```cron
 0 * * * * /Users/satyakaran/Documents/D/myproject/social-comment-bot/scripts/reply_comments.sh 2>&1
 ```

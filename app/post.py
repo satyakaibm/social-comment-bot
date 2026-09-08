@@ -84,6 +84,13 @@ def post_approved(
     likes_to_send: list[tuple[str, str]] = []
     youtube = None  # lazily created only if a YouTube reply needs posting
     channel_id = None
+    daily_limits = {
+        "youtube": config.YOUTUBE_DAILY_REPLY_LIMIT,
+        "facebook": config.FACEBOOK_DAILY_REPLY_LIMIT,
+        "instagram": config.INSTAGRAM_DAILY_REPLY_LIMIT,
+    }
+    daily_posted: dict[str, int] = {}
+    daily_limit_notice_printed: set[str] = set()
     statuses = ["failed"] if only_failed else ["approved"]
     if not only_failed and include_pending:
         statuses.append("pending_review")
@@ -146,6 +153,20 @@ def post_approved(
 
         for row in rows:
             platform = row["platform"]
+            daily_limit = daily_limits.get(platform, 0)
+            if daily_limit > 0:
+                if platform not in daily_posted:
+                    daily_posted[platform] = db.count_posted_today(conn, platform)
+                if daily_posted[platform] >= daily_limit:
+                    if platform not in daily_limit_notice_printed:
+                        unit = "reply" if daily_limit == 1 else "replies"
+                        emit(
+                            f"{platform.title()} daily limit of {daily_limit} "
+                            f"{unit} reached; remaining comments are left for "
+                            "the next day."
+                        )
+                        daily_limit_notice_printed.add(platform)
+                    continue
             original_status = row["status"]
             if not db.claim_comment_for_post(
                 conn, row["comment_id"], original_status
@@ -260,6 +281,7 @@ def post_approved(
                 )
                 conn.commit()
                 posted += 1
+                daily_posted[platform] = daily_posted.get(platform, 0) + 1
                 consecutive_platform_errors = 0
                 emit(f"Posted reply to {platform} comment {row['comment_id']}.")
                 if like_comments and platform in ("facebook", "instagram"):

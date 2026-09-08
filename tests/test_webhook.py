@@ -135,6 +135,32 @@ class WebhookTests(unittest.TestCase):
             ).fetchone()
         self.assertIsNone(row)
 
+    def test_daily_gemini_cap_saves_comment_without_drafting(self):
+        # A webhook event can't be redelivered, so unlike the cron pollers
+        # (which just leave the comment unseen for later), this must save
+        # the comment rather than lose it, with an empty draft for a
+        # manual reply from the dashboard.
+        event = {
+            "platform": "instagram", "comment_id": "comment",
+            "container_id": "media", "text": "Jai Maa",
+            "author": "viewer", "author_id": "viewer-id", "published_at": "now",
+        }
+        with patch.object(config, "GEMINI_DAILY_DRAFT_LIMIT", 1), \
+             patch.object(webhook.db, "count_drafted_today", return_value=1), \
+             patch.object(webhook.meta_client, "get_instagram_username", return_value="owner"), \
+             patch.object(webhook.meta_client, "find_own_reply", return_value=None), \
+             patch.object(webhook.meta_client, "get_instagram_media_caption", return_value="Caption"), \
+             patch.object(webhook, "draft_reply") as draft, \
+             patch.object(webhook.meta_client, "reply_to_comment") as reply:
+            webhook.process_event(event)
+        draft.assert_not_called()
+        reply.assert_not_called()
+        with db.connect() as conn:
+            row = db.get_comment(conn, "comment")
+        self.assertEqual(row["status"], "pending_review")
+        self.assertEqual(row["draft_reply"], "")
+        self.assertIn("Gemini daily draft limit", row["error"])
+
     def test_process_event_skips_seen_comment_without_drafting(self):
         event = {
             "platform": "instagram", "comment_id": "old-comment",

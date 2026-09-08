@@ -71,10 +71,14 @@ def poll_and_draft() -> int:
 
     new_count = 0
     remaining = max(0, config.YOUTUBE_COMMENT_LIMIT)
+    daily_draft_limit_reached = False
 
     with db.connect() as conn:
+        drafted_today = db.count_drafted_today(conn)
         for index, video_id in enumerate(video_ids):
             if remaining <= 0:
+                break
+            if daily_draft_limit_reached:
                 break
             videos_left = len(video_ids) - index
             video_limit = max(1, remaining // videos_left)
@@ -99,6 +103,18 @@ def poll_and_draft() -> int:
                         continue
                     if snippet.get("authorChannelId", {}).get("value") == channel_id:
                         continue  # don't reply to ourselves
+
+                    if (
+                        config.GEMINI_DAILY_DRAFT_LIMIT > 0
+                        and drafted_today >= config.GEMINI_DAILY_DRAFT_LIMIT
+                    ):
+                        if not daily_draft_limit_reached:
+                            print(
+                                f"Gemini daily draft limit of {config.GEMINI_DAILY_DRAFT_LIMIT} "
+                                "reached; leaving remaining new comments for a later cycle."
+                            )
+                            daily_draft_limit_reached = True
+                        break
 
                     actual_video_id = snippet["videoId"]
                     text = snippet.get("textDisplay", "")
@@ -148,6 +164,7 @@ def poll_and_draft() -> int:
                     conn.commit()  # persist each draft immediately so a later
                     # failure in this batch can't roll back already-drafted replies
                     new_count += 1
+                    drafted_today += 1
             except HttpError as e:
                 if is_quota_exceeded(e):
                     raise
