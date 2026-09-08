@@ -556,11 +556,15 @@ def activity_summary(
                 SUM(CASE WHEN COALESCE(c.status, s.status) = 'already_replied'
                           AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(?)
                           {platform_filter} THEN 1 ELSE 0 END)
-                    AS already_replied
+                    AS already_replied,
+                SUM(CASE WHEN c.status = 'posted'
+                          AND datetime(c.updated_at) >= datetime(?)
+                          {"AND c.platform = ?" if platform else ""} THEN 1 ELSE 0 END)
+                    AS detailed_posted
             FROM seen_comments s
             LEFT JOIN comments c ON c.comment_id = s.comment_id
             """,
-            params,
+            params + ([cutoff, platform] if platform else [cutoff]),
         ).fetchone()
         posted = int(row["posted"] or 0)
         already_replied = int(row["already_replied"] or 0)
@@ -571,6 +575,7 @@ def activity_summary(
                 "posted": posted,
                 "already_replied": already_replied,
                 "handled": posted + already_replied,
+                "detailed_posted": int(row["detailed_posted"] or 0),
             }
         )
     return summaries
