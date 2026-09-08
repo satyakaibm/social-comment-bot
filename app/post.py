@@ -1,3 +1,8 @@
+from builtins import print as console_print
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from time import monotonic
+
 from googleapiclient.errors import HttpError
 from requests import RequestException
 
@@ -14,6 +19,33 @@ from app.youtube_client import (
 )
 
 
+def _has_recent_reply_check(row) -> bool:
+    """Return whether a fresh Meta check can be reused for the first post.
+
+    Facebook fast mode intentionally bypasses the remote check altogether.
+    For every other Meta request, failed/interrupted rows never use this
+    shortcut because they have a possible prior write to reconcile.
+    """
+    if row["platform"] not in ("facebook", "instagram"):
+        return False
+    if row["platform"] == "facebook" and not config.FACEBOOK_VERIFY_EXISTING_REPLIES:
+        return True
+    if row["status"] not in ("pending_review", "approved") or row["error"]:
+        return False
+    checked_at = row["reply_checked_at"]
+    if not checked_at or config.META_RECENT_REPLY_CHECK_SECONDS <= 0:
+        return False
+    try:
+        checked = datetime.fromisoformat(checked_at)
+    except ValueError:
+        return False
+    if checked.tzinfo is None:
+        checked = checked.replace(tzinfo=timezone.utc)
+    return datetime.now(timezone.utc) - checked <= timedelta(
+        seconds=config.META_RECENT_REPLY_CHECK_SECONDS
+    )
+
+
 def post_approved(
     *,
     platform: str | None = None,
@@ -21,8 +53,10 @@ def post_approved(
     limit: int | None = None,
     include_pending: bool = False,
     include_failed: bool = False,
+    only_failed: bool = False,
     like_comments: bool = False,
     comment_id: str | None = None,
+    activity_log_path: str | Path | None = None,
 ) -> int:
     """Post draft replies to YouTube, Facebook, and Instagram.
 
@@ -32,22 +66,31 @@ def post_approved(
 
     Returns the number posted.
     """
+    def emit(message: str) -> None:
+        console_print(message, flush=True)
+        if activity_log_path is not None:
+            path = Path(activity_log_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("a", encoding="utf-8") as activity_log:
+                activity_log.write(f"{message}\n")
+
     db.init_db()
     posted = 0
     consecutive_platform_errors = 0
     youtube_like_notice_printed = False
+    likes_to_send: list[tuple[str, str]] = []
     youtube = None  # lazily created only if a YouTube reply needs posting
     channel_id = None
-    statuses = ["approved"]
-    if include_pending:
+    statuses = ["failed"] if only_failed else ["approved"]
+    if not only_failed and include_pending:
         statuses.append("pending_review")
-    if include_failed:
+    if not only_failed and include_failed:
         statuses.append("failed")
 
     with db.connect() as conn:
         recovered = db.reset_stale_posting(conn)
         if recovered:
-            print(f"Recovered {recovered} interrupted publishing claim(s).")
+            emit(f"Recovered {recovered} interrupted publishing claim(s).")
         rows = db.list_for_post(
             conn,
             statuses=statuses,
@@ -69,7 +112,7 @@ def post_approved(
                 "rejected",
                 error=f"Comment is older than {config.COMMENT_MAX_AGE_DAYS} days.",
             )
-            print(
+            emit(
                 f"Skipped {row['platform']} comment {row['comment_id']}: older than "
                 f"{config.COMMENT_MAX_AGE_DAYS} days."
             )
@@ -80,6 +123,11 @@ def post_approved(
         video_channel_ids = {}
         youtube_identity_ready = not youtube_rows
         if youtube_rows:
+            # reset_stale_posting() can open a SQLite write transaction even
+            # when it does not recover any rows. Release it before the
+            # YouTube helpers record API quota usage through another SQLite
+            # connection, otherwise the identity check can lock itself.
+            conn.commit()
             try:
                 youtube = get_client()
                 channel_id = get_my_channel_id(youtube)
@@ -88,7 +136,7 @@ def post_approved(
                 )
                 youtube_identity_ready = True
             except Exception as exc:
-                print(
+                emit(
                     "Could not verify the Hindolroad YouTube channel identity; "
                     f"skipping YouTube publishing: {exc}"
                 )
@@ -99,17 +147,19 @@ def post_approved(
             if not db.claim_comment_for_post(
                 conn, row["comment_id"], original_status
             ):
-                print(
+                emit(
                     f"Skipped {platform} comment {row['comment_id']}: "
                     "another process is already handling it."
                 )
                 continue
             conn.commit()
             try:
-                if platform == "youtube":
+                if _has_recent_reply_check(row):
+                    existing_reply = None
+                elif platform == "youtube":
                     video_owner_id = video_channel_ids.get(row["video_id"], "")
                     if not youtube_identity_ready or not video_owner_id:
-                        print(
+                        emit(
                             "Could not confirm the video owner for YouTube comment "
                             f"{row['comment_id']}; skipping to prevent a duplicate reply."
                         )
@@ -128,21 +178,36 @@ def post_approved(
                         youtube, row["comment_id"], own_channel_ids
                     )
                 elif platform in ("facebook", "instagram"):
+                    check_started = monotonic()
                     existing_reply = meta_client.find_own_reply(row["comment_id"], platform=platform)
+                    db.record_reply_check(conn, row["comment_id"])
+                    conn.commit()
+                    check_seconds = monotonic() - check_started
+                    if check_seconds >= 5:
+                        emit(
+                            f"{platform.title()} duplicate check for comment "
+                            f"{row['comment_id']} took {check_seconds:.1f}s."
+                        )
                 else:
-                    print(f"Unknown platform {platform!r}, skipping.")
+                    emit(f"Unknown platform {platform!r}, skipping.")
                     db.update_status(conn, row["comment_id"], original_status)
                     conn.commit()
                     continue
             except Exception:
                 db.update_status(conn, row["comment_id"], original_status)
                 conn.commit()
-                print(f"Could not verify existing replies for {platform} comment {row['comment_id']}; skipping this run.")
+                emit(f"Could not verify existing replies for {platform} comment {row['comment_id']}; skipping this run.")
                 continue
             if existing_reply:
-                db.update_status(conn, row["comment_id"], "already_replied", reply_comment_id=existing_reply)
+                db.update_status(
+                    conn,
+                    row["comment_id"],
+                    "already_replied",
+                    reply_comment_id=existing_reply,
+                    error="",
+                )
                 conn.commit()
-                print(f"Skipped {platform} comment {row['comment_id']}: your account already replied.")
+                emit(f"Skipped {platform} comment {row['comment_id']}: your account already replied.")
                 continue
             reply_text = sanitize_draft(row["draft_reply"] or "")
             if reply_text != (row["draft_reply"] or ""):
@@ -175,7 +240,7 @@ def post_approved(
                         row["comment_id"], reply_text, platform=platform
                     )
                 else:
-                    print(f"Unknown platform {platform!r} for comment {row['comment_id']}, skipping.")
+                    emit(f"Unknown platform {platform!r} for comment {row['comment_id']}, skipping.")
                     continue
 
                 db.update_status(
@@ -188,45 +253,36 @@ def post_approved(
                 conn.commit()
                 posted += 1
                 consecutive_platform_errors = 0
-                print(f"Posted reply to {platform} comment {row['comment_id']}.")
+                emit(f"Posted reply to {platform} comment {row['comment_id']}.")
                 if like_comments and platform in ("facebook", "instagram"):
-                    try:
-                        meta_client.like_comment(
-                            row["comment_id"], platform=platform
-                        )
-                        print(f"Liked {platform} comment {row['comment_id']}.")
-                    except (meta_client.GraphAPIError, RequestException, ValueError) as exc:
-                        print(
-                            f"Reply was posted, but liking {platform} comment "
-                            f"{row['comment_id']} failed: {exc}. "
-                            "Check Page permissions "
-                            "(instagram_manage_engagement for Instagram) "
-                            "or like it manually."
-                        )
+                    # Replies are time-sensitive. Queue likes until every
+                    # reply in this batch has been sent so a slow like cannot
+                    # delay later commenters receiving their reply.
+                    likes_to_send.append((platform, row["comment_id"]))
                 elif like_comments and platform == "youtube":
                     if not youtube_like_notice_printed:
-                        print(
+                        emit(
                             "YouTube comments cannot be liked by this automation; "
                             "the YouTube Data API has no comment-like endpoint."
                         )
                         youtube_like_notice_printed = True
             except HttpError as e:
                 if is_quota_exceeded(e):
-                    print(
+                    emit(
                         "YouTube quota is exhausted; leaving remaining comments "
                         "pending for the next cycle."
                     )
                     break
                 db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
                 conn.commit()
-                print(f"Failed to post reply to YouTube comment {row['comment_id']}: {e}")
+                emit(f"Failed to post reply to YouTube comment {row['comment_id']}: {e}")
             except meta_client.GraphAPIError as e:
                 db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
                 conn.commit()
-                print(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
+                emit(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
                 consecutive_platform_errors += 1
                 if consecutive_platform_errors >= config.PUBLISH_ERROR_LIMIT:
-                    print(
+                    emit(
                         f"Stopped {platform} publishing after "
                         f"{consecutive_platform_errors} consecutive API errors; "
                         "remaining comments were left unchanged."
@@ -235,7 +291,7 @@ def post_approved(
             except RequestException as e:
                 # A timed-out write may still have reached Meta. Keep the row
                 # pending so the next run checks for that reply before retrying.
-                print(
+                emit(
                     f"Meta request timed out for {platform} comment "
                     f"{row['comment_id']}; left retryable for verification: {e}"
                 )
@@ -243,6 +299,24 @@ def post_approved(
                     conn, row["comment_id"], original_status, error=str(e)[:1000]
                 )
                 conn.commit()
+
+        if likes_to_send:
+            emit(
+                f"Reply posting finished; liking {len(likes_to_send)} "
+                "Facebook/Instagram comment(s)."
+            )
+        for like_platform, like_comment_id in likes_to_send:
+            try:
+                meta_client.like_comment(like_comment_id, platform=like_platform)
+                emit(f"Liked {like_platform} comment {like_comment_id}.")
+            except (meta_client.GraphAPIError, RequestException, ValueError) as exc:
+                emit(
+                    f"Reply was posted, but liking {like_platform} comment "
+                    f"{like_comment_id} failed: {exc}. "
+                    "Check Page permissions "
+                    "(instagram_manage_engagement for Instagram) "
+                    "or like it manually."
+                )
 
     return posted
 

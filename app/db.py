@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS comments (
     status TEXT NOT NULL DEFAULT 'pending_review',
     draft_reply TEXT,
     reply_comment_id TEXT,
+    reply_checked_at TEXT,
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -96,6 +97,8 @@ def init_db() -> None:
             )
         if "error" not in columns:
             conn.execute("ALTER TABLE comments ADD COLUMN error TEXT")
+        if "reply_checked_at" not in columns:
+            conn.execute("ALTER TABLE comments ADD COLUMN reply_checked_at TEXT")
         user_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(dashboard_users)")
         }
@@ -431,6 +434,7 @@ def insert_comment(
     published_at: str,
     draft_reply: str,
     platform: str = "youtube",
+    reply_checked_at: str | None = None,
 ) -> None:
     # video_id/video_title double as the generic "container" id/title for
     # non-YouTube platforms (Facebook post id/message, Instagram media id/caption).
@@ -439,8 +443,8 @@ def insert_comment(
         """
         INSERT OR IGNORE INTO comments (
             comment_id, platform, video_id, video_title, author, text, published_at,
-            status, draft_reply, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?)
+            status, draft_reply, reply_checked_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?)
         """,
         (
             comment_id,
@@ -451,6 +455,7 @@ def insert_comment(
             text,
             published_at,
             draft_reply,
+            reply_checked_at,
             ts,
             ts,
         ),
@@ -490,6 +495,14 @@ def claim_comment_for_post(
         (now(), comment_id, expected_status),
     )
     return result.rowcount == 1
+
+
+def record_reply_check(conn: sqlite3.Connection, comment_id: str) -> None:
+    """Remember a completed remote check without changing the comment status."""
+    conn.execute(
+        "UPDATE comments SET reply_checked_at = ? WHERE comment_id = ?",
+        (now(), comment_id),
+    )
 
 
 def reset_stale_posting(conn: sqlite3.Connection, *, minutes: int = 10) -> int:

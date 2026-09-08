@@ -99,7 +99,9 @@ def process_event(event: dict) -> None:
         if db.comment_exists(conn, comment_id):
             return
 
-    existing = meta_client.find_own_reply(comment_id, platform=platform)
+    existing = None
+    if platform != "facebook" or config.FACEBOOK_VERIFY_EXISTING_REPLIES:
+        existing = meta_client.find_own_reply(comment_id, platform=platform)
     if existing:
         with db.connect() as conn:
             db.insert_comment(
@@ -139,6 +141,11 @@ def process_event(event: dict) -> None:
             text=event["text"],
             published_at=event.get("published_at", ""),
             draft_reply=reply,
+            reply_checked_at=(
+                db.now()
+                if platform != "facebook" or config.FACEBOOK_VERIFY_EXISTING_REPLIES
+                else None
+            ),
         )
     if config.META_WEBHOOK_AUTO_POST:
         posted = post_approved(
