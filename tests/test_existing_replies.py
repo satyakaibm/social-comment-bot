@@ -363,6 +363,29 @@ class ExistingReplyTests(unittest.TestCase):
             meta_client.like_comment('fb-comment', platform='facebook')
         send.assert_called_once_with('fb-comment/likes')
 
+    def test_graph_post_retries_meta_code_one_once(self):
+        temporary = MagicMock(headers={})
+        temporary.json.return_value = {
+            'error': {
+                'code': 1,
+                'message': "Please reduce the amount of data you're asking for",
+            }
+        }
+        success = MagicMock(headers={})
+        success.json.return_value = {'id': 'new-reply'}
+        with patch.object(meta_client, 'get_page_access_token', return_value='token'), \
+             patch.object(meta_client._http_session, 'post', side_effect=[temporary, success]) as send, \
+             patch.object(meta_client.time, 'sleep') as sleep, \
+             patch.object(meta_client.config, 'META_POST_RETRIES', 2), \
+             patch.object(meta_client.config, 'META_POST_RETRY_DELAY_SECONDS', 2):
+            self.assertEqual(
+                meta_client.graph_post('comment/comments', message='Thank you!'),
+                {'id': 'new-reply'},
+            )
+
+        self.assertEqual(send.call_count, 2)
+        sleep.assert_called_once_with(2)
+
     def test_youtube_comment_likes_are_skipped(self):
         self.seed('youtube')
         youtube = MagicMock()

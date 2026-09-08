@@ -36,6 +36,12 @@ META_CONNECT_TIMEOUT_SECONDS = float(os.environ.get("META_CONNECT_TIMEOUT_SECOND
 META_READ_TIMEOUT_SECONDS = float(os.environ.get("META_READ_TIMEOUT_SECONDS", "15"))
 META_WRITE_TIMEOUT_SECONDS = float(os.environ.get("META_WRITE_TIMEOUT_SECONDS", "30"))
 META_GET_RETRIES = int(os.environ.get("META_GET_RETRIES", "2"))
+# Meta Graph error code 1 is a temporary service-side rejection that often
+# succeeds on a short retry. Keep this small so it cannot slow an entire run.
+META_POST_RETRIES = int(os.environ.get("META_POST_RETRIES", "2"))
+META_POST_RETRY_DELAY_SECONDS = float(
+    os.environ.get("META_POST_RETRY_DELAY_SECONDS", "2")
+)
 # A comment checked during this same poll or webhook delivery does not need a
 # second identical remote check immediately before its first post. Failed and
 # interrupted attempts never use this shortcut.

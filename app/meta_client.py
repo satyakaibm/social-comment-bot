@@ -167,11 +167,32 @@ def graph_get(path: str, **params) -> dict:
 
 def graph_post(path: str, **data) -> dict:
     data["access_token"] = get_page_access_token()
-    resp = _http_session.post(_url(path), data=data, timeout=WRITE_TIMEOUT_SECONDS)
-    _record_meta_usage(path, resp)
-    result = resp.json()
-    _raise_if_error(path, result)
-    return result
+    for attempt in range(max(1, config.META_POST_RETRIES)):
+        resp = _http_session.post(
+            _url(path), data=data, timeout=WRITE_TIMEOUT_SECONDS
+        )
+        _record_meta_usage(path, resp)
+        result = resp.json()
+        error = result.get("error") if isinstance(result, dict) else None
+        # Meta commonly returns code 1 with “Please reduce the amount of data”
+        # for a single small comment reply. That payload has not been accepted,
+        # so a brief retry is safe and avoids leaving an otherwise healthy
+        # batch with an unnecessary failed row.
+        if (
+            isinstance(error, dict)
+            and error.get("code") == 1
+            and attempt + 1 < max(1, config.META_POST_RETRIES)
+        ):
+            print(
+                f"Meta temporarily rejected {path} (code 1); retrying in "
+                f"{config.META_POST_RETRY_DELAY_SECONDS:g}s.",
+                flush=True,
+            )
+            time.sleep(config.META_POST_RETRY_DELAY_SECONDS)
+            continue
+        _raise_if_error(path, result)
+        return result
+    raise AssertionError("Graph post retry loop exited unexpectedly")
 
 
 def iter_paged(path: str, **params):
