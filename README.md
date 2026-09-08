@@ -13,7 +13,9 @@ Nothing is posted automatically.
 
 State lives in `data/comments.db` (created on first run).
 
-Before drafting and again before posting, the bot checks all reply pages for a reply from your connected YouTube channel, Facebook Page, or Instagram username. If found, it saves the comment as `already_replied` and skips it, including replies you made manually. The pre-post check also protects drafts queued before this feature was added. Failed checks skip the comment for that run. Replies from other viewers do not prevent a reply.
+Before drafting and again before posting, the bot checks all reply pages for a reply from your connected YouTube channel or Instagram username. If found, it saves the comment as `already_replied` and skips it, including replies you made manually. The pre-post check also protects drafts queued before this feature was added. Failed checks skip the comment for that run. Replies from other viewers do not prevent a reply.
+
+Facebook uses a faster default: `FACEBOOK_VERIFY_EXISTING_REPLIES=false` avoids listing every reply on a busy thread before posting. The database still prevents a reply already confirmed as posted from being sent again. A Facebook write that reaches Meta but times out can be retried as a duplicate, and an existing manual Page reply is not detected. Set `FACEBOOK_VERIFY_EXISTING_REPLIES=true` if avoiding those duplicates is more important than speed.
 
 This only detects replies visible to the API from the connected identity: Facebook replies from your personal profile are not Page replies. Likes alone do not count as replies. Avoid overlapping posting runs or replying manually while a posting run is active; the check and publication are separate API calls.
 
@@ -86,6 +88,7 @@ YOUTUBE_OAUTH_CLIENT_ID=
 YOUTUBE_OAUTH_CLIENT_SECRET=
 YOUTUBE_REFRESH_TOKEN=
 # Optional: comma-separated video IDs. Leave blank to poll the channel's uploads.
+# Optional priority videos; these do not replace the latest-upload scan.
 YOUTUBE_VIDEO_IDS=
 
 # Facebook / Instagram (Meta Graph API)
@@ -223,6 +226,8 @@ python -m app.cli run
 `poll-all` continues if one platform fails and prints the error.
 
 `--like-comments` likes the original Facebook or Instagram comment after a successful reply. Facebook likes use the Page token (`pages_manage_engagement`). Instagram likes use `POST /{INSTAGRAM_USER_ID}/likes` with the original User token in `FACEBOOK_PAGE_ACCESS_TOKEN` (`instagram_basic` and `instagram_manage_engagement`); a Page-only token can reply but cannot like. If a like fails, the reply remains posted and the failure is reported; retry the like manually. Previously posted comments are not processed again. YouTube's Data API has no comment-like endpoint.
+
+When a batch has several Facebook or Instagram replies, it posts every reply first and then likes the original comments. This makes replies visible sooner when Meta's like endpoint is slow.
 
 Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]uit`.
 

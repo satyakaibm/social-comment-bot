@@ -34,10 +34,43 @@ CONTAINER_LABELS = {
 }
 LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW_SECONDS = 15 * 60
+FAILED_RETRY_LIMIT = 50
 _login_failures: dict[str, list[float]] = {}
 _login_lock = threading.Lock()
+_failed_retry_lock = threading.Lock()
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,50}$")
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _retry_failed_batch(platforms: tuple[str, ...]) -> None:
+    log_path = config.DATA_DIR / "polling.log"
+    started = datetime.now(ZoneInfo("Asia/Kolkata")).strftime("%Y-%m-%d %H:%M:%S IST")
+    with log_path.open("a", encoding="utf-8") as activity_log:
+        activity_log.write(
+            f"\n==== Dashboard failed-reply retry started: {started}; "
+            f"platforms: {', '.join(platforms)} ====\n"
+        )
+    try:
+        for platform in platforms:
+            post_approved(
+                platform=platform,
+                only_failed=True,
+                like_comments=platform in ("facebook", "instagram"),
+                limit=FAILED_RETRY_LIMIT,
+                activity_log_path=log_path,
+            )
+    except Exception as exc:
+        with log_path.open("a", encoding="utf-8") as activity_log:
+            activity_log.write(f"Dashboard failed-reply retry stopped: {exc}\n")
+    finally:
+        finished = datetime.now(ZoneInfo("Asia/Kolkata")).strftime(
+            "%Y-%m-%d %H:%M:%S IST"
+        )
+        with log_path.open("a", encoding="utf-8") as activity_log:
+            activity_log.write(
+                f"==== Dashboard failed-reply retry finished: {finished} ====\n"
+            )
+        _failed_retry_lock.release()
 
 
 def _csrf_token() -> str:
@@ -429,6 +462,44 @@ def create_app() -> Flask:
             return redirect(_index_url(status="failed"))
         flash("Nothing was posted. The comment may have been skipped this run.", "error")
         return redirect(_index_url())
+
+    @app.post("/comments/retry-failed")
+    def retry_failed():
+        if not hmac.compare_digest(
+            request.form.get("csrf_token", ""), session.get("csrf_token", "")
+        ):
+            return "Invalid request", 400
+        selected_platform = request.form.get("platform", "").strip()
+        platforms = (
+            (selected_platform,) if selected_platform in PLATFORMS else PLATFORMS
+        )
+        with db.connect() as conn:
+            failed_count = sum(
+                db.count_by_status(conn, platform=name).get("failed", 0)
+                for name in platforms
+            )
+        if not failed_count:
+            flash("There are no failed replies to retry.", "ok")
+            return redirect(_index_url(status="failed"))
+        if not _failed_retry_lock.acquire(blocking=False):
+            flash("A failed-reply check is already running.", "ok")
+            return redirect(_index_url(status="failed"))
+        try:
+            threading.Thread(
+                target=_retry_failed_batch,
+                args=(platforms,),
+                name="dashboard-failed-retry",
+                daemon=True,
+            ).start()
+        except Exception:
+            _failed_retry_lock.release()
+            raise
+        scope = selected_platform.title() if selected_platform in PLATFORMS else "all platforms"
+        flash(
+            f"Retry started for {scope}. Refresh this page to see updated counts.",
+            "ok",
+        )
+        return redirect(_index_url(status="failed"))
 
     @app.get("/health")
     def health():

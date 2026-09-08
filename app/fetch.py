@@ -60,15 +60,14 @@ def poll_and_draft() -> int:
     channel_id = get_my_channel_id(youtube)
     video_title = _video_title_cache(youtube)
 
-    video_ids = config.YOUTUBE_VIDEO_IDS
-    if not video_ids:
-        uploads_playlist_id = get_uploads_playlist_id(youtube)
-        video_ids = list(islice(
-            iter_uploaded_video_ids(youtube, uploads_playlist_id),
-            max(0, config.YOUTUBE_VIDEO_LIMIT),
-        ))
-    else:
-        video_ids = video_ids[:max(0, config.YOUTUBE_VIDEO_LIMIT)]
+    # Configured IDs are additive. Always include the latest uploads so an old
+    # fixed ID can never silently disable discovery of new video comments.
+    uploads_playlist_id = get_uploads_playlist_id(youtube)
+    latest_video_ids = list(islice(
+        iter_uploaded_video_ids(youtube, uploads_playlist_id),
+        max(0, config.YOUTUBE_VIDEO_LIMIT),
+    ))
+    video_ids = list(dict.fromkeys([*config.YOUTUBE_VIDEO_IDS, *latest_video_ids]))
 
     new_count = 0
     remaining = max(0, config.YOUTUBE_COMMENT_LIMIT)

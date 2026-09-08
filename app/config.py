@@ -29,6 +29,25 @@ META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
 FACEBOOK_PAGE_ACCESS_TOKEN = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
 INSTAGRAM_USER_ID = os.environ.get("INSTAGRAM_USER_ID", "")
+# Meta reads are safe to retry. Keep them short so a slow duplicate check does
+# not hold up an entire publishing cycle; writes keep their longer timeout
+# because a timed-out write has an uncertain result and must be reconciled.
+META_CONNECT_TIMEOUT_SECONDS = float(os.environ.get("META_CONNECT_TIMEOUT_SECONDS", "5"))
+META_READ_TIMEOUT_SECONDS = float(os.environ.get("META_READ_TIMEOUT_SECONDS", "15"))
+META_WRITE_TIMEOUT_SECONDS = float(os.environ.get("META_WRITE_TIMEOUT_SECONDS", "30"))
+META_GET_RETRIES = int(os.environ.get("META_GET_RETRIES", "2"))
+# A comment checked during this same poll or webhook delivery does not need a
+# second identical remote check immediately before its first post. Failed and
+# interrupted attempts never use this shortcut.
+META_RECENT_REPLY_CHECK_SECONDS = int(
+    os.environ.get("META_RECENT_REPLY_CHECK_SECONDS", "300")
+)
+# Facebook reply-list checks can take minutes on very active threads. Disable
+# them by default so Facebook replies are posted promptly. Set this to true if
+# avoiding a possible duplicate after a write timeout matters more than speed.
+FACEBOOK_VERIFY_EXISTING_REPLIES = os.environ.get(
+    "FACEBOOK_VERIFY_EXISTING_REPLIES", "false"
+).lower() in ("1", "true", "yes", "on")
 META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
 META_WEBHOOK_VERIFY_TOKEN = os.environ.get("META_WEBHOOK_VERIFY_TOKEN", "")
 META_WEBHOOK_AUTO_POST = os.environ.get("META_WEBHOOK_AUTO_POST", "true").lower() in (

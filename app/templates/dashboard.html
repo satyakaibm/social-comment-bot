@@ -133,6 +133,8 @@
     .count-guide-list dt { color:#fff; font-size:11px; font-weight:800; }
     .count-guide-list dd { margin:4px 0 0; color:rgba(234,243,244,.68); font-size:10px; line-height:1.5; }
     .toolbar { padding:15px; display:flex; align-items:center; justify-content:space-between; gap:15px; background:var(--surface); border:1px solid var(--line); border-radius:17px 17px 0 0; }
+    .retry-all-form { flex:0 0 auto; }
+    .retry-all { background:linear-gradient(135deg,#b33b54,#8f2940); box-shadow:0 5px 14px rgba(143,41,64,.2); white-space:nowrap; }
     .platforms { display:flex; flex-wrap:wrap; gap:7px; }
     .chip { padding:8px 12px; color:var(--muted); background:#f7f9fa; border:1px solid var(--line); border-radius:10px; font-size:12px; font-weight:700; text-decoration:none; text-transform:capitalize; }
     .chip:hover,.chip.active { color:var(--navy); background:#fff4ef; border-color:#ffc7b6; }
@@ -245,10 +247,10 @@
       </div>
       {% set selected = activity[1] %}
       <div class="activity-values" aria-live="polite">
-        <div class="activity-metric"><span class="activity-number" id="activity-received">{{ selected.received }}</span><span class="activity-name">Comments captured</span></div>
-        <div class="activity-metric highlight"><span class="activity-number" id="activity-posted">{{ selected.posted }}</span><span class="activity-name">Replies posted</span></div>
-        <div class="activity-metric"><span class="activity-number" id="activity-already">{{ selected.already_replied }}</span><span class="activity-name">Already answered</span></div>
-        <div class="activity-metric"><span class="activity-number" id="activity-handled">{{ selected.handled }}</span><span class="activity-name">Handled total</span></div>
+        <div class="activity-metric"><span class="activity-number" id="activity-received">{{ selected.received }}</span><span class="activity-name">Comments found</span></div>
+        <div class="activity-metric highlight"><span class="activity-number" id="activity-posted">{{ selected.posted }}</span><span class="activity-name">Bot replies sent</span></div>
+        <div class="activity-metric"><span class="activity-number" id="activity-already">{{ selected.already_replied }}</span><span class="activity-name">Had a reply already</span></div>
+        <div class="activity-metric"><span class="activity-number" id="activity-handled">{{ selected.handled }}</span><span class="activity-name">Comments taken care of</span></div>
       </div>
       {% for quota in quota_cards %}
         <div class="quota-inline" aria-label="{{ quota.platform }} API quota usage">
@@ -275,28 +277,35 @@
       <aside class="count-guide" aria-labelledby="count-guide-title">
         <span class="count-guide-kicker">Count guide · {{ platform|title if platform else 'All platforms' }}</span>
         <h2 id="count-guide-title">How to read these numbers</h2>
-        <p class="count-guide-summary">Activity keeps historical totals. Status cards count the detailed comment records currently available in the table.</p>
+        <p class="count-guide-summary">The top numbers show what happened during the time you picked. The boxes below show comments still saved in the table.</p>
         <div class="count-guide-values">
-          <div class="count-guide-value"><strong id="guide-posted-total">{{ selected.posted }}</strong><span><span id="guide-period-label">{{ selected.label }}</span> replies posted</span></div>
-          <div class="count-guide-value"><strong id="guide-detailed-posted">{{ selected.detailed_posted }}</strong><span><span id="guide-detail-period-label">{{ selected.label }}</span> posted rows retained</span></div>
+          <div class="count-guide-value"><strong id="guide-posted-total">{{ selected.posted }}</strong><span>Bot replies sent in <span id="guide-period-label">{{ selected.label }}</span></span></div>
+          <div class="count-guide-value"><strong id="guide-detailed-posted">{{ selected.detailed_posted }}</strong><span>Sent replies still saved from <span id="guide-detail-period-label">{{ selected.label }}</span></span></div>
         </div>
         <dl class="count-guide-list">
-          <div><dt>Comments captured</dt><dd>Comments received during the selected time range.</dd></div>
-          <div><dt>Replies posted</dt><dd>Replies successfully sent by this automation during that period.</dd></div>
-          <div><dt>Already answered</dt><dd>Comments where an existing account reply was found.</dd></div>
-          <div><dt>Handled total</dt><dd>Replies posted plus comments that were already answered.</dd></div>
+          <div><dt>Comments found</dt><dd>New comments the bot saw during this time.</dd></div>
+          <div><dt>Bot replies sent</dt><dd>Comments the bot answered during this time.</dd></div>
+          <div><dt>Had a reply already</dt><dd>Comments your account had answered before the bot checked.</dd></div>
+          <div><dt>Comments taken care of</dt><dd>Bot replies sent plus comments that already had a reply.</dd></div>
           <div><dt>Pending review · {{ counts.get('pending_review', 0) }}</dt><dd>A reply is drafted and waiting for the automation to process it.</dd></div>
           <div><dt>Posting · {{ counts.get('posting', 0) }}</dt><dd>The reply is currently claimed by an active publishing process.</dd></div>
           <div><dt>Posted · {{ counts.get('posted', 0) }}</dt><dd>The automation successfully published the reply.</dd></div>
           <div><dt>Failed · {{ counts.get('failed', 0) }}</dt><dd>The platform rejected the reply or returned an error; it remains available for retry.</dd></div>
           <div><dt>Already replied · {{ counts.get('already_replied', 0) }}</dt><dd>An existing reply from your account was found, so the automation avoided a duplicate.</dd></div>
           <div><dt>Rejected · {{ counts.get('rejected', 0) }}</dt><dd>The comment was intentionally excluded, such as when it exceeded the configured age limit.</dd></div>
-          <div><dt>Why totals differ</dt><dd>Cleanup can remove old handled details while preserving their historical activity counts.</dd></div>
+          <div><dt>Why are these two numbers different?</dt><dd>The bot remembers the total number. Old comment details may be removed later to save space.</dd></div>
         </dl>
       </aside>
     </section>
 
     <section class="toolbar" aria-label="Comment filters">
+      {% if status == 'failed' %}
+        <form class="retry-all-form" method="post" action="/comments/retry-failed">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
+          <button class="retry-all" type="submit">Retry failed replies</button>
+        </form>
+      {% endif %}
       <form class="search" method="get">
         <input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="sort" value="{{ sort_order }}">{% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
         <div class="search-wrap"><svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><input type="search" name="q" value="{{ query }}" placeholder="Search comments, authors, replies or titles"></div>

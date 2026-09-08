@@ -58,11 +58,18 @@ def poll_facebook_and_draft() -> int:
                     author = comment.get("from", {}).get("name", "someone")
                     title = post_message(post_id)
 
-                    try:
-                        existing_reply = meta_client.find_own_reply(comment_id, platform="facebook")
-                    except Exception:
-                        print(f"Could not verify existing replies for facebook comment {comment_id}; skipping this run.")
-                        continue
+                    existing_reply = None
+                    if config.FACEBOOK_VERIFY_EXISTING_REPLIES:
+                        try:
+                            existing_reply = meta_client.find_own_reply(
+                                comment_id, platform="facebook"
+                            )
+                        except Exception:
+                            print(
+                                "Could not verify existing replies for facebook "
+                                f"comment {comment_id}; skipping this run."
+                            )
+                            continue
 
                     try:
                         reply = "" if existing_reply else draft_reply(
@@ -85,6 +92,12 @@ def poll_facebook_and_draft() -> int:
                         text=text,
                         published_at=comment.get("created_time", ""),
                         draft_reply=reply,
+                        reply_checked_at=(
+                            db.now()
+                            if config.FACEBOOK_VERIFY_EXISTING_REPLIES
+                            and not existing_reply
+                            else None
+                        ),
                     )
                     if existing_reply:
                         db.update_status(conn, comment_id, "already_replied", reply_comment_id=existing_reply)
@@ -166,6 +179,7 @@ def poll_instagram_and_draft() -> int:
                         text=text,
                         published_at=comment.get("timestamp", ""),
                         draft_reply=reply,
+                        reply_checked_at=db.now() if not existing_reply else None,
                     )
                     if existing_reply:
                         db.update_status(conn, comment_id, "already_replied", reply_comment_id=existing_reply)

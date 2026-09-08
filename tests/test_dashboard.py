@@ -16,6 +16,9 @@ class DashboardTests(unittest.TestCase):
         patcher = patch.object(db, "DB_PATH", Path(self.temp.name) / "comments.db")
         patcher.start()
         self.addCleanup(patcher.stop)
+        data_dir = patch.object(config, "DATA_DIR", Path(self.temp.name))
+        data_dir.start()
+        self.addCleanup(data_dir.stop)
         username = patch.object(config, "DASHBOARD_USERNAME", "admin")
         password = patch.object(
             config, "DASHBOARD_PASSWORD_HASH", generate_password_hash("secret")
@@ -66,12 +69,12 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Community workspace", page.data)
         self.assertIn(b'class="overview-grid"', page.data)
         self.assertIn(b"How to read these numbers", page.data)
-        self.assertIn(b"Activity keeps historical totals", page.data)
+        self.assertIn(b"The top numbers show what happened", page.data)
         self.assertIn(b"Pending review", page.data)
         self.assertIn(b"Posting", page.data)
         self.assertIn(b"Already replied", page.data)
         self.assertIn(b"Rejected", page.data)
-        self.assertIn(b"Why totals differ", page.data)
+        self.assertIn(b"Why are these two numbers different?", page.data)
         self.assertNotIn(b"API quota usage", page.data)
         self.assertNotIn(
             b"Review conversations and monitor automated replies", page.data
@@ -130,8 +133,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"7 Day", page.data)
         self.assertIn(b"365 Days", page.data)
         self.assertEqual(page.data.count(b'<button class="range-button'), 4)
-        self.assertIn(b"Replies posted", page.data)
-        self.assertIn(b"Handled total", page.data)
+        self.assertIn(b"Bot replies sent", page.data)
+        self.assertIn(b"Comments taken care of", page.data)
 
         facebook = self.client.get("/?status=already_replied&platform=facebook")
         self.assertIn(b'<body class="theme-facebook">', facebook.data)
@@ -169,9 +172,41 @@ class DashboardTests(unittest.TestCase):
             db.update_status(conn, "c3", "already_replied", reply_comment_id="manual")
         failed = self.client.get("/?status=failed")
         self.assertIn(b"token expired", failed.data)
+        self.assertIn(b"Retry failed replies", failed.data)
         already = self.client.get("/?status=already_replied")
         self.assertIn(b"already_replied", already.data)
         self.assertIn(b">manual<", already.data)
+
+    def test_bulk_retry_runs_failed_only_for_selected_platform(self):
+        with db.connect() as conn:
+            db.update_status(conn, "c1", "failed", error="temporary")
+        self.client.get("/?status=failed&platform=youtube")
+        with self.client.session_transaction() as auth_session:
+            csrf_token = auth_session["csrf_token"]
+
+        def run_thread_immediately():
+            call = thread.call_args
+            call.kwargs["target"](*call.kwargs["args"])
+
+        with patch.object(dashboard, "post_approved") as retry, \
+             patch.object(dashboard.threading, "Thread") as thread:
+            thread.return_value.start.side_effect = run_thread_immediately
+            response = self.client.post(
+                "/comments/retry-failed",
+                data={"csrf_token": csrf_token, "platform": "youtube"},
+            )
+
+        self.assertEqual(response.status_code, 302)
+        retry.assert_called_once_with(
+            platform="youtube",
+            only_failed=True,
+            like_comments=False,
+            limit=dashboard.FAILED_RETRY_LIMIT,
+            activity_log_path=Path(self.temp.name) / "polling.log",
+        )
+        retry_log = (Path(self.temp.name) / "polling.log").read_text()
+        self.assertIn("Dashboard failed-reply retry started", retry_log)
+        self.assertIn("Dashboard failed-reply retry finished", retry_log)
 
     def test_comments_are_sorted_by_posted_time_newest_first(self):
         with db.connect() as conn:

@@ -7,12 +7,23 @@ from requests import RequestException
 from app import config, db
 
 GRAPH_BASE = "https://graph.facebook.com"
-REQUEST_TIMEOUT_SECONDS = 30
-GET_RETRIES = 3
+READ_TIMEOUT_SECONDS = (
+    config.META_CONNECT_TIMEOUT_SECONDS,
+    config.META_READ_TIMEOUT_SECONDS,
+)
+WRITE_TIMEOUT_SECONDS = (
+    config.META_CONNECT_TIMEOUT_SECONDS,
+    config.META_WRITE_TIMEOUT_SECONDS,
+)
+GET_RETRIES = config.META_GET_RETRIES
 
 _ig_username_cache: str | None = None
 _page_token_cache: str | None = None
 _user_token_cache: str | None = None
+# Keep TCP/TLS connections open between Graph calls. A Facebook batch normally
+# makes many small requests, so recreating a connection for every request adds
+# avoidable latency.
+_http_session = requests.Session()
 
 
 class GraphAPIError(RuntimeError):
@@ -72,10 +83,10 @@ def get_page_access_token() -> str:
         return _page_token_cache
 
     config.require("FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN")
-    identity_resp = requests.get(
+    identity_resp = _http_session.get(
         _url("me"),
         params={"fields": "id", "access_token": config.FACEBOOK_PAGE_ACCESS_TOKEN},
-        timeout=REQUEST_TIMEOUT_SECONDS,
+        timeout=READ_TIMEOUT_SECONDS,
     )
     identity = identity_resp.json()
     _raise_if_error("me", identity)
@@ -83,10 +94,10 @@ def get_page_access_token() -> str:
         _page_token_cache = config.FACEBOOK_PAGE_ACCESS_TOKEN
         return _page_token_cache
 
-    resp = requests.get(
+    resp = _http_session.get(
         _url("me/accounts"),
         params={"fields": "id,access_token", "access_token": config.FACEBOOK_PAGE_ACCESS_TOKEN},
-        timeout=REQUEST_TIMEOUT_SECONDS,
+        timeout=READ_TIMEOUT_SECONDS,
     )
     data = resp.json()
     _raise_if_error("me/accounts", data)
@@ -114,10 +125,10 @@ def get_user_access_token() -> str:
 
     config.require("FACEBOOK_PAGE_ACCESS_TOKEN")
     token = config.FACEBOOK_PAGE_ACCESS_TOKEN
-    identity_resp = requests.get(
+    identity_resp = _http_session.get(
         _url("me"),
         params={"fields": "id", "access_token": token},
-        timeout=REQUEST_TIMEOUT_SECONDS,
+        timeout=READ_TIMEOUT_SECONDS,
     )
     identity = identity_resp.json()
     _raise_if_error("me", identity)
@@ -134,8 +145,8 @@ def graph_get(path: str, **params) -> dict:
     params["access_token"] = get_page_access_token()
     for attempt in range(GET_RETRIES):
         try:
-            resp = requests.get(
-                _url(path), params=params, timeout=REQUEST_TIMEOUT_SECONDS
+            resp = _http_session.get(
+                _url(path), params=params, timeout=READ_TIMEOUT_SECONDS
             )
             _record_meta_usage(path, resp)
             data = resp.json()
@@ -146,12 +157,17 @@ def graph_get(path: str, **params) -> dict:
                 raise GraphAPIError(
                     f"{path}: Meta read failed after {GET_RETRIES} attempts: {exc}"
                 ) from exc
+            print(
+                f"Meta read for {path} timed out; retrying once before "
+                "leaving the comment for the next cycle.",
+                flush=True,
+            )
             time.sleep(attempt + 1)
 
 
 def graph_post(path: str, **data) -> dict:
     data["access_token"] = get_page_access_token()
-    resp = requests.post(_url(path), data=data, timeout=REQUEST_TIMEOUT_SECONDS)
+    resp = _http_session.post(_url(path), data=data, timeout=WRITE_TIMEOUT_SECONDS)
     _record_meta_usage(path, resp)
     result = resp.json()
     _raise_if_error(path, result)
@@ -170,7 +186,7 @@ def iter_paged(path: str, **params):
             return
         for attempt in range(GET_RETRIES):
             try:
-                resp = requests.get(next_url, timeout=REQUEST_TIMEOUT_SECONDS)
+                resp = _http_session.get(next_url, timeout=READ_TIMEOUT_SECONDS)
                 _record_meta_usage(path, resp)
                 data = resp.json()
                 _raise_if_error(path, data)
@@ -181,6 +197,11 @@ def iter_paged(path: str, **params):
                         f"{path}: Meta page read failed after {GET_RETRIES} "
                         f"attempts: {exc}"
                     ) from exc
+                print(
+                    f"Meta reply-list page for {path} timed out; retrying once "
+                    "before leaving this comment for the next cycle.",
+                    flush=True,
+                )
                 time.sleep(attempt + 1)
 
 
@@ -200,7 +221,14 @@ def find_own_reply(comment_id: str, *, platform: str) -> str | None:
     """Find replies from the configured Page or Instagram account, across pages."""
     if platform == "facebook":
         config.require("FACEBOOK_PAGE_ID")
-        replies = iter_paged(f"{comment_id}/comments", fields="id,from", filter="stream")
+        replies = iter_paged(
+            f"{comment_id}/comments",
+            fields="id,from",
+            filter="stream",
+            # Request Meta's largest supported page to avoid spending a full
+            # round trip on every small page of a busy comment thread.
+            limit=100,
+        )
         for reply in replies:
             if reply.get("from", {}).get("id") == config.FACEBOOK_PAGE_ID:
                 return reply["id"]
@@ -238,13 +266,13 @@ def like_comment(comment_id: str, *, platform: str = "facebook") -> None:
     elif platform == "instagram":
         config.require("INSTAGRAM_USER_ID")
         path = f"{config.INSTAGRAM_USER_ID}/likes"
-        resp = requests.post(
+        resp = _http_session.post(
             _url(path),
             params={
                 "access_token": get_user_access_token(),
                 "comment_id": comment_id,
             },
-            timeout=REQUEST_TIMEOUT_SECONDS,
+            timeout=WRITE_TIMEOUT_SECONDS,
         )
         _record_meta_usage(path, resp)
         result = resp.json()

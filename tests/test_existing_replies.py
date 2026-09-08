@@ -28,7 +28,8 @@ class ExistingReplyTests(unittest.TestCase):
         for platform in ('youtube', 'facebook', 'instagram'):
             self.seed(platform)
             target = post if platform == 'youtube' else meta_client
-            with patch.object(post, 'get_client', return_value=MagicMock()), \
+            with patch.object(post.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', True), \
+                 patch.object(post, 'get_client', return_value=MagicMock()), \
                  patch.object(post, 'get_my_channel_id', return_value='owner'), \
                  patch.object(post, 'get_video_channel_ids', return_value={'media':'owner'}), \
                  patch.object(target, 'find_own_reply', side_effect=RuntimeError('offline')), \
@@ -37,7 +38,8 @@ class ExistingReplyTests(unittest.TestCase):
                 send.assert_not_called()
             with db.connect() as conn:
                 self.assertEqual(len(db.list_by_status(conn, 'approved')), 1)
-            with patch.object(post, 'get_client', return_value=MagicMock()) as yt, \
+            with patch.object(post.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', True), \
+                 patch.object(post, 'get_client', return_value=MagicMock()) as yt, \
                  patch.object(post, 'get_my_channel_id', return_value='owner'), \
                  patch.object(post, 'get_video_channel_ids', return_value={'media':'owner'}), \
                  patch.object(target, 'find_own_reply', return_value='manual'), \
@@ -48,7 +50,33 @@ class ExistingReplyTests(unittest.TestCase):
             with db.connect() as conn:
                 row = conn.execute('SELECT * FROM comments WHERE comment_id=?', (platform,)).fetchone()
                 self.assertEqual(row['status'], 'already_replied')
-                self.assertEqual(row['reply_comment_id'], 'manual')
+            self.assertEqual(row['reply_comment_id'], 'manual')
+
+    def test_facebook_fast_mode_posts_without_a_remote_duplicate_check(self):
+        self.seed('facebook')
+        with patch.object(post.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', False), \
+             patch.object(meta_client, 'find_own_reply') as find, \
+             patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
+            self.assertEqual(post.post_approved(platform='facebook'), 1)
+
+        find.assert_not_called()
+        send.assert_called_once_with('facebook', '🙏', platform='facebook')
+
+    def test_recent_instagram_check_is_reused_for_its_first_post(self):
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id='instagram-recent', platform='instagram',
+                video_id='media', video_title='Title', author='viewer',
+                text='Jai Maa', published_at='', draft_reply='🙏',
+                reply_checked_at=db.now(),
+            )
+            db.update_status(conn, 'instagram-recent', 'approved')
+        with patch.object(meta_client, 'find_own_reply') as find, \
+             patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
+            self.assertEqual(post.post_approved(platform='instagram'), 1)
+
+        find.assert_not_called()
+        send.assert_called_once_with('instagram-recent', '🙏', platform='instagram')
 
     def test_youtube_post_checks_oauth_and_video_owner_identities(self):
         self.seed('youtube')
@@ -63,6 +91,24 @@ class ExistingReplyTests(unittest.TestCase):
             youtube, 'youtube', {'oauth-channel', 'hindolroad'}
         )
         youtube.comments.return_value.insert.assert_not_called()
+
+    def test_youtube_identity_check_can_record_quota_without_locking(self):
+        self.seed('youtube')
+        youtube = MagicMock()
+
+        def identity_with_quota(_):
+            db.add_quota_usage('youtube', 'test', 1, 10000)
+            return 'owner'
+
+        with patch.object(post, 'get_client', return_value=youtube), \
+             patch.object(post, 'get_my_channel_id', side_effect=identity_with_quota), \
+             patch.object(post, 'get_video_channel_ids', return_value={'media': 'owner'}), \
+             patch.object(post, 'find_own_reply', return_value='manual'):
+            self.assertEqual(post.post_approved(platform='youtube'), 0)
+
+        with db.connect() as conn:
+            quota = db.get_quota_usage(conn, 'youtube', 'test')
+            self.assertEqual(quota['used'], 1)
 
     def test_graph_error_marks_comment_failed(self):
         self.seed('facebook')
@@ -165,6 +211,7 @@ class ExistingReplyTests(unittest.TestCase):
             row = db.get_comment(conn, 'instagram')
             self.assertEqual(row['status'], 'already_replied')
             self.assertEqual(row['reply_comment_id'], 'remote')
+            self.assertEqual(row['error'], '')
 
     def test_atomic_claim_allows_only_one_publisher(self):
         self.seed('instagram')
@@ -248,13 +295,37 @@ class ExistingReplyTests(unittest.TestCase):
             )
             like.assert_called_once_with('instagram', platform='instagram')
 
+    def test_replies_are_posted_before_likes_begin(self):
+        for comment_id in ('facebook-first', 'facebook-second'):
+            with db.connect() as conn:
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='facebook',
+                    video_id='media', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+        events = []
+        with patch.object(post.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', False), \
+             patch.object(
+                 meta_client, 'reply_to_comment',
+                 side_effect=lambda *args, **kwargs: events.append('reply') or 'new',
+             ), \
+             patch.object(
+                 meta_client, 'like_comment',
+                 side_effect=lambda *args, **kwargs: events.append('like'),
+             ):
+            self.assertEqual(
+                post.post_approved(platform='facebook', like_comments=True), 2
+            )
+        self.assertEqual(events, ['reply', 'reply', 'like', 'like'])
+
     def test_instagram_likes_use_user_token_query(self):
         response = MagicMock()
         response.json.return_value = {'success': True}
         with patch.object(meta_client.config, 'INSTAGRAM_USER_ID', 'ig-user'), \
              patch.object(meta_client, 'get_user_access_token', return_value='user-token'), \
              patch.object(meta_client, 'graph_post') as page_post, \
-             patch.object(meta_client.requests, 'post', return_value=response) as send:
+             patch.object(meta_client._http_session, 'post', return_value=response) as send:
             meta_client.like_comment('ig-comment', platform='instagram')
         page_post.assert_not_called()
         send.assert_called_once()
@@ -271,7 +342,7 @@ class ExistingReplyTests(unittest.TestCase):
         identity.json.return_value = {'id': 'page'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
              patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'page-token'), \
-             patch.object(meta_client.requests, 'get', return_value=identity):
+             patch.object(meta_client._http_session, 'get', return_value=identity):
             with self.assertRaisesRegex(meta_client.GraphAPIError, 'User access token'):
                 meta_client.get_user_access_token()
 
@@ -282,7 +353,7 @@ class ExistingReplyTests(unittest.TestCase):
         identity.json.return_value = {'id': 'user'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
              patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'user-token'), \
-             patch.object(meta_client.requests, 'get', return_value=identity) as get:
+             patch.object(meta_client._http_session, 'get', return_value=identity) as get:
             self.assertEqual(meta_client.get_user_access_token(), 'user-token')
             self.assertEqual(meta_client.get_user_access_token(), 'user-token')
             get.assert_called_once()
@@ -360,7 +431,7 @@ class ExistingReplyTests(unittest.TestCase):
             with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'owner'), \
                  patch.object(meta_client, 'get_instagram_username', return_value='owner'), \
                  patch.object(meta_client, 'graph_get', return_value={'data':[], 'paging':{'next':'https://graph.facebook.com/next'}}), \
-                 patch.object(meta_client.requests, 'get') as get:
+                 patch.object(meta_client._http_session, 'get') as get:
                 get.return_value.json.return_value = {'data':[{'id':'mine', **identity}]}
                 self.assertEqual(meta_client.find_own_reply('parent', platform=platform), 'mine')
                 get.assert_called_once()
@@ -395,7 +466,7 @@ class ExistingReplyTests(unittest.TestCase):
                  meta_client,
                  'iter_paged',
                  return_value=iter([{'id': 'page-reply', 'from': {'id': 'owner'}}]),
-             ), \
+             ) as pages, \
              patch.object(meta_client, 'graph_get') as get:
             self.assertEqual(
                 meta_client.find_own_reply('parent', platform='facebook'),
@@ -403,6 +474,9 @@ class ExistingReplyTests(unittest.TestCase):
             )
 
         get.assert_not_called()
+        pages.assert_called_once_with(
+            'parent/comments', fields='id,from', filter='stream', limit=100
+        )
 
     def test_meta_reply_endpoints(self):
         with patch.object(meta_client, 'graph_post', return_value={'id':'new'}) as send:
@@ -417,7 +491,7 @@ class ExistingReplyTests(unittest.TestCase):
         identity.json.return_value = {'id': 'page'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
              patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'token'), \
-             patch.object(meta_client.requests, 'get', return_value=identity) as get:
+             patch.object(meta_client._http_session, 'get', return_value=identity) as get:
             self.assertEqual(meta_client.get_page_access_token(), 'token')
             get.assert_called_once()
             self.assertTrue(get.call_args.args[0].endswith('/me'))
@@ -429,6 +503,7 @@ class ExistingReplyTests(unittest.TestCase):
             comments = 'iter_facebook_post_comments' if platform == 'facebook' else 'iter_instagram_media_comments'
             title = 'get_facebook_post_message' if platform == 'facebook' else 'get_instagram_media_caption'
             with patch.object(social_fetch.config, 'require'), \
+                 patch.object(social_fetch.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', True), \
                  patch.object(meta_client, containers, return_value=['media']), \
                  patch.object(meta_client, comments, return_value=[{'id':platform, 'text':'Jai Maa', 'message':'Jai Maa', 'username':'viewer'}]), \
                  patch.object(meta_client, title, return_value='Title'), \
@@ -439,6 +514,8 @@ class ExistingReplyTests(unittest.TestCase):
                 draft.assert_not_called()
         with patch.object(fetch, 'get_client'), \
              patch.object(fetch, 'get_my_channel_id', return_value='owner'), \
+             patch.object(fetch, 'get_uploads_playlist_id', return_value='uploads'), \
+             patch.object(fetch, 'iter_uploaded_video_ids', return_value=iter([])), \
              patch.object(fetch.config, 'YOUTUBE_VIDEO_IDS', ['media']), \
              patch.object(fetch, '_video_title_cache', return_value=lambda _: 'Title'), \
              patch.object(fetch, '_iter_top_level_threads', return_value=[{'snippet':{'topLevelComment':{'id':'youtube', 'snippet':{'videoId':'media'}}}}]), \
@@ -449,6 +526,25 @@ class ExistingReplyTests(unittest.TestCase):
         with db.connect() as conn:
             self.assertEqual(len(db.list_by_status(conn, 'already_replied')), 2)
             self.assertIsNone(db.get_comment(conn, 'youtube'))
+
+    def test_configured_youtube_ids_are_added_to_latest_uploads(self):
+        with patch.object(fetch, 'get_client'), \
+             patch.object(fetch, 'get_my_channel_id', return_value='owner'), \
+             patch.object(fetch, 'get_uploads_playlist_id', return_value='uploads'), \
+             patch.object(
+                 fetch, 'iter_uploaded_video_ids',
+                 return_value=iter(['latest-1', 'configured', 'latest-2']),
+             ), \
+             patch.object(fetch.config, 'YOUTUBE_VIDEO_IDS', ['configured']), \
+             patch.object(fetch.config, 'YOUTUBE_VIDEO_LIMIT', 3), \
+             patch.object(fetch.config, 'YOUTUBE_COMMENT_LIMIT', 3), \
+             patch.object(fetch, '_iter_top_level_threads', return_value=[]) as threads:
+            self.assertEqual(fetch.poll_and_draft(), 0)
+
+        self.assertEqual(
+            [call.kwargs['video_id'] for call in threads.call_args_list],
+            ['configured', 'latest-1', 'latest-2'],
+        )
 
 
 if __name__ == '__main__':
