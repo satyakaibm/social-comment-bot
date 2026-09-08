@@ -165,23 +165,30 @@ def graph_get(path: str, **params) -> dict:
             time.sleep(attempt + 1)
 
 
-def graph_post(path: str, **data) -> dict:
+def graph_post(path: str, *, retry_on_temporary_error: bool = True, **data) -> dict:
+    """POST to a Graph API edge.
+
+    `retry_on_temporary_error` blindly resends the exact same write on Meta's
+    code 1 (“Please reduce the amount of data...”), which is often a
+    misleading generic error rather than proof the write failed — Meta can
+    return it even after creating the resource. That resend is safe for an
+    idempotent edge like a like, but NOT for one that creates a new resource
+    (a comment reply): resending can create a second, duplicate reply. Only
+    idempotent callers should pass True.
+    """
     data["access_token"] = get_page_access_token()
-    for attempt in range(max(1, config.META_POST_RETRIES)):
+    attempts = max(1, config.META_POST_RETRIES) if retry_on_temporary_error else 1
+    for attempt in range(attempts):
         resp = _http_session.post(
             _url(path), data=data, timeout=WRITE_TIMEOUT_SECONDS
         )
         _record_meta_usage(path, resp)
         result = resp.json()
         error = result.get("error") if isinstance(result, dict) else None
-        # Meta commonly returns code 1 with “Please reduce the amount of data”
-        # for a single small comment reply. That payload has not been accepted,
-        # so a brief retry is safe and avoids leaving an otherwise healthy
-        # batch with an unnecessary failed row.
         if (
             isinstance(error, dict)
             and error.get("code") == 1
-            and attempt + 1 < max(1, config.META_POST_RETRIES)
+            and attempt + 1 < attempts
         ):
             print(
                 f"Meta temporarily rejected {path} (code 1); retrying in "
@@ -231,7 +238,11 @@ def reply_to_comment(comment_id: str, message: str, *, platform: str) -> str:
     if platform not in ("facebook", "instagram"):
         raise ValueError(f"Unsupported Meta platform: {platform}")
     edge = "comments" if platform == "facebook" else "replies"
-    resp = graph_post(f"{comment_id}/{edge}", message=message)
+    # Never blindly resend this write: it creates a new comment, so retrying
+    # after an ambiguous error (Meta's code 1 can follow a write that actually
+    # succeeded) risks posting a visible duplicate reply. The caller is
+    # responsible for verifying via find_own_reply before trying again.
+    resp = graph_post(f"{comment_id}/{edge}", message=message, retry_on_temporary_error=False)
     return resp["id"]
 
 

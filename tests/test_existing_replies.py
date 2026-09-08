@@ -123,6 +123,53 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(row['status'], 'failed')
             self.assertIn('token expired', row['error'])
 
+    def test_facebook_retry_checks_for_existing_reply_even_in_fast_mode(self):
+        # Reproduces the duplicate-reply bug: a comment that already errored
+        # once must be verified before Facebook fast mode tries it again,
+        # even though fast mode skips the check for a brand-new comment.
+        self.seed('facebook')
+        with db.connect() as conn:
+            db.update_status(conn, 'facebook', 'failed', error='Meta rejected it once')
+        with patch.object(post.config, 'FACEBOOK_VERIFY_EXISTING_REPLIES', False), \
+             patch.object(meta_client, 'find_own_reply', return_value='already-posted') as find, \
+             patch.object(meta_client, 'reply_to_comment') as send:
+            self.assertEqual(
+                post.post_approved(platform='facebook', include_failed=True), 0
+            )
+        find.assert_called_once()
+        send.assert_not_called()
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'facebook')
+            self.assertEqual(row['status'], 'already_replied')
+            self.assertEqual(row['reply_comment_id'], 'already-posted')
+
+    def test_repeated_failures_stop_auto_retrying_after_max_attempts(self):
+        self.seed('facebook')
+        with patch.object(post.config, 'META_MAX_POST_ATTEMPTS', 3), \
+             patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(
+                 meta_client, 'reply_to_comment',
+                 side_effect=meta_client.GraphAPIError('comment not added'),
+             ):
+            for _ in range(3):
+                self.assertEqual(
+                    post.post_approved(platform='facebook', include_failed=True), 0
+                )
+        with db.connect() as conn:
+            row = db.get_comment(conn, 'facebook')
+            self.assertEqual(row['status'], 'rejected')
+            self.assertIn('Gave up after 3 failed attempts', row['error'])
+
+        # A row that has given up is 'rejected', not 'failed', so it drops
+        # out of --retry-failed automatically.
+        with patch.object(meta_client, 'find_own_reply') as find, \
+             patch.object(meta_client, 'reply_to_comment') as send:
+            self.assertEqual(
+                post.post_approved(platform='facebook', include_failed=True), 0
+            )
+        find.assert_not_called()
+        send.assert_not_called()
+
     def test_old_comment_is_rejected_without_remote_checks_or_posting(self):
         with db.connect() as conn:
             db.insert_comment(
@@ -386,6 +433,27 @@ class ExistingReplyTests(unittest.TestCase):
         self.assertEqual(send.call_count, 2)
         sleep.assert_called_once_with(2)
 
+    def test_reply_to_comment_does_not_blindly_retry_on_temporary_error(self):
+        # Code 1 can follow a write that actually succeeded server-side, so
+        # resending it (as graph_post does for idempotent edges) risks
+        # creating a second, duplicate public reply. Posting a reply must
+        # send the write exactly once and surface the error instead.
+        temporary = MagicMock(headers={})
+        temporary.json.return_value = {
+            'error': {
+                'code': 1,
+                'message': "Please reduce the amount of data you're asking for",
+            }
+        }
+        with patch.object(meta_client, 'get_page_access_token', return_value='token'), \
+             patch.object(meta_client._http_session, 'post', return_value=temporary) as send, \
+             patch.object(meta_client.time, 'sleep') as sleep:
+            with self.assertRaises(meta_client.GraphAPIError):
+                meta_client.reply_to_comment('comment', 'Thank you!', platform='facebook')
+
+        self.assertEqual(send.call_count, 1)
+        sleep.assert_not_called()
+
     def test_youtube_comment_likes_are_skipped(self):
         self.seed('youtube')
         youtube = MagicMock()
@@ -520,7 +588,9 @@ class ExistingReplyTests(unittest.TestCase):
         with patch.object(meta_client, 'graph_post', return_value={'id':'new'}) as send:
             for platform, edge in (('facebook','comments'), ('instagram','replies')):
                 meta_client.reply_to_comment('parent', '🙏', platform=platform)
-                send.assert_called_with(f'parent/{edge}', message='🙏')
+                send.assert_called_with(
+                    f'parent/{edge}', message='🙏', retry_on_temporary_error=False
+                )
 
     def test_configured_page_token_skips_user_token_exchange(self):
         meta_client._page_token_cache = None

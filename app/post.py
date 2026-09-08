@@ -22,16 +22,19 @@ from app.youtube_client import (
 def _has_recent_reply_check(row) -> bool:
     """Return whether a fresh Meta check can be reused for the first post.
 
-    Facebook fast mode intentionally bypasses the remote check altogether.
-    For every other Meta request, failed/interrupted rows never use this
-    shortcut because they have a possible prior write to reconcile.
+    Facebook fast mode bypasses the remote check, but only for a comment's
+    first attempt. A row that previously errored (status 'failed', or an
+    `error` already on record) has a possible prior write that must be
+    reconciled with a real remote check before it is retried — skipping
+    that check on a retry is what let a single Facebook comment receive
+    several duplicate replies whenever "retry failed" was used.
     """
     if row["platform"] not in ("facebook", "instagram"):
         return False
-    if row["platform"] == "facebook" and not config.FACEBOOK_VERIFY_EXISTING_REPLIES:
-        return True
     if row["status"] not in ("pending_review", "approved") or row["error"]:
         return False
+    if row["platform"] == "facebook" and not config.FACEBOOK_VERIFY_EXISTING_REPLIES:
+        return True
     checked_at = row["reply_checked_at"]
     if not checked_at or config.META_RECENT_REPLY_CHECK_SECONDS <= 0:
         return False
@@ -282,9 +285,21 @@ def post_approved(
                 conn.commit()
                 emit(f"Failed to post reply to YouTube comment {row['comment_id']}: {e}")
             except meta_client.GraphAPIError as e:
-                db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
+                result_status = db.record_publish_failure(
+                    conn,
+                    row["comment_id"],
+                    str(e),
+                    max_attempts=config.META_MAX_POST_ATTEMPTS,
+                )
                 conn.commit()
-                emit(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
+                if result_status == "rejected":
+                    emit(
+                        f"Gave up on {platform} comment {row['comment_id']} after "
+                        f"{config.META_MAX_POST_ATTEMPTS} failed attempts; it will "
+                        f"no longer be retried automatically: {e}"
+                    )
+                else:
+                    emit(f"Failed to post reply to {platform} comment {row['comment_id']}: {e}")
                 consecutive_platform_errors += 1
                 if consecutive_platform_errors >= config.PUBLISH_ERROR_LIMIT:
                     emit(

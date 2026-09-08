@@ -292,7 +292,7 @@
           <div><dt>Posted · {{ counts.get('posted', 0) }}</dt><dd>The automation successfully published the reply.</dd></div>
           <div><dt>Failed · {{ counts.get('failed', 0) }}</dt><dd>The platform rejected the reply or returned an error; it remains available for retry.</dd></div>
           <div><dt>Already replied · {{ counts.get('already_replied', 0) }}</dt><dd>An existing reply from your account was found, so the automation avoided a duplicate.</dd></div>
-          <div><dt>Rejected · {{ counts.get('rejected', 0) }}</dt><dd>The comment was intentionally excluded, such as when it exceeded the configured age limit.</dd></div>
+          <div><dt>Rejected · {{ counts.get('rejected', 0) }}</dt><dd>The comment was intentionally excluded, such as when it exceeded the configured age limit, or Meta rejected the reply on every attempt (see META_MAX_POST_ATTEMPTS) and it will not be retried automatically.</dd></div>
           <div><dt>Why are these two numbers different?</dt><dd>The bot remembers the total number. Old comment details may be removed later to save space.</dd></div>
         </dl>
       </aside>
