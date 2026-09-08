@@ -27,11 +27,15 @@ def poll_facebook_and_draft() -> int:
     post_message = _title_cache(meta_client.get_facebook_post_message)
     new_count = 0
     remaining = max(0, config.FACEBOOK_COMMENT_LIMIT)
+    daily_draft_limit_reached = False
     post_ids = list(meta_client.iter_facebook_post_ids())
 
     with db.connect() as conn:
+        drafted_today = db.count_drafted_today(conn)
         for index, post_id in enumerate(post_ids):
             if remaining <= 0:
+                break
+            if daily_draft_limit_reached:
                 break
             containers_left = len(post_ids) - index
             container_limit = max(1, remaining // containers_left)
@@ -71,6 +75,19 @@ def poll_facebook_and_draft() -> int:
                             )
                             continue
 
+                    if (
+                        not existing_reply
+                        and config.GEMINI_DAILY_DRAFT_LIMIT > 0
+                        and drafted_today >= config.GEMINI_DAILY_DRAFT_LIMIT
+                    ):
+                        if not daily_draft_limit_reached:
+                            print(
+                                f"Gemini daily draft limit of {config.GEMINI_DAILY_DRAFT_LIMIT} "
+                                "reached; leaving remaining new comments for a later cycle."
+                            )
+                            daily_draft_limit_reached = True
+                        break
+
                     try:
                         reply = "" if existing_reply else draft_reply(
                             platform="facebook",
@@ -104,6 +121,7 @@ def poll_facebook_and_draft() -> int:
                     conn.commit()
                     if not existing_reply:
                         new_count += 1
+                        drafted_today += 1
             except meta_client.GraphAPIError as e:
                 print(f"Facebook Graph API error while polling post_id={post_id!r}: {e}")
 
@@ -121,11 +139,15 @@ def poll_instagram_and_draft() -> int:
     media_caption = _title_cache(meta_client.get_instagram_media_caption)
     new_count = 0
     remaining = max(0, config.INSTAGRAM_COMMENT_LIMIT)
+    daily_draft_limit_reached = False
     media_ids = list(meta_client.iter_instagram_media_ids())
 
     with db.connect() as conn:
+        drafted_today = db.count_drafted_today(conn)
         for index, media_id in enumerate(media_ids):
             if remaining <= 0:
+                break
+            if daily_draft_limit_reached:
                 break
             containers_left = len(media_ids) - index
             container_limit = max(1, remaining // containers_left)
@@ -158,6 +180,19 @@ def poll_instagram_and_draft() -> int:
                         print(f"Could not verify existing replies for instagram comment {comment_id}; skipping this run.")
                         continue
 
+                    if (
+                        not existing_reply
+                        and config.GEMINI_DAILY_DRAFT_LIMIT > 0
+                        and drafted_today >= config.GEMINI_DAILY_DRAFT_LIMIT
+                    ):
+                        if not daily_draft_limit_reached:
+                            print(
+                                f"Gemini daily draft limit of {config.GEMINI_DAILY_DRAFT_LIMIT} "
+                                "reached; leaving remaining new comments for a later cycle."
+                            )
+                            daily_draft_limit_reached = True
+                        break
+
                     try:
                         reply = "" if existing_reply else draft_reply(
                             platform="instagram",
@@ -186,6 +221,7 @@ def poll_instagram_and_draft() -> int:
                     conn.commit()
                     if not existing_reply:
                         new_count += 1
+                        drafted_today += 1
             except meta_client.GraphAPIError as e:
                 print(f"Instagram Graph API error while polling media_id={media_id!r}: {e}")
 

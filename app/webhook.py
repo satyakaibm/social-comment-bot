@@ -124,6 +124,45 @@ def process_event(event: dict) -> None:
         else meta_client.get_instagram_media_caption
     )
     title = get_title(event["container_id"]) or event["container_id"]
+
+    with db.connect() as conn:
+        daily_limit_reached = (
+            config.GEMINI_DAILY_DRAFT_LIMIT > 0
+            and db.count_drafted_today(conn) >= config.GEMINI_DAILY_DRAFT_LIMIT
+        )
+    if daily_limit_reached:
+        # A webhook event can't be redelivered later, so unlike the cron
+        # pollers (which just leave the comment unseen for a later cycle)
+        # this comment is saved with no draft rather than dropped, so it's
+        # still visible in the dashboard for a manual reply.
+        with db.connect() as conn:
+            db.insert_comment(
+                conn,
+                comment_id=comment_id,
+                platform=platform,
+                video_id=event["container_id"],
+                video_title=title,
+                author=event["author"],
+                text=event["text"],
+                published_at=event.get("published_at", ""),
+                draft_reply="",
+            )
+            db.update_status(
+                conn,
+                comment_id,
+                "pending_review",
+                error=(
+                    f"Gemini daily draft limit of {config.GEMINI_DAILY_DRAFT_LIMIT} "
+                    "was reached; draft it manually."
+                ),
+            )
+        print(
+            f"Gemini daily draft limit reached; saved {platform} comment "
+            f"{comment_id} without a draft.",
+            flush=True,
+        )
+        return
+
     reply = draft_reply(
         platform=platform,
         context_title=title,
