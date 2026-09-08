@@ -402,6 +402,21 @@ class ExistingReplyTests(unittest.TestCase):
             )
             like.assert_not_called()
 
+    def test_youtube_post_strips_an_old_automated_author_prefix(self):
+        self.seed('youtube')
+        with db.connect() as conn:
+            db.update_status(conn, 'youtube', 'approved', draft_reply='@@viewer 🙏')
+        youtube = MagicMock()
+        youtube.comments.return_value.insert.return_value.execute.return_value = {'id': 'new'}
+        with patch.object(post, 'get_client', return_value=youtube), \
+             patch.object(post, 'get_my_channel_id', return_value='owner'), \
+             patch.object(post, 'get_video_channel_ids', return_value={'media': 'owner'}), \
+             patch.object(post, 'find_own_reply', return_value=None):
+            self.assertEqual(post.post_approved(platform='youtube'), 1)
+
+        body = youtube.comments.return_value.insert.call_args.kwargs['body']
+        self.assertEqual(body['snippet']['textOriginal'], '🙏')
+
     def test_youtube_checks_later_reply_pages(self):
         youtube = MagicMock()
         first, second = MagicMock(), MagicMock()

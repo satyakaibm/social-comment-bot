@@ -39,3 +39,19 @@ class GenerateTests(unittest.TestCase):
         self.assertEqual(reply, "🙏")
         self.assertEqual(len(client.chats.created), 1)
         self.assertIn("Jai Maa", client.chats.chat.messages[0])
+
+    def test_only_instagram_drafts_receive_an_author_prefix(self):
+        client = SimpleNamespace(chats=_FakeChats())
+        with patch.object(generate, "_get_client", return_value=client), \
+             patch.object(generate, "load_examples", return_value=[]):
+            youtube = generate.draft_reply(
+                platform="youtube", context_title="Aarti", author="viewer",
+                comment_text="Jai Maa",
+            )
+            instagram = generate.draft_reply(
+                platform="instagram", context_title="Aarti", author="viewer",
+                comment_text="Jai Maa",
+            )
+
+        self.assertEqual(youtube, "🙏")
+        self.assertEqual(instagram, "@viewer 🙏")

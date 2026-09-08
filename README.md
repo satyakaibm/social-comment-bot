@@ -7,7 +7,7 @@ Nothing is posted automatically.
 ## How it works
 
 1. **Poll** — pull new top-level comments. Already-seen comments (stored in SQLite) and your own comments are skipped.
-2. **Draft** — Gemini writes a reply using `REPLY_PERSONA` plus every example file in `reply_examples/`. YouTube and Instagram drafts are prefixed with `@author` so the commenter is notified. Facebook replies are plain text (Graph API does not expose mentionable user IDs for public commenters).
+2. **Draft** — Gemini writes a reply using `REPLY_PERSONA` plus every example file in `reply_examples/`. Instagram drafts are prefixed with `@author` so the commenter is notified. YouTube replies are plain text beneath the original comment, and Facebook replies are plain text because its Graph API does not expose mentionable user IDs for public commenters.
 3. **Review** — approve, edit-and-approve, reject, or skip each draft in the terminal.
 4. **Post** — send approved replies via the YouTube Data API or Meta Graph API.
 

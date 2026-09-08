@@ -131,6 +131,11 @@ def sanitize_draft(text: str) -> str:
     return f"{mention}{rest}".strip()
 
 
+def remove_leading_mention(text: str) -> str:
+    """Remove the automated leading @username from a platform reply."""
+    return re.sub(r"^\s*@+\S+(?:\s+|$)", "", text).strip()
+
+
 def sanitize_stored_drafts(*, platform: str = "youtube") -> int:
     """Rewrite stored draft_reply text after sanitize_draft. Returns rows changed."""
     from app import db

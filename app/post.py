@@ -8,7 +8,7 @@ from requests import RequestException
 
 from app import config, db, meta_client
 from app.comment_age import is_within_comment_age_limit
-from app.sanitize import sanitize_draft
+from app.sanitize import remove_leading_mention, sanitize_draft
 from app.youtube_client import (
     find_own_reply,
     get_client,
@@ -210,6 +210,11 @@ def post_approved(
                 emit(f"Skipped {platform} comment {row['comment_id']}: your account already replied.")
                 continue
             reply_text = sanitize_draft(row["draft_reply"] or "")
+            if platform == "youtube":
+                # Existing queued YouTube drafts may still contain the old
+                # automated @username prefix. Replies are already nested below
+                # the comment, so post them as plain text.
+                reply_text = remove_leading_mention(reply_text)
             if reply_text != (row["draft_reply"] or ""):
                 db.update_status(
                     conn,

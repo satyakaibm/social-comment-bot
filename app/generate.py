@@ -38,12 +38,10 @@ _PLATFORM_LABELS = {
     "instagram": "Instagram post",
 }
 
-# Platforms where prefixing "@author" on a reply tags the commenter and
-# triggers a notification. Facebook is excluded: a plain "@Name" in comment
-# text is not a real mention there (Facebook mentions require the
-# commenter's numeric user id, which the Graph API doesn't expose for
-# arbitrary public commenters).
-_MENTION_PLATFORMS = {"youtube", "instagram"}
+# Instagram is the only supported platform where prefixing "@author" creates
+# the intended commenter mention. YouTube replies are already nested beneath
+# the original comment, so the username prefix is unnecessary.
+_MENTION_PLATFORMS = {"instagram"}
 
 _REPLY_STYLE_INSTRUCTION = """
 Mandatory reply style (takes precedence over persona and examples):
