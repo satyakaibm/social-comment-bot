@@ -64,6 +64,14 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn(b">Auto refresh</button>", page.data)
         self.assertNotIn(b"All timestamps shown in IST", page.data)
         self.assertIn(b"Community workspace", page.data)
+        self.assertIn(b'class="overview-grid"', page.data)
+        self.assertIn(b"How to read these numbers", page.data)
+        self.assertIn(b"Activity keeps historical totals", page.data)
+        self.assertIn(b"Pending review", page.data)
+        self.assertIn(b"Posting", page.data)
+        self.assertIn(b"Already replied", page.data)
+        self.assertIn(b"Rejected", page.data)
+        self.assertIn(b"Why totals differ", page.data)
         self.assertNotIn(b"API quota usage", page.data)
         self.assertNotIn(
             b"Review conversations and monitor automated replies", page.data
@@ -110,10 +118,10 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(
             activity,
             [
-                {"label": "1 Hour", "received": 0, "posted": 1, "already_replied": 0, "handled": 1},
-                {"label": "24 Hours", "received": 1, "posted": 1, "already_replied": 0, "handled": 1},
-                {"label": "7 Day", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
-                {"label": "365 Days", "received": 2, "posted": 1, "already_replied": 1, "handled": 2},
+                {"label": "1 Hour", "received": 0, "posted": 1, "already_replied": 0, "handled": 1, "detailed_posted": 1},
+                {"label": "24 Hours", "received": 1, "posted": 1, "already_replied": 0, "handled": 1, "detailed_posted": 1},
+                {"label": "7 Day", "received": 2, "posted": 1, "already_replied": 1, "handled": 2, "detailed_posted": 1},
+                {"label": "365 Days", "received": 2, "posted": 1, "already_replied": 1, "handled": 2, "detailed_posted": 1},
             ],
         )
         page = self.client.get("/")
