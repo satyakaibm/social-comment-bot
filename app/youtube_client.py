@@ -1,10 +1,22 @@
 from google.oauth2.credentials import Credentials
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from googleapiclient.discovery import Resource, build
 
-from app import config
+from app import config, db
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
+
+
+def execute(request, *, units: int = 1):
+    """Execute a YouTube request and record quota consumed by this bot."""
+    try:
+        return request.execute()
+    finally:
+        period = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+        db.add_quota_usage("youtube", period, units, config.YOUTUBE_DAILY_QUOTA_LIMIT)
 
 
 def is_quota_exceeded(error: Exception) -> bool:
@@ -35,7 +47,7 @@ def get_client() -> Resource:
 
 
 def get_my_channel_id(youtube: Resource) -> str:
-    resp = youtube.channels().list(part="id", mine=True).execute()
+    resp = execute(youtube.channels().list(part="id", mine=True))
     items = resp.get("items", [])
     if not items:
         raise RuntimeError("No channel found for the authenticated account.")
@@ -47,9 +59,9 @@ def get_video_channel_ids(youtube: Resource, video_ids) -> dict[str, str]:
     unique_ids = list(dict.fromkeys(video_id for video_id in video_ids if video_id))
     owners = {}
     for start in range(0, len(unique_ids), 50):
-        response = youtube.videos().list(
+        response = execute(youtube.videos().list(
             part="snippet", id=",".join(unique_ids[start:start + 50])
-        ).execute()
+        ))
         for item in response.get("items", []):
             owners[item["id"]] = item.get("snippet", {}).get("channelId", "")
     return owners
@@ -67,7 +79,7 @@ def find_own_reply(
         part="snippet", parentId=comment_id, maxResults=100, textFormat="plainText"
     )
     while request is not None:
-        response = request.execute()
+        response = execute(request)
         for reply in response["items"]:
             author_channel = reply.get("snippet", {}).get("authorChannelId", {})
             author_channel_id = (
@@ -82,7 +94,7 @@ def find_own_reply(
 
 
 def get_uploads_playlist_id(youtube: Resource) -> str:
-    resp = youtube.channels().list(part="contentDetails", mine=True).execute()
+    resp = execute(youtube.channels().list(part="contentDetails", mine=True))
     items = resp.get("items", [])
     if not items:
         raise RuntimeError("No channel found for the authenticated account.")
@@ -94,7 +106,7 @@ def iter_uploaded_video_ids(youtube: Resource, playlist_id: str):
         part="contentDetails", playlistId=playlist_id, maxResults=50
     )
     while request is not None:
-        response = request.execute()
+        response = execute(request)
         for item in response.get("items", []):
             yield item["contentDetails"]["videoId"]
         request = youtube.playlistItems().list_next(request, response)

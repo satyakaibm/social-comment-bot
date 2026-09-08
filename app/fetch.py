@@ -12,6 +12,7 @@ from app.youtube_client import (
     get_uploads_playlist_id,
     is_quota_exceeded,
     iter_uploaded_video_ids,
+    execute,
 )
 
 
@@ -25,7 +26,7 @@ def _iter_top_level_threads(youtube, *, video_id: str, limit: int | None = None)
     )
     count = 0
     while request is not None:
-        response = request.execute()
+        response = execute(request)
         for item in response.get("items", []):
             if limit is not None and count >= limit:
                 return
@@ -41,7 +42,7 @@ def _video_title_cache(youtube):
 
     def get(video_id: str) -> str:
         if video_id not in cache:
-            resp = youtube.videos().list(part="snippet", id=video_id).execute()
+            resp = execute(youtube.videos().list(part="snippet", id=video_id))
             items = resp.get("items", [])
             cache[video_id] = items[0]["snippet"]["title"] if items else video_id
         return cache[video_id]

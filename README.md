@@ -37,6 +37,12 @@ The container restarts automatically when Docker starts, unless you explicitly
 stop it. Enable **Start Docker Desktop when you sign in** in Docker Desktop
 settings to bring it back after a computer restart. Docker must remain running.
 
+The dashboard shows API quota usage for the selected platform. YouTube displays
+units observed by this bot against `YOUTUBE_DAILY_QUOTA_LIMIT` (default 10,000),
+resetting at midnight Pacific Time. Facebook and Instagram display the latest
+rolling usage percentage returned by Meta; their allowance is dynamic and shared
+across app activity, so Meta does not expose a fixed daily unit total.
+
 Your existing `data/` folder is mounted into the container, preserving comments
 and webhook state across rebuilds and sharing them with the existing host polling
 cron job. `reply_examples/` is mounted read-only, so example edits apply without
