@@ -42,6 +42,12 @@ META_POST_RETRIES = int(os.environ.get("META_POST_RETRIES", "2"))
 META_POST_RETRY_DELAY_SECONDS = float(
     os.environ.get("META_POST_RETRY_DELAY_SECONDS", "2")
 )
+# Some comments never accept a Page reply (e.g. Meta has hidden the comment,
+# the commenter blocked the Page, or the comment was deleted) and fail with
+# the same error on every attempt. Stop auto-retrying a comment once it has
+# failed this many times so it cannot keep tripping PUBLISH_ERROR_LIMIT and
+# crowding out comments that can still succeed.
+META_MAX_POST_ATTEMPTS = int(os.environ.get("META_MAX_POST_ATTEMPTS", "5"))
 # A comment checked during this same poll or webhook delivery does not need a
 # second identical remote check immediately before its first post. Failed and
 # interrupted attempts never use this shortcut.

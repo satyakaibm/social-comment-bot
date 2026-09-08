@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS comments (
     reply_comment_id TEXT,
     reply_checked_at TEXT,
     error TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -99,6 +100,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE comments ADD COLUMN error TEXT")
         if "reply_checked_at" not in columns:
             conn.execute("ALTER TABLE comments ADD COLUMN reply_checked_at TEXT")
+        if "retry_count" not in columns:
+            conn.execute(
+                "ALTER TABLE comments ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"
+            )
         user_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(dashboard_users)")
         }
@@ -711,6 +716,36 @@ def update_status(
     params.append(comment_id)
     conn.execute(f"UPDATE comments SET {', '.join(fields)} WHERE comment_id = ?", params)
     remember_seen_comment(conn, comment_id, status=status, updated_at=now())
+
+
+def record_publish_failure(
+    conn: sqlite3.Connection, comment_id: str, error: str, *, max_attempts: int
+) -> str:
+    """Record a failed publish attempt, giving up after `max_attempts`.
+
+    A comment that fails the same way on every attempt (Meta hides it,
+    the commenter blocked the Page, the comment was deleted, ...) would
+    otherwise be retried forever by `--retry-failed`, repeatedly tripping
+    PUBLISH_ERROR_LIMIT and crowding out comments that could still succeed.
+    Returns the status the row was set to ('failed' or 'rejected').
+    """
+    row = conn.execute(
+        "SELECT retry_count FROM comments WHERE comment_id = ?", (comment_id,)
+    ).fetchone()
+    attempts = (row["retry_count"] if row else 0) + 1
+    if attempts >= max_attempts:
+        status = "rejected"
+        error = f"Gave up after {attempts} failed attempts: {error}"
+    else:
+        status = "failed"
+    conn.execute(
+        """UPDATE comments
+           SET status = ?, error = ?, retry_count = ?, updated_at = ?
+           WHERE comment_id = ?""",
+        (status, error[:1000], attempts, now(), comment_id),
+    )
+    remember_seen_comment(conn, comment_id, status=status, updated_at=now())
+    return status
 
 
 def enqueue_webhook_event(conn, *, event_key: str, platform: str, payload: str) -> bool:
