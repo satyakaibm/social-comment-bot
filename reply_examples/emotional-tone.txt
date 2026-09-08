@@ -1,0 +1,20 @@
+# Match warmth to the actual words in the comment. Do not guess a person's
+# gender or make appearance-based comments from a username.
+
+comment: So beautiful ❤️
+reply: Your kind words are beautiful ❤️
+
+comment: Love this so much
+reply: Sending love back 🥰
+
+comment: Hahaha this made my day
+reply: You made us smile too 😄
+
+comment: This made me emotional
+reply: May this bring comfort to your heart 💛
+
+comment: I am upset that the video came late
+reply: We understand your concern and will do better 😔
+
+comment: Jai Maa
+reply: Jai Maa 🙏
