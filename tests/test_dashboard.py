@@ -50,7 +50,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn(b'<header class="site-header">', page.data)
         self.assertIn(b'<div class="topbar">', page.data)
-        self.assertIn(b'class="service-nav"', page.data)
+        self.assertIn(b'class="topbar-title" href="/">Content My Trip</a>', page.data)
+        self.assertNotIn(b'class="service-nav"', page.data)
         self.assertIn(b"Social Comment Studio", page.data)
         self.assertIn(b"Gateway Health", page.data)
         self.assertNotIn(b"Gateway operational", page.data)
@@ -63,6 +64,7 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn(b">Auto refresh</button>", page.data)
         self.assertNotIn(b"All timestamps shown in IST", page.data)
         self.assertIn(b"Community workspace", page.data)
+        self.assertNotIn(b"API quota usage", page.data)
         self.assertNotIn(
             b"Review conversations and monitor automated replies", page.data
         )
@@ -72,6 +74,18 @@ class DashboardTests(unittest.TestCase):
         pending = self.client.get("/?status=pending_review")
         self.assertIn(b"What time is aarti?", pending.data)
         self.assertIn(b"pending review", pending.data)
+
+    def test_selected_platform_shows_its_quota(self):
+        with db.connect() as conn:
+            conn.execute(
+                """INSERT INTO api_quota_usage
+                   (platform, period_key, used, limit_value, updated_at)
+                   VALUES ('instagram', 'rolling', 17, 100, '2026-09-08T00:00:00+00:00')"""
+            )
+        page = self.client.get("/?platform=instagram")
+        self.assertIn(b">17%</strong><span>Used", page.data)
+        self.assertIn(b">83%</strong><span>Remaining", page.data)
+        self.assertNotIn(b"YouTube resets", page.data)
 
     def test_activity_summary_shows_24_hour_week_and_year_totals(self):
         reference = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
@@ -184,12 +198,15 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'sort=desc', ascending.data)
         self.assertIn("↑".encode(), ascending.data)
 
-    def test_service_navigation_is_below_community_banner(self):
+    def test_gateway_health_is_inside_community_banner(self):
         page = self.client.get("/")
         markup = page.data.decode()
+        banner_start = markup.index('class="intro"')
         banner_end = markup.index("</section>", markup.index('class="intro"'))
-        self.assertLess(banner_end, markup.index('class="service-nav"'))
-        self.assertIn("Gateway Health", markup)
+        gateway = markup.index("Gateway Health")
+        self.assertLess(banner_start, gateway)
+        self.assertLess(gateway, banner_end)
+        self.assertNotIn('class="service-nav"', markup)
         self.assertNotIn('class="service-link"', markup)
 
     def test_comment_table_paginates_in_batches_of_one_hundred(self):

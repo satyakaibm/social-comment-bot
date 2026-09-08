@@ -59,6 +59,15 @@ CREATE TABLE IF NOT EXISTS seen_comments (
     updated_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS api_quota_usage (
+    platform TEXT NOT NULL,
+    period_key TEXT NOT NULL,
+    used INTEGER NOT NULL DEFAULT 0,
+    limit_value INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (platform, period_key)
+);
+
 """
 
 PRUNEABLE_COMMENT_STATUSES = ("posted", "already_replied", "rejected")
@@ -124,6 +133,44 @@ def init_db() -> None:
 
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def add_quota_usage(platform: str, period_key: str, amount: int, limit_value: int) -> None:
+    """Add locally observed API usage without coupling callers to a DB connection."""
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO api_quota_usage
+                   (platform, period_key, used, limit_value, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(platform, period_key) DO UPDATE SET
+                   used = used + excluded.used,
+                   limit_value = excluded.limit_value,
+                   updated_at = excluded.updated_at""",
+            (platform, period_key, amount, limit_value, now()),
+        )
+
+
+def set_quota_usage(platform: str, period_key: str, used: int, limit_value: int) -> None:
+    """Store the latest provider-reported rolling usage percentage."""
+    with connect() as conn:
+        conn.execute(
+            """INSERT INTO api_quota_usage
+                   (platform, period_key, used, limit_value, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(platform, period_key) DO UPDATE SET
+                   used = excluded.used,
+                   limit_value = excluded.limit_value,
+                   updated_at = excluded.updated_at""",
+            (platform, period_key, used, limit_value, now()),
+        )
+
+
+def get_quota_usage(conn: sqlite3.Connection, platform: str, period_key: str):
+    return conn.execute(
+        """SELECT used, limit_value, updated_at FROM api_quota_usage
+           WHERE platform = ? AND period_key = ?""",
+        (platform, period_key),
+    ).fetchone()
 
 
 def _migrate_seen_comments(conn: sqlite3.Connection) -> None:

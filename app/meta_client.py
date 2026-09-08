@@ -1,9 +1,10 @@
+import json
 import time
 
 import requests
 from requests import RequestException
 
-from app import config
+from app import config, db
 
 GRAPH_BASE = "https://graph.facebook.com"
 REQUEST_TIMEOUT_SECONDS = 30
@@ -25,6 +26,37 @@ def _url(path: str) -> str:
 def _raise_if_error(path: str, data: dict) -> None:
     if "error" in data:
         raise GraphAPIError(f"{path}: {data['error']}")
+
+
+def _quota_platform(path: str) -> str | None:
+    first = path.split("/", 1)[0]
+    if first in {"me", ""}:
+        return None
+    return "facebook" if "_" in first or first == config.FACEBOOK_PAGE_ID else "instagram"
+
+
+def _record_meta_usage(path: str, response) -> None:
+    platform = _quota_platform(path)
+    if not platform:
+        return
+    raw = response.headers.get("x-app-usage") or response.headers.get("x-page-usage")
+    business_raw = response.headers.get("x-business-use-case-usage")
+    if not raw and not business_raw:
+        return
+    try:
+        if raw:
+            usage_rows = [json.loads(raw)]
+        else:
+            by_asset = json.loads(business_raw)
+            usage_rows = [row for rows in by_asset.values() for row in rows]
+        used = max(
+            int(usage.get(name, 0))
+            for usage in usage_rows
+            for name in ("call_count", "total_time", "total_cputime")
+        )
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return
+    db.set_quota_usage(platform, "rolling", min(100, used), 100)
 
 
 def get_page_access_token() -> str:
@@ -105,6 +137,7 @@ def graph_get(path: str, **params) -> dict:
             resp = requests.get(
                 _url(path), params=params, timeout=REQUEST_TIMEOUT_SECONDS
             )
+            _record_meta_usage(path, resp)
             data = resp.json()
             _raise_if_error(path, data)
             return data
@@ -119,6 +152,7 @@ def graph_get(path: str, **params) -> dict:
 def graph_post(path: str, **data) -> dict:
     data["access_token"] = get_page_access_token()
     resp = requests.post(_url(path), data=data, timeout=REQUEST_TIMEOUT_SECONDS)
+    _record_meta_usage(path, resp)
     result = resp.json()
     _raise_if_error(path, result)
     return result
@@ -137,6 +171,7 @@ def iter_paged(path: str, **params):
         for attempt in range(GET_RETRIES):
             try:
                 resp = requests.get(next_url, timeout=REQUEST_TIMEOUT_SECONDS)
+                _record_meta_usage(path, resp)
                 data = resp.json()
                 _raise_if_error(path, data)
                 break
@@ -211,6 +246,7 @@ def like_comment(comment_id: str, *, platform: str = "facebook") -> None:
             },
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
+        _record_meta_usage(path, resp)
         result = resp.json()
         _raise_if_error(path, result)
     else:

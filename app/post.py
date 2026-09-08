@@ -10,6 +10,7 @@ from app.youtube_client import (
     get_my_channel_id,
     get_video_channel_ids,
     is_quota_exceeded,
+    execute,
 )
 
 
@@ -156,9 +157,8 @@ def post_approved(
                 if platform == "youtube":
                     if youtube is None:
                         youtube = get_client()
-                    resp = (
-                        youtube.comments()
-                        .insert(
+                    resp = execute(
+                        youtube.comments().insert(
                             part="snippet",
                             body={
                                 "snippet": {
@@ -166,8 +166,8 @@ def post_approved(
                                     "textOriginal": reply_text,
                                 }
                             },
-                        )
-                        .execute()
+                        ),
+                        units=50,
                     )
                     reply_id = resp["id"]
                 elif platform in ("facebook", "instagram"):

@@ -5,6 +5,7 @@ import secrets
 import threading
 import time
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
 from flask import Flask, flash, redirect, render_template, request, session, url_for
@@ -109,6 +110,32 @@ def _row_dict(row) -> dict:
     item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
     item["video_title"] = (item.get("video_title") or "")[:50]
     return item
+
+
+def _quota_cards(conn, platform: str) -> list[dict]:
+    selected = (platform,) if platform else ()
+    cards = []
+    youtube_period = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+    for name in selected:
+        period = youtube_period if name == "youtube" else "rolling"
+        row = db.get_quota_usage(conn, name, period)
+        used = int(row["used"]) if row else 0
+        limit_value = int(row["limit_value"]) if row else (
+            config.YOUTUBE_DAILY_QUOTA_LIMIT if name == "youtube" else 100
+        )
+        cards.append({
+            "platform": name,
+            "used": used if row else None,
+            "remaining": max(0, limit_value - used) if row else None,
+            "limit": limit_value,
+            "unit": "units" if name == "youtube" else "%",
+            "description": (
+                "Tracked today by this bot; YouTube resets at midnight Pacific Time."
+                if name == "youtube" else
+                "Latest rolling usage reported by Meta; Facebook and Instagram limits are dynamic."
+            ),
+        })
+    return cards
 
 
 def create_app() -> Flask:
@@ -331,6 +358,7 @@ def create_app() -> Flask:
         with db.connect() as conn:
             counts = db.count_by_status(conn, platform=platform or None)
             activity = db.activity_summary(conn, platform=platform or None)
+            quota_cards = _quota_cards(conn, platform)
             total = db.count_comments(
                 conn,
                 status=status,
@@ -355,6 +383,7 @@ def create_app() -> Flask:
             rows=rows,
             counts=counts,
             activity=activity,
+            quota_cards=quota_cards,
             statuses=STATUSES,
             platforms=PLATFORMS,
             status=status,
