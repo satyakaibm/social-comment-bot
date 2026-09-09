@@ -254,7 +254,7 @@
       </div>
       {% for quota in quota_cards %}
         <div class="quota-inline" aria-label="{{ quota.platform }} API quota usage">
-          <div class="quota-head">{{ quota.platform }} API quota</div>
+          <div class="quota-head">{{ quota.platform }} API quota{% if quota.platform == 'youtube' %} (Daily){% else %} (Dynamic){% endif %}</div>
           <div class="quota-values">
             <div class="quota-value"><strong>{{ quota.used if quota.used is not none else '—' }}{% if quota.unit == '%' and quota.used is not none %}%{% endif %}</strong><span>Used{% if quota.unit == 'units' %} units{% endif %}</span></div>
             <div class="quota-value"><strong>{{ quota.remaining if quota.remaining is not none else '—' }}{% if quota.unit == '%' and quota.remaining is not none %}%{% endif %}</strong><span>Remaining{% if quota.unit == 'units' %} units{% endif %}</span></div>
