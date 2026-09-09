@@ -83,6 +83,14 @@ def _safe_next(target: str) -> str:
     return target if target.startswith("/") and not target.startswith("//") else "/"
 
 
+def _client_ip() -> str:
+    # Behind the Cloudflare Tunnel, request.remote_addr is always the Docker
+    # bridge gateway, so every visitor would otherwise share one rate-limit
+    # bucket. CF-Connecting-IP is set by Cloudflare's edge and cannot be
+    # spoofed by the client, so it reflects the real visitor IP.
+    return request.headers.get("CF-Connecting-IP") or request.remote_addr or "unknown"
+
+
 def _login_blocked(client: str) -> bool:
     cutoff = time.monotonic() - LOGIN_WINDOW_SECONDS
     with _login_lock:
@@ -195,9 +203,19 @@ def create_app() -> Flask:
         with db.connect() as conn:
             return db.get_dashboard_user(conn, username) if username else None
 
+    @app.route("/favicon.ico")
+    def favicon():
+        # Browsers auto-fetch this on every page load, including the login
+        # page. Left unauthenticated, it used to hit the 401 branch below,
+        # which cleared the session and rotated the CSRF token out from
+        # under the already-rendered login form, breaking every login
+        # attempt with "Invalid username or password" regardless of
+        # whether the credentials were correct.
+        return "", 204
+
     @app.before_request
     def require_dashboard_login():
-        public = request.endpoint in {"login", "signup", "static", "health_api"}
+        public = request.endpoint in {"login", "signup", "static", "health_api", "favicon"}
         if public or request.path.startswith("/webhooks/meta"):
             return None
         auth = dashboard_auth()
@@ -212,7 +230,7 @@ def create_app() -> Flask:
 
     @app.route("/login", methods=("GET", "POST"))
     def login():
-        client = request.remote_addr or "unknown"
+        client = _client_ip()
         if request.method == "POST":
             if _login_blocked(client):
                 return render_template(
