@@ -229,7 +229,17 @@ def worker_loop(stop: threading.Event) -> None:
     with db.connect() as conn:
         db.reset_interrupted_webhook_events(conn)
     while not stop.is_set():
-        if not process_one_pending_event():
+        try:
+            processed = process_one_pending_event()
+        except Exception as exc:
+            # A transient DB error here (e.g. sqlite disk I/O error from
+            # concurrent host+container access) must not kill this thread --
+            # there is no supervisor to restart it, so an uncaught exception
+            # would silently stop all webhook processing for the rest of the
+            # container's uptime.
+            print(f"Webhook worker loop error: {exc}", flush=True)
+            processed = False
+        if not processed:
             stop.wait(0.5)
 
 

@@ -213,9 +213,15 @@ def create_app() -> Flask:
         # whether the credentials were correct.
         return "", 204
 
+    @app.get("/privacy")
+    def privacy():
+        return render_template("privacy.html", updated_at="September 10, 2026")
+
     @app.before_request
     def require_dashboard_login():
-        public = request.endpoint in {"login", "signup", "static", "health_api", "favicon"}
+        public = request.endpoint in {
+            "login", "signup", "static", "health_api", "favicon", "privacy",
+        }
         if public or request.path.startswith("/webhooks/meta"):
             return None
         auth = dashboard_auth()

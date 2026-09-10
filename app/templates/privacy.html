@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2a38">
+  <title>Privacy Policy · Content My Trip</title>
+  <style>
+    :root { --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:#17252c; background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.6; }
+    main { max-width:760px; margin:0 auto; padding:48px 24px 80px; }
+    img { display:block; width:120px; height:40px; object-fit:contain; margin-bottom:24px; }
+    .eyebrow { margin:0 0 8px; color:var(--coral); font-size:11px; font-weight:800; letter-spacing:.15em; text-transform:uppercase; }
+    h1 { margin:0 0 6px; color:var(--navy); font-size:32px; letter-spacing:-.03em; }
+    .updated { color:var(--muted); font-size:13px; margin:0 0 36px; }
+    h2 { color:var(--navy); font-size:19px; margin:36px 0 10px; }
+    p, li { color:#33454e; font-size:15px; }
+    ul { padding-left:20px; }
+    li { margin-bottom:6px; }
+    a { color:var(--coral); }
+    .contact { margin-top:40px; padding:16px 20px; background:#fff; border:1px solid var(--line); border-radius:12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
+    <p class="eyebrow">Social Comment Studio</p>
+    <h1>Privacy Policy</h1>
+    <p class="updated">Last updated: {{ updated_at }}</p>
+
+    <p>This page describes how the Content My Trip Social Comment Studio ("the Service") handles data. The Service is an internal tool that reads comments on our own YouTube channel, Facebook Page, and Instagram professional account, drafts reply suggestions, and publishes replies after review.</p>
+
+    <h2>What data we collect</h2>
+    <p>For each public comment on our own posts/videos, we store:</p>
+    <ul>
+      <li>The comment's public author name/handle and platform-assigned ID</li>
+      <li>The text of the comment</li>
+      <li>The post, video, or media item the comment was made on, and its title</li>
+      <li>The comment's publish timestamp</li>
+      <li>A drafted reply (generated automatically) and, if approved, the reply actually posted</li>
+    </ul>
+    <p>We do not collect private messages, email addresses, phone numbers, precise location, or any data beyond what a platform already makes publicly visible on our own content.</p>
+    <p>Dashboard operator accounts (for staff who review and approve replies) store a username and a securely hashed password. Plaintext passwords are never stored.</p>
+
+    <h2>How we use this data</h2>
+    <ul>
+      <li>To draft a suggested reply to a public comment using an AI language model</li>
+      <li>To let a human operator review, edit, approve, or reject that draft before anything is posted</li>
+      <li>To publish the approved reply back to the same platform, and to "like" the original comment where supported</li>
+      <li>To avoid replying twice to the same comment</li>
+    </ul>
+
+    <h2>Third parties we share data with</h2>
+    <ul>
+      <li><strong>Google Gemini API</strong> — the comment's text is sent to Google's Gemini API solely to generate a suggested reply. See <a href="https://ai.google.dev/gemini-api/terms" target="_blank" rel="noopener">Google's Gemini API terms</a>.</li>
+      <li><strong>Meta Graph API</strong> (Facebook/Instagram) and <strong>YouTube Data API</strong> — used only to read comments on our own content and to publish approved replies to those same platforms.</li>
+    </ul>
+    <p>We do not sell data, use it for advertising, or share it with any party beyond what's listed above.</p>
+
+    <h2>Data retention</h2>
+    <p>Comment data is kept for as long as needed to avoid duplicate replies and to show reply history in our internal dashboard. We periodically remove the stored text of comments that have already been handled (posted, rejected, or already replied to), while keeping a minimal record (comment ID and status) so the same comment is never processed twice.</p>
+
+    <h2>Your choices</h2>
+    <p>If you commented on one of our posts and want your comment's stored text removed from our system, contact us using the details below and we will remove it.</p>
+
+    <h2>Changes to this policy</h2>
+    <p>We may update this policy as the Service changes. The "Last updated" date above reflects the most recent revision.</p>
+
+    <div class="contact">
+      <strong>Contact:</strong> For any privacy questions or removal requests, reach us via the Hindolroad Facebook Page or Instagram account.
+    </div>
+  </main>
+</body>
+</html>
