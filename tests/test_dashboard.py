@@ -67,14 +67,16 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn(b">Auto refresh</button>", page.data)
         self.assertNotIn(b"All timestamps shown in IST", page.data)
         self.assertIn(b"Community workspace", page.data)
-        self.assertIn(b'class="overview-grid"', page.data)
-        self.assertIn(b"How to read these numbers", page.data)
-        self.assertIn(b"The top numbers show what happened", page.data)
-        self.assertIn(b"Pending review", page.data)
-        self.assertIn(b"Posting", page.data)
-        self.assertIn(b"Already replied", page.data)
-        self.assertIn(b"Rejected", page.data)
-        self.assertIn(b"Why are these two numbers different?", page.data)
+        # .stat-label renders the raw status string (only underscores -> spaces,
+        # no title-casing) -- visual capitalization comes from CSS text-transform.
+        self.assertIn(b"pending review", page.data)
+        self.assertIn(b"posting", page.data)
+        self.assertIn(b"already replied", page.data)
+        self.assertIn(b"rejected", page.data)
+        # Moved to the dedicated /faq page -- no longer on the main dashboard.
+        self.assertNotIn(b'class="overview-grid"', page.data)
+        self.assertNotIn(b"How to read these numbers", page.data)
+        self.assertNotIn(b"Why are these two numbers different?", page.data)
         self.assertNotIn(b"API quota usage", page.data)
         self.assertNotIn(
             b"Review conversations and monitor automated replies", page.data
@@ -85,6 +87,26 @@ class DashboardTests(unittest.TestCase):
         pending = self.client.get("/?status=pending_review")
         self.assertIn(b"What time is aarti?", pending.data)
         self.assertIn(b"pending review", pending.data)
+
+    def test_faq_page_shows_count_guide(self):
+        page = self.client.get("/faq")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"How to read these numbers", page.data)
+        self.assertIn(b"Pending review", page.data)
+        self.assertIn(b"Why do", page.data)
+
+    def test_settings_page_lists_policy_links(self):
+        page = self.client.get("/settings")
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'href="/privacy"', page.data)
+        self.assertIn(b'href="/terms"', page.data)
+        self.assertIn(b'href="/datadeletion"', page.data)
+
+    def test_faq_and_settings_require_login(self):
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        self.assertEqual(self.client.get("/faq").status_code, 302)
+        self.assertEqual(self.client.get("/settings").status_code, 302)
 
     def test_selected_platform_shows_its_quota(self):
         with db.connect() as conn:

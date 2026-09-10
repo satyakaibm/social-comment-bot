@@ -421,7 +421,7 @@ class ExistingReplyTests(unittest.TestCase):
         identity = MagicMock()
         identity.json.return_value = {'id': 'page'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
-             patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'page-token'), \
+             patch.object(meta_client.config, 'META_USER_ACCESS_TOKEN', 'page-token'), \
              patch.object(meta_client._http_session, 'get', return_value=identity):
             with self.assertRaisesRegex(meta_client.GraphAPIError, 'User access token'):
                 meta_client.get_user_access_token()
@@ -432,7 +432,7 @@ class ExistingReplyTests(unittest.TestCase):
         identity = MagicMock()
         identity.json.return_value = {'id': 'user'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
-             patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'user-token'), \
+             patch.object(meta_client.config, 'META_USER_ACCESS_TOKEN', 'user-token'), \
              patch.object(meta_client._http_session, 'get', return_value=identity) as get:
             self.assertEqual(meta_client.get_user_access_token(), 'user-token')
             self.assertEqual(meta_client.get_user_access_token(), 'user-token')
