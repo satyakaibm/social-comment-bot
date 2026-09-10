@@ -1,0 +1,5 @@
+project_id     = "project-e1de8eb7-3b06-4142-9b3"
+gcp_user_email = "travelexplorersatya@gmail.com"
+
+# Defaults in variables.tf (region/zone/machine_type) are already set for
+# this project's Always Free e2-micro tier -- override only if needed.
