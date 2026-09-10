@@ -1,0 +1,28 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+WORKDIR /app
+
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY app/ ./app/
+COPY tests/ ./tests/
+
+# test_facebook_post_poll_is_limited calls the real (non-mocked)
+# iter_facebook_post_ids(), which checks config.require("FACEBOOK_PAGE_ID")
+# before the mocked HTTP layer ever runs. No .env exists in this build
+# context (by design -- see .dockerignore), so without this the check fails
+# before the test gets anywhere near making a real API call.
+ENV FACEBOOK_PAGE_ID=ci-test-page-id
+
+# Failing this RUN fails the image build, which is the whole point: Jenkins
+# only has to check `docker build`'s exit code, no bind-mounted workspace or
+# separate test-runner container needed. The Jenkins controller's docker
+# commands go through the host's Docker Desktop daemon (docker.sock mount),
+# which resolves `docker run -v host:container` paths against the macOS
+# host rather than the Jenkins container's own filesystem -- `docker build`
+# sidesteps that entirely since the context is streamed over the API rather
+# than bind-mounted.
+RUN python -m pytest tests/ -q

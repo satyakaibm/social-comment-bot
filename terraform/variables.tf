@@ -50,3 +50,24 @@ variable "ssh_source_ranges" {
   default     = ["35.235.240.0/20"]
 }
 
+variable "jenkins_oidc_issuer_uri" {
+  description = <<-EOT
+    Issuer URL of the self-hosted Jenkins instance's built-in OIDC provider
+    (oidc-provider plugin), used as the trust anchor for Workload Identity
+    Federation. Must be HTTPS -- GCP rejects HTTP issuers outright, which is
+    why Jenkins is fronted by a dedicated Cloudflare Tunnel hostname
+    (jenkins.hindolroad.download) instead of using its bare localhost URL.
+    The discovery doc and JWKS under /oidc/* are intentionally left open
+    (Cloudflare Access Bypass policy) since GCP needs to fetch them; the
+    actual Jenkins UI stays behind Cloudflare Access login.
+  EOT
+  type        = string
+  default     = "https://jenkins.hindolroad.download/oidc"
+}
+
+variable "jenkins_oidc_audience" {
+  description = "Audience value configured on the Jenkins 'OpenID Connect id token' credential (gcp-wif-oidc-token) that Jenkins pipelines request tokens for."
+  type        = string
+  default     = "gcp-social-comment-bot-deploy"
+}
+
