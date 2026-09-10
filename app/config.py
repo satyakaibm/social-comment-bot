@@ -31,6 +31,14 @@ COMMENT_MAX_AGE_DAYS = int(os.environ.get("COMMENT_MAX_AGE_DAYS", "90"))
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
 FACEBOOK_PAGE_ACCESS_TOKEN = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+# A separate long-lived User token (with instagram_manage_engagement) for
+# liking Instagram comments -- that action rejects a Page token outright.
+# Falls back to FACEBOOK_PAGE_ACCESS_TOKEN if unset, matching the old
+# behavior where a single user token was resolved into a page token as
+# needed (see meta_client.get_user_access_token).
+META_USER_ACCESS_TOKEN = os.environ.get(
+    "META_USER_ACCESS_TOKEN", FACEBOOK_PAGE_ACCESS_TOKEN
+)
 INSTAGRAM_USER_ID = os.environ.get("INSTAGRAM_USER_ID", "")
 # Meta reads are safe to retry. Keep them short so a slow duplicate check does
 # not hold up an entire publishing cycle; writes keep their longer timeout
