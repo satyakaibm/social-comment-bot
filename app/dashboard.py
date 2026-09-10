@@ -217,10 +217,20 @@ def create_app() -> Flask:
     def privacy():
         return render_template("privacy.html", updated_at="September 10, 2026")
 
+    @app.get("/terms")
+    def terms():
+        return render_template("terms.html", updated_at="September 10, 2026")
+
+    @app.get("/data-deletion")
+    @app.get("/datadeletion")
+    def data_deletion():
+        return render_template("data_deletion.html", updated_at="September 10, 2026")
+
     @app.before_request
     def require_dashboard_login():
         public = request.endpoint in {
-            "login", "signup", "static", "health_api", "favicon", "privacy",
+            "login", "signup", "static", "health_api", "favicon",
+            "privacy", "terms", "data_deletion",
         }
         if public or request.path.startswith("/webhooks/meta"):
             return None
