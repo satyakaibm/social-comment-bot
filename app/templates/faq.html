@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2a38">
+  <title>FAQ · Content My Trip</title>
+  <style>
+    :root { --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; --ink:#17252c; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    .topbar { height:74px; padding:0 26px; display:flex; align-items:center; justify-content:space-between; background:#fff; border-bottom:1px solid var(--line); }
+    .brand { display:flex; align-items:center; gap:10px; color:var(--navy); font-weight:850; text-decoration:none; }
+    .brand img { width:120px; height:40px; object-fit:contain; }
+    .back { color:var(--navy); font-size:13px; font-weight:750; text-decoration:none; }
+    .page { max-width:820px; margin:0 auto; padding:40px 24px 80px; }
+    .eyebrow { display:block; margin-bottom:8px; color:var(--coral); font-size:11px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
+    h1 { margin:0 0 10px; color:var(--navy); font-size:30px; letter-spacing:-.03em; }
+    .summary { margin:0 0 28px; color:var(--muted); font-size:14px; line-height:1.6; }
+    .guide { padding:26px; color:#eaf3f4; background:linear-gradient(155deg,#123c49,#0f2a38 72%); border:1px solid rgba(255,255,255,.08); border-radius:17px; box-shadow:0 12px 28px rgba(15,42,56,.14); }
+    .guide h2 { margin:0 0 16px; color:#fff; font-size:17px; letter-spacing:-.02em; }
+    .guide-list { display:grid; gap:14px; margin:0; }
+    .guide-list div { padding-top:14px; border-top:1px solid rgba(255,255,255,.11); }
+    .guide-list dt { color:#fff; font-size:13px; font-weight:800; }
+    .guide-list dd { margin:5px 0 0; color:rgba(234,243,244,.72); font-size:12px; line-height:1.55; }
+    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px} }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
+    <a class="back" href="/">&larr; Back to dashboard</a>
+  </header>
+  <main class="page">
+    <span class="eyebrow">Social Comment Studio</span>
+    <h1>FAQ</h1>
+    <p class="summary">Definitions for the numbers and statuses shown on the dashboard. The top counts on the dashboard reflect the time range you pick there; the statuses below reflect comments currently saved in the table.</p>
+    <section class="guide" aria-labelledby="guide-title">
+      <h2 id="guide-title">How to read these numbers</h2>
+      <dl class="guide-list">
+        <div><dt>Comments found</dt><dd>New comments the bot saw during the selected time range.</dd></div>
+        <div><dt>Bot replies sent</dt><dd>Comments the bot answered during the selected time range.</dd></div>
+        <div><dt>Had a reply already</dt><dd>Comments your account had answered before the bot checked.</dd></div>
+        <div><dt>Comments taken care of</dt><dd>Bot replies sent plus comments that already had a reply.</dd></div>
+        <div><dt>Pending review</dt><dd>A reply is drafted and waiting for the automation to process it.</dd></div>
+        <div><dt>Posting</dt><dd>The reply is currently claimed by an active publishing process.</dd></div>
+        <div><dt>Posted</dt><dd>The automation successfully published the reply.</dd></div>
+        <div><dt>Failed</dt><dd>The platform rejected the reply or returned an error; it remains available for retry.</dd></div>
+        <div><dt>Already replied</dt><dd>An existing reply from your account was found, so the automation avoided a duplicate.</dd></div>
+        <div><dt>Rejected</dt><dd>The comment was intentionally excluded, such as when it exceeded the configured age limit, or Meta rejected the reply on every attempt (see META_MAX_POST_ATTEMPTS) and it will not be retried automatically.</dd></div>
+        <div><dt>Why do "Bot replies sent" and "Sent replies still saved" sometimes differ?</dt><dd>The bot remembers the total number sent. Old comment details may be removed later to save space, so the saved-record count can be lower than the all-time total.</dd></div>
+      </dl>
+    </section>
+  </main>
+</body>
+</html>

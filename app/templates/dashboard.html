@@ -83,9 +83,7 @@
     .flash { padding:13px 16px; border-radius:12px; margin:0 0 18px; border:1px solid; font-size:14px; }
     .flash.ok { color:#086142; background:#e9f8f1; border-color:#c9ecdd; }
     .flash.error { color:#98253d; background:#fff0f3; border-color:#f5ccd5; }
-    .overview-grid { display:grid; grid-template-columns:minmax(0,2fr) minmax(300px,.72fr); gap:18px; margin-bottom:22px; align-items:stretch; }
-    .overview-counts { min-width:0; display:grid; gap:14px; }
-    .activity { padding:18px 20px; background:linear-gradient(145deg,#fff,#f9fbfc); border:1px solid var(--line); border-radius:17px; box-shadow:0 5px 18px rgba(15,42,56,.035); }
+    .activity { margin-bottom:14px; padding:18px 20px; background:linear-gradient(145deg,#fff,#f9fbfc); border:1px solid var(--line); border-radius:17px; box-shadow:0 5px 18px rgba(15,42,56,.035); }
     .quota-inline { margin-top:16px; padding-top:15px; border-top:1px solid var(--line); }
     .quota-head { color:var(--navy); font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
     .quota-values { display:grid; grid-template-columns:repeat(2,minmax(120px,1fr)); gap:10px; margin-top:11px; }
@@ -109,7 +107,7 @@
     .activity-number { display:block; color:var(--navy); font-size:23px; font-weight:850; line-height:1; }
     .activity-name { display:block; margin-top:7px; color:var(--muted); font-size:10px; font-weight:700; line-height:1.25; text-transform:uppercase; }
     .activity-metric.highlight .activity-number { color:var(--coral); }
-    .stats { display:grid; grid-template-columns:repeat(3,minmax(135px,1fr)); gap:12px; }
+    .stats { display:grid; grid-template-columns:repeat(3,minmax(135px,1fr)); gap:12px; margin-bottom:22px; }
     .stat { position:relative; min-height:102px; padding:18px; overflow:hidden; text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:17px; box-shadow:0 5px 18px rgba(15,42,56,.035); transition:.18s ease; }
     .stat:hover { transform:translateY(-2px); border-color:#b9c9d1; box-shadow:var(--shadow); }
     .stat.active { color:#fff; background:linear-gradient(135deg,var(--navy),var(--navy-soft)); border-color:transparent; box-shadow:0 16px 32px rgba(15,42,56,.18); }
@@ -118,20 +116,6 @@
     .stat.active .stat-label { color:rgba(255,255,255,.68); }
     .stat-value { display:block; margin-top:8px; color:var(--navy); font-size:28px; font-weight:800; line-height:1; }
     .stat.active .stat-value { color:#fff; }
-    .count-guide { max-height:520px; padding:22px; overflow-y:auto; overscroll-behavior:contain; scrollbar-color:rgba(255,255,255,.3) transparent; scrollbar-width:thin; color:#eaf3f4; background:linear-gradient(155deg,#123c49,#0f2a38 72%); border:1px solid rgba(255,255,255,.08); border-radius:17px; box-shadow:0 12px 28px rgba(15,42,56,.14); }
-    .count-guide::-webkit-scrollbar { width:7px; }
-    .count-guide::-webkit-scrollbar-thumb { background:rgba(255,255,255,.28); border-radius:99px; }
-    .count-guide-kicker { display:block; margin-bottom:8px; color:#ffb098; font-size:10px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
-    .count-guide h2 { margin:0; color:#fff; font-size:19px; letter-spacing:-.02em; }
-    .count-guide-summary { margin:10px 0 18px; color:rgba(234,243,244,.72); font-size:12px; line-height:1.55; }
-    .count-guide-values { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:17px; }
-    .count-guide-value { padding:12px; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.1); border-radius:12px; }
-    .count-guide-value strong { display:block; color:#fff; font-size:23px; line-height:1; }
-    .count-guide-value span { display:block; margin-top:7px; color:rgba(234,243,244,.66); font-size:9px; font-weight:750; line-height:1.35; text-transform:uppercase; }
-    .count-guide-list { display:grid; gap:11px; margin:0; }
-    .count-guide-list div { padding-top:11px; border-top:1px solid rgba(255,255,255,.11); }
-    .count-guide-list dt { color:#fff; font-size:11px; font-weight:800; }
-    .count-guide-list dd { margin:4px 0 0; color:rgba(234,243,244,.68); font-size:10px; line-height:1.5; }
     .toolbar { padding:15px; display:flex; align-items:center; justify-content:space-between; gap:15px; background:var(--surface); border:1px solid var(--line); border-radius:17px 17px 0 0; }
     .retry-all-form { flex:0 0 auto; }
     .retry-all { background:linear-gradient(135deg,#b33b54,#8f2940); box-shadow:0 5px 14px rgba(143,41,64,.2); white-space:nowrap; }
@@ -188,10 +172,9 @@
     .footer-bottom { display:flex; justify-content:space-between; gap:20px; margin-top:28px; padding-top:16px; color:rgba(247,239,228,.58); border-top:1px solid rgba(247,239,228,.12); font-size:11px; }
     @media (min-width:1800px) { .activity-number{font-size:27px}.stat{min-height:112px;padding:21px}.stat-value{font-size:32px}table.db{font-size:13px} }
     @media (max-width:1280px) { .grid-wrap{height:55vh} }
-    @media (max-width:1080px) { .overview-grid{grid-template-columns:1fr}.count-guide-list{grid-template-columns:repeat(2,1fr)} }
     @media (max-width:980px) { .topbar{padding:0 22px}.toolbar{align-items:stretch;flex-direction:column}form.search{width:100%}.grid-wrap{height:58vh}.footer-main{grid-template-columns:1.4fr 1fr 1fr;gap:28px} }
     @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column}.activity-platforms,.range-scroll{width:100%}.activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px}.footer-main{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.gateway{flex:0 0 auto}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 17px}.intro-actions{align-self:stretch;justify-content:flex-end}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.count-guide{padding:18px}.count-guide-list{grid-template-columns:1fr}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.gateway{flex:0 0 auto}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 17px}.intro-actions{align-self:stretch;justify-content:flex-end}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
     @media (max-width:390px) { .activity-platform{padding:8px 10px}.range-button{padding:0 10px}.stat-label{font-size:9px}.search{flex-direction:column}.search button{width:100%}.grid-wrap{height:56vh} }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important} }
   </style>
@@ -209,6 +192,8 @@
             <div class="profile-menu-head"><span class="profile-menu-title">Account</span><span class="profile-menu-user">{{ dashboard_username }}</span></div>
             <a href="/profile">My Profile</a>
             <a href="/profile/password">Reset password</a>
+            <a href="/faq">FAQ</a>
+            <a href="/settings">Settings</a>
             <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Log out</button></form>
           </div>
         </details>
@@ -234,8 +219,6 @@
 
     {% for category, message in get_flashed_messages(with_categories=true) %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
 
-    <section class="overview-grid" aria-label="Comment count overview">
-      <div class="overview-counts">
     <section class="activity" aria-label="Reply activity by time range">
       <div class="activity-head">
         <h2 class="activity-title">Channel activity</h2>
@@ -272,31 +255,6 @@
         </a>
       {% endfor %}
     </nav>
-      </div>
-
-      <aside class="count-guide" aria-labelledby="count-guide-title">
-        <span class="count-guide-kicker">Count guide · {{ platform|title if platform else 'All platforms' }}</span>
-        <h2 id="count-guide-title">How to read these numbers</h2>
-        <p class="count-guide-summary">The top numbers show what happened during the time you picked. The boxes below show comments still saved in the table.</p>
-        <div class="count-guide-values">
-          <div class="count-guide-value"><strong id="guide-posted-total">{{ selected.posted }}</strong><span>Bot replies sent in <span id="guide-period-label">{{ selected.label }}</span></span></div>
-          <div class="count-guide-value"><strong id="guide-detailed-posted">{{ selected.detailed_posted }}</strong><span>Sent replies still saved from <span id="guide-detail-period-label">{{ selected.label }}</span></span></div>
-        </div>
-        <dl class="count-guide-list">
-          <div><dt>Comments found</dt><dd>New comments the bot saw during this time.</dd></div>
-          <div><dt>Bot replies sent</dt><dd>Comments the bot answered during this time.</dd></div>
-          <div><dt>Had a reply already</dt><dd>Comments your account had answered before the bot checked.</dd></div>
-          <div><dt>Comments taken care of</dt><dd>Bot replies sent plus comments that already had a reply.</dd></div>
-          <div><dt>Pending review · {{ counts.get('pending_review', 0) }}</dt><dd>A reply is drafted and waiting for the automation to process it.</dd></div>
-          <div><dt>Posting · {{ counts.get('posting', 0) }}</dt><dd>The reply is currently claimed by an active publishing process.</dd></div>
-          <div><dt>Posted · {{ counts.get('posted', 0) }}</dt><dd>The automation successfully published the reply.</dd></div>
-          <div><dt>Failed · {{ counts.get('failed', 0) }}</dt><dd>The platform rejected the reply or returned an error; it remains available for retry.</dd></div>
-          <div><dt>Already replied · {{ counts.get('already_replied', 0) }}</dt><dd>An existing reply from your account was found, so the automation avoided a duplicate.</dd></div>
-          <div><dt>Rejected · {{ counts.get('rejected', 0) }}</dt><dd>The comment was intentionally excluded, such as when it exceeded the configured age limit, or Meta rejected the reply on every attempt (see META_MAX_POST_ATTEMPTS) and it will not be retried automatically.</dd></div>
-          <div><dt>Why are these two numbers different?</dt><dd>The bot remembers the total number. Old comment details may be removed later to save space.</dd></div>
-        </dl>
-      </aside>
-    </section>
 
     <section class="toolbar" aria-label="Comment filters">
       {% if status == 'failed' %}
@@ -347,7 +305,7 @@
         </nav>
         <nav aria-label="Footer account navigation">
           <h2 class="footer-title">Account</h2>
-          <ul class="footer-links"><li><a href="/profile">My Profile</a></li><li><a href="/profile/password">Reset password</a></li><li><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="min-height:0;padding:0;color:rgba(247,239,228,.72);background:transparent;box-shadow:none;font-size:12px;">Log out</button></form></li></ul>
+          <ul class="footer-links"><li><a href="/profile">My Profile</a></li><li><a href="/profile/password">Reset password</a></li><li><a href="/faq">FAQ</a></li><li><a href="/settings">Settings</a></li><li><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="min-height:0;padding:0;color:rgba(247,239,228,.72);background:transparent;box-shadow:none;font-size:12px;">Log out</button></form></li></ul>
         </nav>
       </div>
       <div class="footer-bottom"><span>&copy; {{ current_year }} Content My Trip. All rights reserved.</span><span>Capture. Curate. Publish.</span></div>
@@ -392,10 +350,6 @@
         document.getElementById('activity-posted').textContent = button.dataset.posted;
         document.getElementById('activity-already').textContent = button.dataset.already;
         document.getElementById('activity-handled').textContent = button.dataset.handled;
-        document.getElementById('guide-posted-total').textContent = button.dataset.posted;
-        document.getElementById('guide-period-label').textContent = button.dataset.label;
-        document.getElementById('guide-detailed-posted').textContent = button.dataset.detailedPosted;
-        document.getElementById('guide-detail-period-label').textContent = button.dataset.label;
       });
     });
   </script>

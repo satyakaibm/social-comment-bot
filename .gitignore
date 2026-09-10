@@ -14,3 +14,10 @@ client_secret*.json
 *.pem
 *.key
 .DS_Store
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/*.tfplan
