@@ -115,16 +115,18 @@ def get_page_access_token() -> str:
 def get_user_access_token() -> str:
     """Return a User token for IG User edges that reject Page tokens.
 
-    FACEBOOK_PAGE_ACCESS_TOKEN is often a user token that we later exchange
-    for a Page token. Instagram likes require the original User token with
-    instagram_manage_engagement.
+    Instagram comment likes require a genuine User token with
+    instagram_manage_engagement -- a Page token is rejected outright.
+    META_USER_ACCESS_TOKEN holds that dedicated token; it defaults to
+    FACEBOOK_PAGE_ACCESS_TOKEN for back-compat with setups where that value
+    is still a user token the app resolves into a Page token as needed.
     """
     global _user_token_cache
     if _user_token_cache is not None:
         return _user_token_cache
 
-    config.require("FACEBOOK_PAGE_ACCESS_TOKEN")
-    token = config.FACEBOOK_PAGE_ACCESS_TOKEN
+    config.require("META_USER_ACCESS_TOKEN")
+    token = config.META_USER_ACCESS_TOKEN
     identity_resp = _http_session.get(
         _url("me"),
         params={"fields": "id", "access_token": token},
@@ -135,7 +137,7 @@ def get_user_access_token() -> str:
     if config.FACEBOOK_PAGE_ID and identity.get("id") == config.FACEBOOK_PAGE_ID:
         raise GraphAPIError(
             "Instagram comment likes require a User access token with "
-            "instagram_manage_engagement; FACEBOOK_PAGE_ACCESS_TOKEN is a Page token."
+            "instagram_manage_engagement; META_USER_ACCESS_TOKEN is a Page token."
         )
     _user_token_cache = token
     return _user_token_cache
