@@ -535,6 +535,14 @@ def create_app() -> Flask:
         )
         return redirect(_index_url(status="failed"))
 
+    @app.get("/faq")
+    def faq():
+        return render_template("faq.html")
+
+    @app.get("/settings")
+    def settings():
+        return render_template("settings.html")
+
     @app.get("/health")
     def health():
         return render_template("health.html")
