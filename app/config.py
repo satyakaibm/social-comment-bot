@@ -127,16 +127,41 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 # billed API key) may be generated in one IST calendar day. Comments beyond
 # the cap are left unseen and get drafted on a later cycle/day. 0 = no cap.
 GEMINI_DAILY_DRAFT_LIMIT = int(os.environ.get("GEMINI_DAILY_DRAFT_LIMIT", "0"))
-REPLY_PERSONA = os.environ.get(
-    "REPLY_PERSONA",
-    "You are a friendly, concise community manager. Keep replies under 3 sentences.",
-)
 
 # Operator-written comment/reply examples (one file per example).
 _examples_dir = os.environ.get("REPLY_EXAMPLES_DIR", "").strip()
 REPLY_EXAMPLES_DIR = (
     Path(_examples_dir) if _examples_dir else BASE_DIR / "reply_examples"
 )
+
+
+def _load_reply_persona() -> str:
+    """Prefer REPLY_PERSONA_FILE's content; REPLY_PERSONA/default are fallbacks.
+
+    A long persona reads and edits far more easily as its own text file than
+    as a single giant line embedded in .env. Lives in reply_examples/ (named
+    with a leading underscore so the example loader skips it, same as
+    _template.txt) so both ship via the same read-only Docker mount.
+    """
+    persona_file = os.environ.get("REPLY_PERSONA_FILE", "").strip()
+    path = (
+        Path(persona_file)
+        if persona_file
+        else REPLY_EXAMPLES_DIR / "_reply_persona.txt"
+    )
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            return text
+    except OSError:
+        pass
+    return os.environ.get(
+        "REPLY_PERSONA",
+        "You are a friendly, concise community manager. Keep replies under 3 sentences.",
+    )
+
+
+REPLY_PERSONA = _load_reply_persona()
 
 
 def require(*names: str) -> None:

@@ -7,7 +7,7 @@ Nothing is posted automatically.
 ## How it works
 
 1. **Poll** — pull new top-level comments. Already-seen comments (stored in SQLite) and your own comments are skipped.
-2. **Draft** — Gemini writes a reply using `REPLY_PERSONA` plus every example file in `reply_examples/`. Instagram drafts are prefixed with `@author` so the commenter is notified. YouTube replies are plain text beneath the original comment, and Facebook replies are plain text because its Graph API does not expose mentionable user IDs for public commenters.
+2. **Draft** — Gemini writes a reply using the persona in `reply_examples/_reply_persona.txt` plus every example file in `reply_examples/`. Instagram drafts are prefixed with `@author` so the commenter is notified. YouTube replies are plain text beneath the original comment, and Facebook replies are plain text because its Graph API does not expose mentionable user IDs for public commenters.
 3. **Review** — approve, edit-and-approve, reject, or skip each draft in the terminal.
 4. **Post** — send approved replies via the YouTube Data API or Meta Graph API.
 
@@ -78,6 +78,9 @@ Create a `.env` in the project root. You only need credentials for the platforms
 # Gemini (required for drafting)
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-3.5-flash-lite
+# The actual persona text lives in reply_examples/_reply_persona.txt
+# (a plain text file, easier to edit than a single long .env line). This
+# value is only a fallback used if that file is missing or empty.
 REPLY_PERSONA=You are a friendly, concise community manager. Keep replies under 3 sentences.
 
 # Optional: seconds between polls for `python -m app.cli run` (default 300)
