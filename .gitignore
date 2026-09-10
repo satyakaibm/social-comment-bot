@@ -15,9 +15,12 @@ client_secret*.json
 *.key
 .DS_Store
 
+SQL_DailyQueries/DBQuery_SocialComments.sql
+
 # Terraform
 terraform/.terraform/
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/terraform.tfvars
+terraform/tfplan
 terraform/*.tfplan

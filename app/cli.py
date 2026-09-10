@@ -1,4 +1,5 @@
 import argparse
+import sqlite3
 import sys
 import time
 
@@ -9,9 +10,34 @@ from app.redraft import redraft_pending
 from app.review import review_loop
 from app.social_fetch import poll_facebook_and_draft, poll_instagram_and_draft
 
+# Substrings of sqlite3.OperationalError messages that are known to be
+# transient (e.g. disk I/O error from concurrent host+container access to
+# the same db file, see app/webhook.py) rather than real corruption.
+_TRANSIENT_DB_ERRORS = ("disk i/o error", "database is locked")
+
+
+def _is_transient_db_error(exc: BaseException) -> bool:
+    return isinstance(exc, sqlite3.OperationalError) and any(
+        msg in str(exc).lower() for msg in _TRANSIENT_DB_ERRORS
+    )
+
 
 def cmd_poll(_args) -> None:
-    n = poll_and_draft()
+    retries = 3
+    delay = 5
+    for attempt in range(1, retries + 1):
+        try:
+            n = poll_and_draft()
+            break
+        except sqlite3.OperationalError as exc:
+            if not _is_transient_db_error(exc) or attempt == retries:
+                raise
+            print(
+                f"Transient DB error ({exc}); retrying in {delay}s "
+                f"(attempt {attempt}/{retries})...",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
     print(f"Queued {n} new comment(s) for review.")
 
 
