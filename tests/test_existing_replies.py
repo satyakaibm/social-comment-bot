@@ -110,6 +110,120 @@ class ExistingReplyTests(unittest.TestCase):
             quota = db.get_quota_usage(conn, 'youtube', 'test')
             self.assertEqual(quota['used'], 1)
 
+    def test_youtube_multi_channel_does_not_leak_client_or_identity(self):
+        # Regression test: each configured YouTube channel authenticates with
+        # its own OAuth client and has its own "my channel" identity. Before
+        # this, post_approved() built one client/identity pair and reused it
+        # for every YouTube row regardless of which channel actually owned
+        # the video -- a second channel's replies would have posted using
+        # the first channel's OAuth identity.
+        second_page = meta_client.config.PageConfig(
+            key='second', label='Second', facebook_page_id='', facebook_page_access_token='',
+            meta_user_access_token='', instagram_user_id='', facebook_post_ids=[],
+            instagram_media_ids=[], facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id='client-2', youtube_oauth_client_secret='secret-2',
+            youtube_refresh_token='refresh-2', youtube_video_ids=[], youtube_daily_reply_limit=0,
+            persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
+        )
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id='yt-default', platform='youtube', page_key='hindolroad',
+                video_id='vid-default', video_title='Title', author='viewer',
+                text='Jai Maa', published_at='', draft_reply='🙏',
+            )
+            db.update_status(conn, 'yt-default', 'approved')
+            db.insert_comment(
+                conn, comment_id='yt-second', platform='youtube', page_key='second',
+                video_id='vid-second', video_title='Title', author='viewer',
+                text='Jai Maa', published_at='', draft_reply='🙏',
+            )
+            db.update_status(conn, 'yt-second', 'approved')
+
+        clients = {'hindolroad': MagicMock(), 'second': MagicMock()}
+        for client in clients.values():
+            client.comments.return_value.insert.return_value.execute.return_value = {'id': 'new'}
+        channel_ids = {'hindolroad': 'oauth-default', 'second': 'oauth-second'}
+        video_owners = {'vid-default': 'oauth-default', 'vid-second': 'oauth-second'}
+
+        def fake_get_client(page_key=post.config.DEFAULT_PAGE_KEY):
+            return clients[page_key]
+
+        def fake_get_my_channel_id(client):
+            for key, candidate in clients.items():
+                if candidate is client:
+                    return channel_ids[key]
+            raise AssertionError('unexpected client instance')
+
+        def fake_get_video_channel_ids(client, video_ids):
+            return {video_id: video_owners[video_id] for video_id in video_ids}
+
+        with patch.object(post.config, 'PAGES', {**post.config.PAGES, 'second': second_page}), \
+             patch.object(post, 'get_client', side_effect=fake_get_client), \
+             patch.object(post, 'get_my_channel_id', side_effect=fake_get_my_channel_id), \
+             patch.object(post, 'get_video_channel_ids', side_effect=fake_get_video_channel_ids), \
+             patch.object(post, 'find_own_reply', return_value=None):
+            posted = post.post_approved(platform='youtube')
+
+        self.assertEqual(posted, 2)
+        clients['hindolroad'].comments.return_value.insert.assert_called_once()
+        clients['second'].comments.return_value.insert.assert_called_once()
+
+    def test_youtube_daily_reply_limit_is_independent_per_channel(self):
+        second_page = meta_client.config.PageConfig(
+            key='second', label='Second', facebook_page_id='', facebook_page_access_token='',
+            meta_user_access_token='', instagram_user_id='', facebook_post_ids=[],
+            instagram_media_ids=[], facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id='client-2', youtube_oauth_client_secret='secret-2',
+            youtube_refresh_token='refresh-2', youtube_video_ids=[], youtube_daily_reply_limit=2,
+            persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
+        )
+        with db.connect() as conn:
+            for i in range(2):
+                comment_id = f'hindolroad-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='youtube', page_key='hindolroad',
+                    video_id='vid-default', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+            for i in range(3):
+                comment_id = f'second-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='youtube', page_key='second',
+                    video_id='vid-second', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+
+        youtube = MagicMock()
+        youtube.comments.return_value.insert.return_value.execute.return_value = {'id': 'new'}
+
+        with patch.object(post.config, 'YOUTUBE_DAILY_REPLY_LIMIT', 1), \
+             patch.object(post.config, 'PAGES', {**post.config.PAGES, 'second': second_page}), \
+             patch.object(post, 'get_client', return_value=youtube), \
+             patch.object(post, 'get_my_channel_id', return_value='owner'), \
+             patch.object(
+                 post, 'get_video_channel_ids',
+                 return_value={'vid-default': 'owner', 'vid-second': 'owner'},
+             ), \
+             patch.object(post, 'find_own_reply', return_value=None):
+            posted = post.post_approved(platform='youtube')
+
+        # 1 for hindolroad (its own limit) + 2 for second (its own, higher
+        # limit) -- neither channel's cap affected the other's count.
+        self.assertEqual(posted, 3)
+        with db.connect() as conn:
+            hindolroad_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='hindolroad' AND platform='youtube' AND status='posted'"
+            ).fetchone()['n']
+            second_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='second' AND platform='youtube' AND status='posted'"
+            ).fetchone()['n']
+        self.assertEqual(hindolroad_posted, 1)
+        self.assertEqual(second_posted, 2)
+
     def test_graph_error_marks_comment_failed(self):
         self.seed('facebook')
         with patch.object(meta_client, 'find_own_reply', return_value=None), \
@@ -266,6 +380,9 @@ class ExistingReplyTests(unittest.TestCase):
             facebook_page_access_token='', meta_user_access_token='',
             instagram_user_id='', facebook_post_ids=[], instagram_media_ids=[],
             facebook_daily_reply_limit=2, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id='', youtube_oauth_client_secret='',
+            youtube_refresh_token='', youtube_video_ids=[],
+            youtube_daily_reply_limit=0,
             persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
         )
         with db.connect() as conn:
@@ -702,6 +819,9 @@ class ExistingReplyTests(unittest.TestCase):
             meta_user_access_token='token-2', instagram_user_id='',
             facebook_post_ids=[], instagram_media_ids=[],
             facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id="", youtube_oauth_client_secret="",
+            youtube_refresh_token="", youtube_video_ids=[],
+            youtube_daily_reply_limit=0,
             persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
         )
 

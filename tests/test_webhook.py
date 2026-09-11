@@ -109,6 +109,9 @@ class WebhookTests(unittest.TestCase):
             facebook_page_access_token="", meta_user_access_token="",
             instagram_user_id="", facebook_post_ids=[], instagram_media_ids=[],
             facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id="", youtube_oauth_client_secret="",
+            youtube_refresh_token="", youtube_video_ids=[],
+            youtube_daily_reply_limit=0,
             persona="", persona_dir=config.REPLY_EXAMPLES_DIR,
         )
         return (
