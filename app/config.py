@@ -1,5 +1,6 @@
 import base64
 import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -135,20 +136,17 @@ REPLY_EXAMPLES_DIR = (
 )
 
 
-def _load_reply_persona() -> str:
-    """Prefer REPLY_PERSONA_FILE's content; REPLY_PERSONA/default are fallbacks.
+def _load_reply_persona(*, suffix: str = "", persona_dir: Path | None = None) -> str:
+    """Prefer REPLY_PERSONA_FILE<suffix>'s content; REPLY_PERSONA<suffix>/default are fallbacks.
 
     A long persona reads and edits far more easily as its own text file than
-    as a single giant line embedded in .env. Lives in reply_examples/ (named
+    as a single giant line embedded in .env. Lives under persona_dir (named
     with a leading underscore so the example loader skips it, same as
     _template.txt) so both ship via the same read-only Docker mount.
     """
-    persona_file = os.environ.get("REPLY_PERSONA_FILE", "").strip()
-    path = (
-        Path(persona_file)
-        if persona_file
-        else REPLY_EXAMPLES_DIR / "_reply_persona.txt"
-    )
+    persona_dir = persona_dir if persona_dir is not None else REPLY_EXAMPLES_DIR
+    persona_file = os.environ.get(f"REPLY_PERSONA_FILE{suffix}", "").strip()
+    path = Path(persona_file) if persona_file else persona_dir / "_reply_persona.txt"
     try:
         text = path.read_text(encoding="utf-8").strip()
         if text:
@@ -156,12 +154,154 @@ def _load_reply_persona() -> str:
     except OSError:
         pass
     return os.environ.get(
-        "REPLY_PERSONA",
+        f"REPLY_PERSONA{suffix}",
         "You are a friendly, concise community manager. Keep replies under 3 sentences.",
     )
 
 
-REPLY_PERSONA = _load_reply_persona()
+@dataclass(frozen=True)
+class PageConfig:
+    """One Facebook Page + its linked Instagram account: its own credentials,
+    reply persona, and daily reply limits. Supports running more than one
+    Facebook/Instagram identity from a single deployment -- see PAGES below.
+    """
+
+    key: str
+    label: str
+    facebook_page_id: str
+    facebook_page_access_token: str
+    meta_user_access_token: str
+    instagram_user_id: str
+    facebook_post_ids: list[str]
+    instagram_media_ids: list[str]
+    facebook_daily_reply_limit: int
+    instagram_daily_reply_limit: int
+    persona: str
+    persona_dir: Path
+
+
+def _build_page_config(suffix: str) -> "PageConfig | None":
+    """Build one page's config from <VAR><suffix> env vars, or None if unconfigured.
+
+    suffix="" reads today's exact unsuffixed vars (FACEBOOK_PAGE_ID,
+    INSTAGRAM_USER_ID, ...) so the first/default page needs zero .env
+    changes. Additional pages (suffix="_2", "_3", ...) are fully additive.
+    """
+    facebook_page_id = os.environ.get(f"FACEBOOK_PAGE_ID{suffix}", "").strip()
+    instagram_user_id = os.environ.get(f"INSTAGRAM_USER_ID{suffix}", "").strip()
+    if not facebook_page_id and not instagram_user_id:
+        return None
+
+    key = os.environ.get(f"PAGE_KEY{suffix}", "").strip() or ("hindolroad" if suffix == "" else "")
+    if not key:
+        raise RuntimeError(
+            f"PAGE_KEY{suffix} is required once FACEBOOK_PAGE_ID{suffix} or "
+            f"INSTAGRAM_USER_ID{suffix} is set."
+        )
+    label = os.environ.get(f"PAGE_LABEL{suffix}", "").strip() or key.replace("_", " ").title()
+
+    facebook_page_access_token = os.environ.get(f"FACEBOOK_PAGE_ACCESS_TOKEN{suffix}", "")
+    meta_user_access_token = os.environ.get(
+        f"META_USER_ACCESS_TOKEN{suffix}", facebook_page_access_token
+    )
+    persona_dir = REPLY_EXAMPLES_DIR if suffix == "" else REPLY_EXAMPLES_DIR / key
+
+    return PageConfig(
+        key=key,
+        label=label,
+        facebook_page_id=facebook_page_id,
+        facebook_page_access_token=facebook_page_access_token,
+        meta_user_access_token=meta_user_access_token,
+        instagram_user_id=instagram_user_id,
+        facebook_post_ids=[
+            v.strip()
+            for v in os.environ.get(f"FACEBOOK_POST_IDS{suffix}", "").split(",")
+            if v.strip()
+        ],
+        instagram_media_ids=[
+            v.strip()
+            for v in os.environ.get(f"INSTAGRAM_MEDIA_IDS{suffix}", "").split(",")
+            if v.strip()
+        ],
+        facebook_daily_reply_limit=int(
+            os.environ.get(f"FACEBOOK_DAILY_REPLY_LIMIT{suffix}", "0")
+        ),
+        instagram_daily_reply_limit=int(
+            os.environ.get(f"INSTAGRAM_DAILY_REPLY_LIMIT{suffix}", "0")
+        ),
+        persona=_load_reply_persona(suffix=suffix, persona_dir=persona_dir),
+        persona_dir=persona_dir,
+    )
+
+
+# Numbered suffixes give headroom for future pages without a dynamic
+# discovery mechanism -- raising the ceiling later is a one-line change.
+_PAGE_SUFFIXES = ("", "_2", "_3", "_4", "_5")
+PAGES: dict[str, PageConfig] = {}
+for _suffix in _PAGE_SUFFIXES:
+    _page = _build_page_config(_suffix)
+    if _page is not None:
+        if _page.key in PAGES:
+            raise RuntimeError(f"Duplicate PAGE_KEY '{_page.key}' across configured pages.")
+        PAGES[_page.key] = _page
+
+if not PAGES:
+    # No Facebook/Instagram page configured at all (e.g. a fresh checkout, or
+    # the test suite's clean environment) -- keep one empty placeholder so
+    # DEFAULT_PAGE_KEY/PAGES[...] lookups elsewhere never need a "no pages"
+    # special case.
+    PAGES["hindolroad"] = PageConfig(
+        key="hindolroad",
+        label="Hindolroad",
+        facebook_page_id="",
+        facebook_page_access_token="",
+        meta_user_access_token="",
+        instagram_user_id="",
+        facebook_post_ids=[],
+        instagram_media_ids=[],
+        facebook_daily_reply_limit=0,
+        instagram_daily_reply_limit=0,
+        persona=_load_reply_persona(),
+        persona_dir=REPLY_EXAMPLES_DIR,
+    )
+
+DEFAULT_PAGE_KEY = next(iter(PAGES))
+REPLY_PERSONA = PAGES[DEFAULT_PAGE_KEY].persona
+PAGES_BY_FACEBOOK_ID = {
+    p.facebook_page_id: p.key for p in PAGES.values() if p.facebook_page_id
+}
+PAGES_BY_INSTAGRAM_ID = {
+    p.instagram_user_id: p.key for p in PAGES.values() if p.instagram_user_id
+}
+
+
+def facebook_page_keys() -> list[str]:
+    """Keys of pages with a Facebook Page configured, in PAGES order."""
+    return [p.key for p in PAGES.values() if p.facebook_page_id]
+
+
+def instagram_page_keys() -> list[str]:
+    """Keys of pages with an Instagram account configured, in PAGES order."""
+    return [p.key for p in PAGES.values() if p.instagram_user_id]
+
+
+def resolve_page_key(platform: str, entry_id: str) -> str | None:
+    """Map a webhook payload's entry.id to the page it belongs to.
+
+    Falls back to the only configured page when entry_id is missing/unmatched
+    AND there is exactly one page -- preserves single-page webhook behavior
+    (and every existing webhook test fixture, none of which include
+    entry.id) unchanged. Once a second page exists, an unmatched entry_id
+    returns None (a hard skip) rather than guessing, since misattributing an
+    event means the wrong persona/token/quota bucket, not just a missing one.
+    """
+    by_id = PAGES_BY_FACEBOOK_ID if platform == "facebook" else PAGES_BY_INSTAGRAM_ID
+    key = by_id.get(entry_id)
+    if key is not None:
+        return key
+    if len(PAGES) == 1:
+        return DEFAULT_PAGE_KEY
+    return None
 
 
 def require(*names: str) -> None:

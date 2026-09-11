@@ -116,6 +116,95 @@ class PruneTests(unittest.TestCase):
             self.assertEqual(seen["comment_id"], "legacy")
             self.assertIsNotNone(db.get_comment(conn, "legacy"))
 
+    def test_page_key_migration_backfills_facebook_and_instagram_only(self):
+        # Simulate a DB created before multi-page support: same tables, but
+        # without the page_key column at all, as every real DB predating
+        # this feature looks like.
+        legacy_path = Path(self.temp.name) / "legacy.db"
+        raw = sqlite3.connect(legacy_path)
+        raw.executescript(
+            """
+            CREATE TABLE comments (
+                comment_id TEXT PRIMARY KEY,
+                platform TEXT NOT NULL DEFAULT 'youtube',
+                video_id TEXT NOT NULL,
+                video_title TEXT,
+                author TEXT,
+                text TEXT NOT NULL,
+                published_at TEXT,
+                status TEXT NOT NULL DEFAULT 'pending_review',
+                draft_reply TEXT,
+                reply_comment_id TEXT,
+                reply_checked_at TEXT,
+                error TEXT,
+                retry_count INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE seen_comments (
+                comment_id TEXT PRIMARY KEY,
+                platform TEXT,
+                status TEXT,
+                recorded_at TEXT NOT NULL,
+                created_at TEXT,
+                updated_at TEXT
+            );
+            """
+        )
+        ts = db.now()
+        raw.executemany(
+            """INSERT INTO comments
+                   (comment_id, platform, video_id, video_title, author, text,
+                    published_at, status, draft_reply, created_at, updated_at)
+               VALUES (?, ?, 'container', 'Title', 'viewer', 'text', '',
+                       'posted', '🙏', ?, ?)""",
+            [
+                ("fb1", "facebook", ts, ts),
+                ("ig1", "instagram", ts, ts),
+                ("yt1", "youtube", ts, ts),
+            ],
+        )
+        raw.commit()
+        raw.close()
+
+        with patch.object(db, "DB_PATH", legacy_path):
+            db.init_db()
+            with db.connect() as conn:
+                columns = {
+                    row["name"] for row in conn.execute("PRAGMA table_info(comments)")
+                }
+                self.assertIn("page_key", columns)
+                comment_page_keys = {
+                    row["comment_id"]: row["page_key"]
+                    for row in conn.execute("SELECT comment_id, page_key FROM comments")
+                }
+                seen_page_keys = {
+                    row["comment_id"]: row["page_key"]
+                    for row in conn.execute(
+                        "SELECT comment_id, page_key FROM seen_comments"
+                    )
+                }
+            # Backfilled to the only page that could possibly have existed
+            # at migration time; YouTube is untouched (page_key not
+            # applicable, stays '').
+            self.assertEqual(comment_page_keys["fb1"], db.DEFAULT_PAGE_KEY)
+            self.assertEqual(comment_page_keys["ig1"], db.DEFAULT_PAGE_KEY)
+            self.assertEqual(comment_page_keys["yt1"], "")
+            # sync_seen_stats_from_comments mirrors the same page_key into
+            # seen_comments so page attribution survives a later prune.
+            self.assertEqual(seen_page_keys["fb1"], db.DEFAULT_PAGE_KEY)
+            self.assertEqual(seen_page_keys["ig1"], db.DEFAULT_PAGE_KEY)
+
+            # Idempotent: a second init_db() on an already-migrated DB must
+            # not error or re-run the backfill in a way that changes anything.
+            db.init_db()
+            with db.connect() as conn:
+                unchanged = {
+                    row["comment_id"]: row["page_key"]
+                    for row in conn.execute("SELECT comment_id, page_key FROM comments")
+                }
+            self.assertEqual(unchanged, comment_page_keys)
+
     def test_prune_keeps_activity_counts_from_seen_timestamps(self):
         created = "2026-09-07T10:00:00+00:00"
         posted_at = "2026-09-07T11:00:00+00:00"

@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from app.config import DB_PATH
+from app.config import DB_PATH, DEFAULT_PAGE_KEY
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS comments (
@@ -104,6 +104,19 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE comments ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"
             )
+        if "page_key" not in columns:
+            conn.execute(
+                "ALTER TABLE comments ADD COLUMN page_key TEXT NOT NULL DEFAULT ''"
+            )
+            # At migration time only one page (Hindolroad) has ever existed,
+            # so every pre-existing Facebook/Instagram row unambiguously
+            # belongs to it. YouTube rows keep page_key='' -- not applicable,
+            # YouTube stays single-account.
+            conn.execute(
+                """UPDATE comments SET page_key = ?
+                   WHERE platform IN ('facebook', 'instagram') AND page_key = ''""",
+                (DEFAULT_PAGE_KEY,),
+            )
         user_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(dashboard_users)")
         }
@@ -187,6 +200,13 @@ def _migrate_seen_comments(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE seen_comments ADD COLUMN created_at TEXT")
     if "updated_at" not in columns:
         conn.execute("ALTER TABLE seen_comments ADD COLUMN updated_at TEXT")
+    if "page_key" not in columns:
+        conn.execute("ALTER TABLE seen_comments ADD COLUMN page_key TEXT")
+        conn.execute(
+            """UPDATE seen_comments SET page_key = ?
+               WHERE platform IN ('facebook', 'instagram') AND page_key IS NULL""",
+            (DEFAULT_PAGE_KEY,),
+        )
     conn.execute(
         """
         UPDATE seen_comments
@@ -202,14 +222,15 @@ def sync_seen_stats_from_comments(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         INSERT INTO seen_comments
-            (comment_id, platform, status, recorded_at, created_at, updated_at)
-        SELECT comment_id, platform, status,
+            (comment_id, platform, status, page_key, recorded_at, created_at, updated_at)
+        SELECT comment_id, platform, status, page_key,
                COALESCE(updated_at, created_at), created_at, updated_at
         FROM comments
         WHERE true
         ON CONFLICT(comment_id) DO UPDATE SET
             platform = excluded.platform,
             status = excluded.status,
+            page_key = excluded.page_key,
             created_at = excluded.created_at,
             updated_at = excluded.updated_at
         """
@@ -377,21 +398,25 @@ def remember_seen_comment(
     *,
     platform: str | None = None,
     status: str | None = None,
+    page_key: str | None = None,
     created_at: str | None = None,
     updated_at: str | None = None,
 ) -> None:
     """Keep a tiny fingerprint so pruned comments are not drafted or posted again.
 
     created_at / updated_at power dashboard 1 Hour–365 Day counts after prune.
+    page_key keeps page attribution alive across a prune, so a Facebook/
+    Instagram comment's account doesn't become unknown once its full
+    comments row is deleted.
     """
     ts = now()
     conn.execute(
         """
         INSERT OR IGNORE INTO seen_comments
-            (comment_id, platform, status, recorded_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (comment_id, platform, status, page_key, recorded_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
-        (comment_id, platform, status, ts, created_at or ts, updated_at or ts),
+        (comment_id, platform, status, page_key, ts, created_at or ts, updated_at or ts),
     )
     fields = []
     params: list = []
@@ -401,6 +426,9 @@ def remember_seen_comment(
     if status is not None:
         fields.append("status = ?")
         params.append(status)
+    if page_key is not None:
+        fields.append("page_key = ?")
+        params.append(page_key)
     if created_at is not None:
         fields.append("created_at = ?")
         params.append(created_at)
@@ -439,21 +467,26 @@ def insert_comment(
     published_at: str,
     draft_reply: str,
     platform: str = "youtube",
+    page_key: str = "",
     reply_checked_at: str | None = None,
 ) -> None:
     # video_id/video_title double as the generic "container" id/title for
     # non-YouTube platforms (Facebook post id/message, Instagram media id/caption).
+    # page_key stays '' for YouTube (not applicable, single-account); for
+    # Facebook/Instagram it identifies which configured Page/account this
+    # comment belongs to (see config.PAGES).
     ts = now()
     cursor = conn.execute(
         """
         INSERT OR IGNORE INTO comments (
-            comment_id, platform, video_id, video_title, author, text, published_at,
-            status, draft_reply, reply_checked_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?)
+            comment_id, platform, page_key, video_id, video_title, author, text,
+            published_at, status, draft_reply, reply_checked_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?)
         """,
         (
             comment_id,
             platform,
+            page_key,
             video_id,
             video_title,
             author,
@@ -469,6 +502,7 @@ def insert_comment(
         conn,
         comment_id,
         platform=platform,
+        page_key=page_key or None,
         status="pending_review" if cursor.rowcount == 1 else None,
         created_at=ts if cursor.rowcount == 1 else None,
         updated_at=ts if cursor.rowcount == 1 else None,
