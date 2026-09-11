@@ -618,6 +618,41 @@ class DashboardTests(unittest.TestCase):
             row = db.list_comments(conn, status="pending_review")[0]
         self.assertEqual(row["published_at_ist"], "2026-07-02 12:28:32")
 
+    def _with_second_page(self):
+        second_page = config.PageConfig(
+            key="second", label="Second Page", facebook_page_id="page-2",
+            facebook_page_access_token="", meta_user_access_token="",
+            instagram_user_id="", facebook_post_ids=[], instagram_media_ids=[],
+            facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            persona="", persona_dir=config.REPLY_EXAMPLES_DIR,
+        )
+        return patch.object(config, "PAGES", {**config.PAGES, "second": second_page})
+
+    def test_page_filter_narrows_results_to_the_selected_page(self):
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id="fb-default", platform="facebook",
+                page_key=config.DEFAULT_PAGE_KEY, video_id="post1", video_title="Post",
+                author="viewer", text="hi", published_at="", draft_reply="hi back",
+            )
+            db.insert_comment(
+                conn, comment_id="fb-second", platform="facebook", page_key="second",
+                video_id="post2", video_title="Post 2",
+                author="viewer2", text="hey", published_at="", draft_reply="hey back",
+            )
+        with self._with_second_page():
+            page = self.client.get("/?status=pending_review&platform=facebook&page_key=second")
+        self.assertIn(b"fb-second", page.data)
+        self.assertNotIn(b"fb-default", page.data)
+
+    def test_page_filter_pills_shown_only_with_multiple_pages(self):
+        page = self.client.get("/?platform=facebook")
+        self.assertNotIn(b'aria-label="Analytics page"', page.data)
+        with self._with_second_page():
+            page = self.client.get("/?platform=facebook")
+        self.assertIn(b'aria-label="Analytics page"', page.data)
+        self.assertIn(b"Second Page", page.data)
+
 
 if __name__ == "__main__":
     unittest.main()

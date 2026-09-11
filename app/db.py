@@ -606,13 +606,19 @@ def count_drafted_today(conn: sqlite3.Connection) -> int:
 
 
 def count_by_status(
-    conn: sqlite3.Connection, *, platform: str | None = None
+    conn: sqlite3.Connection, *, platform: str | None = None, page_key: str | None = None
 ) -> dict[str, int]:
     sql = "SELECT status, COUNT(*) AS n FROM comments"
+    clauses = []
     params = []
     if platform:
-        sql += " WHERE platform = ?"
+        clauses.append("platform = ?")
         params.append(platform)
+    if page_key:
+        clauses.append("page_key = ?")
+        params.append(page_key)
+    if clauses:
+        sql += " WHERE " + " AND ".join(clauses)
     sql += " GROUP BY status"
     rows = conn.execute(sql, params).fetchall()
     return {row["status"]: row["n"] for row in rows}
@@ -623,6 +629,7 @@ def activity_summary(
     *,
     reference_time: datetime | None = None,
     platform: str | None = None,
+    page_key: str | None = None,
 ) -> list[dict]:
     """Return received and handled comment totals for dashboard time windows."""
     reference_time = reference_time or datetime.now(timezone.utc)
@@ -642,22 +649,26 @@ def activity_summary(
         "AND COALESCE(c.platform, s.platform) = :platform" if platform else ""
     )
     detailed_filter = "AND c.platform = :platform" if platform else ""
+    page_key_filter = (
+        "AND COALESCE(c.page_key, s.page_key) = :page_key" if page_key else ""
+    )
+    detailed_page_key_filter = "AND c.page_key = :page_key" if page_key else ""
     sql = f"""
         SELECT
             SUM(CASE WHEN datetime(COALESCE(c.created_at, s.created_at)) >= datetime(:cutoff)
-                      {platform_filter} THEN 1 ELSE 0 END)
+                      {platform_filter} {page_key_filter} THEN 1 ELSE 0 END)
                 AS received,
             SUM(CASE WHEN COALESCE(c.status, s.status) = 'posted'
                       AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(:cutoff)
-                      {platform_filter} THEN 1 ELSE 0 END)
+                      {platform_filter} {page_key_filter} THEN 1 ELSE 0 END)
                 AS posted,
             SUM(CASE WHEN COALESCE(c.status, s.status) = 'already_replied'
                       AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(:cutoff)
-                      {platform_filter} THEN 1 ELSE 0 END)
+                      {platform_filter} {page_key_filter} THEN 1 ELSE 0 END)
                 AS already_replied,
             SUM(CASE WHEN c.status = 'posted'
                       AND datetime(c.updated_at) >= datetime(:cutoff)
-                      {detailed_filter} THEN 1 ELSE 0 END)
+                      {detailed_filter} {detailed_page_key_filter} THEN 1 ELSE 0 END)
                 AS detailed_posted
         FROM seen_comments s
         LEFT JOIN comments c ON c.comment_id = s.comment_id
@@ -668,6 +679,8 @@ def activity_summary(
         params = {"cutoff": cutoff}
         if platform:
             params["platform"] = platform
+        if page_key:
+            params["page_key"] = page_key
         row = conn.execute(sql, params).fetchone()
         posted = int(row["posted"] or 0)
         already_replied = int(row["already_replied"] or 0)
@@ -689,6 +702,7 @@ def list_comments(
     *,
     status: str | None = None,
     platform: str | None = None,
+    page_key: str | None = None,
     query: str | None = None,
     sort_order: str = "desc",
     limit: int = 50,
@@ -710,6 +724,9 @@ def list_comments(
     if platform:
         sql += " AND platform = ?"
         params.append(platform)
+    if page_key:
+        sql += " AND page_key = ?"
+        params.append(page_key)
     if query:
         like = f"%{query}%"
         sql += " AND (author LIKE ? OR text LIKE ? OR draft_reply LIKE ? OR video_title LIKE ?)"
@@ -727,6 +744,7 @@ def count_comments(
     *,
     status: str | None = None,
     platform: str | None = None,
+    page_key: str | None = None,
     query: str | None = None,
 ) -> int:
     sql = "SELECT COUNT(*) AS n FROM comments WHERE 1=1"
@@ -737,6 +755,9 @@ def count_comments(
     if platform:
         sql += " AND platform = ?"
         params.append(platform)
+    if page_key:
+        sql += " AND page_key = ?"
+        params.append(page_key)
     if query:
         like = f"%{query}%"
         sql += " AND (author LIKE ? OR text LIKE ? OR draft_reply LIKE ? OR video_title LIKE ?)"
