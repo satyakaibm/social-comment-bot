@@ -14,6 +14,18 @@ services:
     volumes:
       - ./data:/app/data
       - ./reply_examples:/app/reply_examples:ro
+    # Lets the container (appuser, uid 1000) write to ./data files that the
+    # hourly host-side cron (scripts/reply_comments.sh, running as whichever
+    # OS Login user owns this VM) also writes to directly, outside Docker.
+    # Without this, any host-side write can leave ./data owned by the host
+    # user's uid, silently locking the container's webhook handler out of
+    # its own database until someone notices and re-chowns it by hand (hit
+    # twice in production -- see git history). The actual GID lives in .env
+    # (not committed -- see .env.example) since it's specific to this VM's
+    # OS Login-assigned identity, not something to hardcode for every
+    # deployment of this repo.
+    group_add:
+      - "${HOST_DATA_GID:-1000}"
     security_opt:
       - no-new-privileges:true
     cap_drop:
