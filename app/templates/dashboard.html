@@ -209,9 +209,9 @@
           {% for p in platforms %}<a class="activity-platform {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p }}</a>{% endfor %}
         </nav>
         {% if page_choices|length > 1 %}
-        <nav class="activity-platforms" aria-label="Analytics page">
-          <a class="activity-platform {% if not page_key %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ platform }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All pages</a>
-          {% for p in page_choices %}<a class="activity-platform {% if page_key == p.key %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ platform }}&amp;page_key={{ p.key }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p.label }}</a>{% endfor %}
+        <nav class="activity-platforms" aria-label="Channel">
+          <a class="activity-platform {% if not page_key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All channels</a>
+          {% for p in page_choices %}<a class="activity-platform {% if page_key == p.key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}&amp;page_key={{ p.key }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p.label }}</a>{% endfor %}
         </nav>
         {% endif %}
       </div>

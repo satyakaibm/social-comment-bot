@@ -650,10 +650,16 @@ class DashboardTests(unittest.TestCase):
 
     def test_page_filter_pills_shown_only_with_multiple_pages(self):
         page = self.client.get("/?platform=facebook")
-        self.assertNotIn(b'aria-label="Analytics page"', page.data)
+        self.assertNotIn(b'aria-label="Channel"', page.data)
         with self._with_second_page():
             page = self.client.get("/?platform=facebook")
-        self.assertIn(b'aria-label="Analytics page"', page.data)
+        self.assertIn(b'aria-label="Channel"', page.data)
+        self.assertIn(b"Second Page", page.data)
+
+    def test_page_filter_pills_shown_on_all_platforms_too(self):
+        with self._with_second_page():
+            page = self.client.get("/")
+        self.assertIn(b'aria-label="Channel"', page.data)
         self.assertIn(b"Second Page", page.data)
 
 

@@ -314,6 +314,13 @@ def youtube_page_keys() -> list[str]:
     return [p.key for p in PAGES.values() if p.youtube_refresh_token]
 
 
+def all_page_keys() -> list[str]:
+    """Keys of every configured page, in PAGES order -- used by the dashboard's
+    channel switcher when no single platform is selected.
+    """
+    return list(PAGES.keys())
+
+
 def resolve_page_key(platform: str, entry_id: str) -> str | None:
     """Map a webhook payload's entry.id to the page it belongs to.
 

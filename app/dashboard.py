@@ -477,8 +477,10 @@ def create_app() -> Flask:
             page_choice_keys = config.facebook_page_keys()
         elif platform == "instagram":
             page_choice_keys = config.instagram_page_keys()
+        elif platform == "youtube":
+            page_choice_keys = config.youtube_page_keys()
         else:
-            page_choice_keys = []
+            page_choice_keys = config.all_page_keys()
         page_choices = [config.PAGES[k] for k in page_choice_keys]
         return render_template(
             "dashboard.html",

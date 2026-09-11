@@ -128,6 +128,22 @@ Typical Graph permissions include Page read/manage engagement, `pages_show_list`
 
 `FACEBOOK_PAGE_ID` is the Page's numeric ID. `INSTAGRAM_USER_ID` is the Instagram professional account ID (not the username).
 
+### Multiple pages/channels
+
+One deployment can run more than one Facebook Page/Instagram account/YouTube channel, each with its own credentials, persona, and daily reply limits. The first page uses the unsuffixed vars above (`FACEBOOK_PAGE_ID`, `INSTAGRAM_USER_ID`, `YOUTUBE_REFRESH_TOKEN`, ...); additional pages repeat any of those vars with a numeric suffix `_2` through `_5`, e.g.:
+
+```bash
+PAGE_KEY_2=travel_explorer_satya
+PAGE_LABEL_2=Travel Explorer Satya
+FACEBOOK_PAGE_ID_2=
+FACEBOOK_PAGE_ACCESS_TOKEN_2=
+INSTAGRAM_USER_ID_2=
+YOUTUBE_REFRESH_TOKEN_2=
+REPLY_PERSONA_2=You are a friendly, concise travel community manager. Keep replies under 3 sentences.
+```
+
+`PAGE_KEY_2` is required once any `_2`-suffixed credential is set; `PAGE_LABEL_2` is what the dashboard's Channel switcher shows. Reply examples for that page live under `reply_examples/<PAGE_KEY_2>/`, mirroring the default `reply_examples/` layout. See `.env.example` for the full list of vars a second page can override.
+
 ### Facebook and Instagram webhooks
 
 Meta can deliver new comments immediately, so the bot does not need to rescan historical Facebook posts or Instagram media. The receiver validates Meta's `X-Hub-Signature-256`, stores each delivery in SQLite before processing, ignores duplicate deliveries and existing replies, then drafts and posts a reply and likes the original comment. Set `META_WEBHOOK_AUTO_POST=false` to save drafts for manual review.
