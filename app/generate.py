@@ -43,7 +43,13 @@ _PLATFORM_LABELS = {
 # the original comment, so the username prefix is unnecessary.
 _MENTION_PLATFORMS = {"instagram"}
 
-_REPLY_STYLE_INSTRUCTION = """
+# Keyed by page_key -- each page (Facebook/Instagram account) can enforce
+# its own mandatory rules on top of its persona, since two channels (a
+# devotional Odia/English channel vs. a travel channel, say) need different
+# non-negotiable constraints, not just a different tone. Falls back to
+# _GENERIC_STYLE_INSTRUCTION for any page without an entry here.
+_REPLY_STYLE_INSTRUCTIONS: dict[str, str] = {
+    "hindolroad": """
 Mandatory reply style (takes precedence over persona and examples):
 - This channel is hindolroad / Hindolroad. Write the whole reply in ONE language:
   either Odia or English. Never mix Odia and English in the same reply.
@@ -62,6 +68,16 @@ Mandatory reply style (takes precedence over persona and examples):
   only 🙏 for devotional chants and greetings, the reply field must be exactly
   🙏, even when an example contains chant words. Otherwise use a short matching
   chant or 🙏. Do not append a thank-you sentence.
+- For questions or feedback needing an answer, answer directly and briefly
+  without a generic gratitude introduction or ending.
+""",
+}
+
+_GENERIC_STYLE_INSTRUCTION = """
+Mandatory reply style (takes precedence over persona and examples):
+- Follow the persona's tone and reply format above.
+- Never add generic thanks or appreciation for watching, commenting, sharing,
+  or supporting the page/account.
 - For questions or feedback needing an answer, answer directly and briefly
   without a generic gratitude introduction or ending.
 """
@@ -86,11 +102,20 @@ def _parse_draft_payload(raw: str) -> str:
     return reply or raw.strip()
 
 
-def draft_reply(*, platform: str = "youtube", context_title: str, author: str, comment_text: str) -> str:
+def draft_reply(
+    *,
+    platform: str = "youtube",
+    page_key: str = config.DEFAULT_PAGE_KEY,
+    context_title: str,
+    author: str,
+    comment_text: str,
+) -> str:
     label = _PLATFORM_LABELS.get(platform, platform)
-    examples_block = format_for_prompt(load_examples())
+    persona = config.PAGES[page_key].persona
+    examples_block = format_for_prompt(load_examples(page_key=page_key), page_key=page_key)
+    style_instruction = _REPLY_STYLE_INSTRUCTIONS.get(page_key, _GENERIC_STYLE_INSTRUCTION)
     system_instruction = (
-        f"{config.REPLY_PERSONA}\n\n"
+        f"{persona}\n\n"
         f"You are drafting a public reply to a comment on a {label}. "
         "The `reply` field is the public text only: no preamble, no quotes, "
         "no signature."
@@ -98,7 +123,7 @@ def draft_reply(*, platform: str = "youtube", context_title: str, author: str, c
     )
     if examples_block:
         system_instruction = f"{system_instruction}\n\n{examples_block}"
-    system_instruction = f"{system_instruction}\n\n{_REPLY_STYLE_INSTRUCTION}"
+    system_instruction = f"{system_instruction}\n\n{style_instruction}"
     user_message = (
         f'{label.capitalize()} title/caption: "{context_title}"\n'
         f'Commenter: {author}\n'

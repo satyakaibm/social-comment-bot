@@ -1,11 +1,12 @@
-from app import db
+from app import config, db
 from app.generate import draft_reply
 
 
 def redraft_pending() -> int:
-    """Regenerate draft_reply for every pending_review comment using the
-    current REPLY_PERSONA. Useful after changing the persona without wanting
-    to re-fetch from YouTube. Returns the number of comments redrafted.
+    """Regenerate draft_reply for every pending_review comment using its
+    page's current persona. Useful after changing a persona without wanting
+    to re-fetch from YouTube/Facebook/Instagram. Returns the number of
+    comments redrafted.
     """
     db.init_db()
     redrafted = 0
@@ -16,6 +17,7 @@ def redraft_pending() -> int:
             try:
                 new_reply = draft_reply(
                     platform=row["platform"],
+                    page_key=row["page_key"] or config.DEFAULT_PAGE_KEY,
                     context_title=row["video_title"],
                     author=row["author"],
                     comment_text=row["text"],
