@@ -559,23 +559,29 @@ def reset_stale_posting(conn: sqlite3.Connection, *, minutes: int = 10) -> int:
     return result.rowcount
 
 
-def count_posted_today(conn: sqlite3.Connection, platform: str) -> int:
+def count_posted_today(
+    conn: sqlite3.Connection, platform: str, page_key: str | None = None
+) -> int:
     """Count replies posted so far in the current IST calendar day.
 
-    Used to enforce a configurable daily reply cap per platform, separate
-    from the per-cycle publish limit. `updated_at` is the time a row moved
-    to 'posted', which is the only status change that represents an actual
-    reply going out.
+    Used to enforce a configurable daily reply cap per platform (and, for
+    Facebook/Instagram, per page -- two pages sharing the same platform
+    string must not share one counter), separate from the per-cycle publish
+    limit. `updated_at` is the time a row moved to 'posted', which is the
+    only status change that represents an actual reply going out. page_key
+    is ignored for YouTube (always '', not applicable -- single-account).
     """
-    row = conn.execute(
-        """
+    sql = """
         SELECT COUNT(*) AS n FROM comments
         WHERE platform = ? AND status = 'posted'
           AND date(updated_at, '+5 hours', '+30 minutes')
               = date('now', '+5 hours', '+30 minutes')
-        """,
-        (platform,),
-    ).fetchone()
+    """
+    params: list = [platform]
+    if page_key:
+        sql += " AND page_key = ?"
+        params.append(page_key)
+    row = conn.execute(sql, params).fetchone()
     return row["n"]
 
 
@@ -743,6 +749,7 @@ def list_for_post(
     *,
     statuses: list[str],
     platform: str | None = None,
+    page_key: str | None = None,
     video_id: str | None = None,
     comment_id: str | None = None,
     limit: int | None = None,
@@ -753,6 +760,9 @@ def list_for_post(
     if platform:
         sql += " AND platform = ?"
         params.append(platform)
+    if page_key:
+        sql += " AND page_key = ?"
+        params.append(page_key)
     if video_id:
         sql += " AND video_id = ?"
         params.append(video_id)

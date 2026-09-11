@@ -60,7 +60,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='facebook'), 1)
 
         find.assert_not_called()
-        send.assert_called_once_with('facebook', '🙏', platform='facebook')
+        send.assert_called_once_with('facebook', '🙏', platform='facebook', page_key='hindolroad')
 
     def test_recent_instagram_check_is_reused_for_its_first_post(self):
         with db.connect() as conn:
@@ -76,7 +76,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='instagram'), 1)
 
         find.assert_not_called()
-        send.assert_called_once_with('instagram-recent', '🙏', platform='instagram')
+        send.assert_called_once_with('instagram-recent', '🙏', platform='instagram', page_key='hindolroad')
 
     def test_youtube_post_checks_oauth_and_video_owner_identities(self):
         self.seed('youtube')
@@ -257,6 +257,56 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='facebook'), 0)
         send.assert_not_called()
 
+    def test_daily_reply_limit_is_independent_per_page(self):
+        # Regression test: two pages sharing the "facebook" platform string
+        # must not share one daily counter -- hitting one page's limit must
+        # not block the other page's comments from posting.
+        second_page = meta_client.config.PageConfig(
+            key='second', label='Second', facebook_page_id='page-2',
+            facebook_page_access_token='', meta_user_access_token='',
+            instagram_user_id='', facebook_post_ids=[], instagram_media_ids=[],
+            facebook_daily_reply_limit=2, instagram_daily_reply_limit=0,
+            persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
+        )
+        with db.connect() as conn:
+            for i in range(2):
+                comment_id = f'hindolroad-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='facebook',
+                    page_key='hindolroad', video_id='media', video_title='Title',
+                    author='viewer', text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+            for i in range(3):
+                comment_id = f'second-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='facebook',
+                    page_key='second', video_id='media', video_title='Title',
+                    author='viewer', text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+
+        with patch.object(post.config, 'FACEBOOK_DAILY_REPLY_LIMIT', 1), \
+             patch.object(post.config, 'PAGES', {**post.config.PAGES, 'second': second_page}), \
+             patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(meta_client, 'reply_to_comment', return_value='new'):
+            posted = post.post_approved(platform='facebook')
+
+        # 1 for hindolroad (its own limit) + 2 for second (its own, higher
+        # limit) -- neither page's cap affected the other's count.
+        self.assertEqual(posted, 3)
+        with db.connect() as conn:
+            hindolroad_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='hindolroad' AND status='posted'"
+            ).fetchone()['n']
+            second_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='second' AND status='posted'"
+            ).fetchone()['n']
+        self.assertEqual(hindolroad_posted, 1)
+        self.assertEqual(second_posted, 2)
+
     def test_failed_reply_is_checked_and_retried(self):
         self.seed('instagram')
         with db.connect() as conn:
@@ -270,7 +320,7 @@ class ExistingReplyTests(unittest.TestCase):
                 post.post_approved(platform='instagram', include_failed=True), 1
             )
 
-        send.assert_called_once_with('instagram', '@viewer 🙏', platform='instagram')
+        send.assert_called_once_with('instagram', '@viewer 🙏', platform='instagram', page_key='hindolroad')
         with db.connect() as conn:
             row = db.get_comment(conn, 'instagram')
             self.assertEqual(row['status'], 'posted')
@@ -348,7 +398,7 @@ class ExistingReplyTests(unittest.TestCase):
         with patch.object(meta_client, 'find_own_reply', return_value=None), \
              patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
             self.assertEqual(post.post_approved(platform='facebook'), 1)
-            send.assert_called_once_with('facebook', '🙏', platform='facebook')
+            send.assert_called_once_with('facebook', '🙏', platform='facebook', page_key='hindolroad')
 
     def test_malformed_json_draft_is_cleaned_before_instagram_post(self):
         self.seed('instagram')
@@ -362,7 +412,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='instagram'), 1)
 
         cleaned = '@viewer ଜୟ ମା ଦକ୍ଷିଣକାଳୀ!'
-        send.assert_called_once_with('instagram', cleaned, platform='instagram')
+        send.assert_called_once_with('instagram', cleaned, platform='instagram', page_key='hindolroad')
         with db.connect() as conn:
             self.assertEqual(db.get_comment(conn, 'instagram')['draft_reply'], cleaned)
 
@@ -374,7 +424,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(
                 post.post_approved(platform='instagram', like_comments=True), 1
             )
-            like.assert_called_once_with('instagram', platform='instagram')
+            like.assert_called_once_with('instagram', platform='instagram', page_key='hindolroad')
 
     def test_replies_are_posted_before_likes_begin(self):
         for comment_id in ('facebook-first', 'facebook-second'):

@@ -17,18 +17,22 @@ def _title_cache(get_title):
     return get
 
 
-def poll_facebook_and_draft() -> int:
-    """Fetch new top-level comments on the Page's posts and draft replies.
+def poll_facebook_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
+    """Fetch new top-level comments on page_key's Page posts and draft replies.
 
     Returns the number of new comments queued for review.
     """
     db.init_db()
-    config.require("FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN")
-    post_message = _title_cache(meta_client.get_facebook_post_message)
+    if page_key == config.DEFAULT_PAGE_KEY:
+        config.require("FACEBOOK_PAGE_ID", "FACEBOOK_PAGE_ACCESS_TOKEN")
+    page = config.PAGES[page_key]
+    post_message = _title_cache(
+        lambda post_id: meta_client.get_facebook_post_message(post_id, page_key=page_key)
+    )
     new_count = 0
     remaining = max(0, config.FACEBOOK_COMMENT_LIMIT)
     daily_draft_limit_reached = False
-    post_ids = list(meta_client.iter_facebook_post_ids())
+    post_ids = list(meta_client.iter_facebook_post_ids(page_key=page_key))
 
     with db.connect() as conn:
         drafted_today = db.count_drafted_today(conn)
@@ -41,7 +45,7 @@ def poll_facebook_and_draft() -> int:
             container_limit = max(1, remaining // containers_left)
             try:
                 for comment in meta_client.iter_facebook_post_comments(
-                    post_id, limit=container_limit
+                    post_id, limit=container_limit, page_key=page_key
                 ):
                     remaining -= 1
                     comment_id = comment["id"]
@@ -55,7 +59,7 @@ def poll_facebook_and_draft() -> int:
 
                     if db.comment_exists(conn, comment_id):
                         continue
-                    if comment.get("from", {}).get("id") == config.FACEBOOK_PAGE_ID:
+                    if comment.get("from", {}).get("id") == page.facebook_page_id:
                         continue  # don't reply to ourselves
 
                     text = comment.get("message", "")
@@ -66,7 +70,7 @@ def poll_facebook_and_draft() -> int:
                     if config.FACEBOOK_VERIFY_EXISTING_REPLIES:
                         try:
                             existing_reply = meta_client.find_own_reply(
-                                comment_id, platform="facebook"
+                                comment_id, platform="facebook", page_key=page_key
                             )
                         except Exception:
                             print(
@@ -91,6 +95,7 @@ def poll_facebook_and_draft() -> int:
                     try:
                         reply = "" if existing_reply else draft_reply(
                             platform="facebook",
+                            page_key=page_key,
                             context_title=title,
                             author=author,
                             comment_text=text,
@@ -103,6 +108,7 @@ def poll_facebook_and_draft() -> int:
                         conn,
                         comment_id=comment_id,
                         platform="facebook",
+                        page_key=page_key,
                         video_id=post_id,
                         video_title=title,
                         author=author,
@@ -128,19 +134,22 @@ def poll_facebook_and_draft() -> int:
     return new_count
 
 
-def poll_instagram_and_draft() -> int:
-    """Fetch new comments on the IG account's media and draft replies.
+def poll_instagram_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
+    """Fetch new comments on page_key's IG account media and draft replies.
 
     Returns the number of new comments queued for review.
     """
     db.init_db()
-    config.require("INSTAGRAM_USER_ID", "FACEBOOK_PAGE_ACCESS_TOKEN")
-    own_username = meta_client.get_instagram_username()
-    media_caption = _title_cache(meta_client.get_instagram_media_caption)
+    if page_key == config.DEFAULT_PAGE_KEY:
+        config.require("INSTAGRAM_USER_ID", "FACEBOOK_PAGE_ACCESS_TOKEN")
+    own_username = meta_client.get_instagram_username(page_key=page_key)
+    media_caption = _title_cache(
+        lambda media_id: meta_client.get_instagram_media_caption(media_id, page_key=page_key)
+    )
     new_count = 0
     remaining = max(0, config.INSTAGRAM_COMMENT_LIMIT)
     daily_draft_limit_reached = False
-    media_ids = list(meta_client.iter_instagram_media_ids())
+    media_ids = list(meta_client.iter_instagram_media_ids(page_key=page_key))
 
     with db.connect() as conn:
         drafted_today = db.count_drafted_today(conn)
@@ -153,7 +162,7 @@ def poll_instagram_and_draft() -> int:
             container_limit = max(1, remaining // containers_left)
             try:
                 for comment in meta_client.iter_instagram_media_comments(
-                    media_id, limit=container_limit
+                    media_id, limit=container_limit, page_key=page_key
                 ):
                     remaining -= 1
                     comment_id = comment["id"]
@@ -175,7 +184,9 @@ def poll_instagram_and_draft() -> int:
                     title = media_caption(media_id)
 
                     try:
-                        existing_reply = meta_client.find_own_reply(comment_id, platform="instagram")
+                        existing_reply = meta_client.find_own_reply(
+                            comment_id, platform="instagram", page_key=page_key
+                        )
                     except Exception:
                         print(f"Could not verify existing replies for instagram comment {comment_id}; skipping this run.")
                         continue
@@ -196,6 +207,7 @@ def poll_instagram_and_draft() -> int:
                     try:
                         reply = "" if existing_reply else draft_reply(
                             platform="instagram",
+                            page_key=page_key,
                             context_title=title,
                             author=author,
                             comment_text=text,
@@ -208,6 +220,7 @@ def poll_instagram_and_draft() -> int:
                         conn,
                         comment_id=comment_id,
                         platform="instagram",
+                        page_key=page_key,
                         video_id=media_id,
                         video_title=title,
                         author=author,
