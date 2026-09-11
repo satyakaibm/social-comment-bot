@@ -87,6 +87,18 @@ CREATE TABLE IF NOT EXISTS api_quota_usage (
     PRIMARY KEY (platform, period_key)
 );
 
+CREATE TABLE IF NOT EXISTS video_stats (
+    platform TEXT NOT NULL,
+    video_id TEXT NOT NULL,
+    page_key TEXT NOT NULL DEFAULT '',
+    video_title TEXT,
+    like_count INTEGER,
+    share_count INTEGER,
+    comment_count INTEGER,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (platform, video_id)
+);
+
 """
 
 PRUNEABLE_COMMENT_STATUSES = ("posted", "already_replied", "rejected")
@@ -207,6 +219,114 @@ def get_quota_usage(conn: sqlite3.Connection, platform: str, period_key: str):
            WHERE platform = ? AND period_key = ?""",
         (platform, period_key),
     ).fetchone()
+
+
+def distinct_containers(
+    conn: sqlite3.Connection,
+    *,
+    platform: str | None = None,
+    page_key: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """Return the most recently active videos/posts, one row each.
+
+    Used to pick which containers a stats refresh should spend its (bounded)
+    API calls on -- the ones with recent comment activity, not every
+    container the bot has ever seen.
+    """
+    sql = """
+        SELECT platform, video_id,
+               COALESCE(NULLIF(page_key, ''), ?) AS page_key,
+               MAX(video_title) AS video_title,
+               MAX(created_at) AS last_comment_at
+        FROM comments WHERE video_id != ''
+    """
+    params: list = [DEFAULT_PAGE_KEY]
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    clause, extra = _page_key_filter(page_key)
+    sql += clause
+    params.extend(extra)
+    sql += """
+        GROUP BY platform, video_id
+        ORDER BY last_comment_at DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    return [dict(row) for row in conn.execute(sql, params)]
+
+
+def upsert_video_stats(
+    conn: sqlite3.Connection,
+    *,
+    platform: str,
+    video_id: str,
+    page_key: str,
+    video_title: str,
+    like_count: int | None,
+    share_count: int | None,
+    comment_count: int | None,
+) -> None:
+    conn.execute(
+        """INSERT INTO video_stats
+               (platform, video_id, page_key, video_title, like_count,
+                share_count, comment_count, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(platform, video_id) DO UPDATE SET
+               page_key = excluded.page_key,
+               video_title = excluded.video_title,
+               like_count = excluded.like_count,
+               share_count = excluded.share_count,
+               comment_count = excluded.comment_count,
+               updated_at = excluded.updated_at""",
+        (
+            platform,
+            video_id,
+            page_key,
+            video_title,
+            like_count,
+            share_count,
+            comment_count,
+            now(),
+        ),
+    )
+
+
+def list_video_stats(
+    conn: sqlite3.Connection,
+    *,
+    platform: str | None = None,
+    page_key: str | None = None,
+    limit: int = 20,
+) -> list[dict]:
+    """Return cached engagement counts, most recently commented-on first."""
+    sql = """
+        SELECT vs.*,
+               MAX(c.created_at) AS last_comment_at,
+               datetime(vs.updated_at, '+5 hours', '+30 minutes') AS updated_at_ist
+        FROM video_stats vs
+        LEFT JOIN comments c
+            ON c.platform = vs.platform AND c.video_id = vs.video_id
+        WHERE 1=1
+    """
+    params: list = []
+    if platform:
+        sql += " AND vs.platform = ?"
+        params.append(platform)
+    if page_key:
+        if page_key == DEFAULT_PAGE_KEY:
+            sql += " AND (vs.page_key = ? OR vs.page_key = '')"
+        else:
+            sql += " AND vs.page_key = ?"
+        params.append(page_key)
+    sql += """
+        GROUP BY vs.platform, vs.video_id
+        ORDER BY last_comment_at DESC, vs.updated_at DESC
+        LIMIT ?
+    """
+    params.append(limit)
+    return [dict(row) for row in conn.execute(sql, params)]
 
 
 def _migrate_seen_comments(conn: sqlite3.Connection) -> None:

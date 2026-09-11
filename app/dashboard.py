@@ -15,6 +15,7 @@ from werkzeug.serving import make_server
 from app import config, db
 from app.password_policy import PASSWORD_HINT, password_meets_policy
 from app.post import post_approved
+from app.video_stats import start_worker as start_video_stats_worker
 from app.webhook import register_meta_routes, start_event_worker
 
 STATUSES = (
@@ -154,6 +155,15 @@ def _row_dict(row) -> dict:
     item = dict(row)
     item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
     item["video_title"] = (item.get("video_title") or "")[:50]
+    page = config.PAGES.get(item.get("page_key") or "")
+    item["page_label"] = page.label if page else ""
+    return item
+
+
+def _video_stats_row(row: dict) -> dict:
+    item = dict(row)
+    item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
+    item["video_title"] = (item.get("video_title") or "")[:80]
     page = config.PAGES.get(item.get("page_key") or "")
     item["page_label"] = page.label if page else ""
     return item
@@ -452,6 +462,12 @@ def create_app() -> Flask:
                 conn, platform=platform or None, page_key=page_key or None
             )
             quota_cards = _quota_cards(conn, platform)
+            video_stats = [
+                _video_stats_row(row)
+                for row in db.list_video_stats(
+                    conn, platform=platform or None, page_key=page_key or None
+                )
+            ]
             total = db.count_comments(
                 conn,
                 status=status,
@@ -488,6 +504,8 @@ def create_app() -> Flask:
             counts=counts,
             activity=activity,
             quota_cards=quota_cards,
+            video_stats=video_stats,
+            video_stats_refresh_minutes=config.VIDEO_STATS_REFRESH_MINUTES,
             statuses=STATUSES,
             platforms=PLATFORMS,
             page_choices=page_choices,
@@ -608,6 +626,7 @@ def create_serving_app() -> Flask:
     )
     serving_app = create_app()
     start_event_worker(serving_app)
+    start_video_stats_worker(serving_app)
     return serving_app
 
 
@@ -632,6 +651,7 @@ def run() -> None:
     require_port(host, port)
     config.require("META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN")
     start_event_worker(app)
+    start_video_stats_worker(app)
     print(f"Admin dashboard: http://127.0.0.1:{port}/", flush=True)
     if host in ("127.0.0.1", "localhost"):
         print(f"Chrome: http://127.0.0.1:{port}/  or  http://localhost:{port}/", flush=True)

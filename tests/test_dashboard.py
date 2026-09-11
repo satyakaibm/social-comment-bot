@@ -662,6 +662,21 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'aria-label="Channel"', page.data)
         self.assertIn(b"Second Page", page.data)
 
+    def test_video_engagement_section_shows_cached_counts(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="vid", page_key=config.DEFAULT_PAGE_KEY,
+                video_title="Aarti", like_count=42, share_count=None, comment_count=7,
+            )
+        page = self.client.get("/")
+        self.assertIn(b'aria-label="Video and post engagement"', page.data)
+        self.assertIn(b"42", page.data)
+        self.assertIn(b"7", page.data)
+
+    def test_video_engagement_section_shows_empty_state_with_no_cached_stats(self):
+        page = self.client.get("/")
+        self.assertIn(b"No engagement data yet", page.data)
+
 
 if __name__ == "__main__":
     unittest.main()
