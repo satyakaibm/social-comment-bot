@@ -339,7 +339,8 @@ class ExistingReplyTests(unittest.TestCase):
              ) as pages:
             self.assertEqual(list(meta_client.iter_facebook_post_ids()), ['p1', 'p2'])
         pages.assert_called_once_with(
-            f'{meta_client.config.FACEBOOK_PAGE_ID}/posts', fields='id', limit=2
+            f'{meta_client.config.FACEBOOK_PAGE_ID}/posts', fields='id', limit=2,
+            page_key='hindolroad',
         )
 
     def test_unanswered_comment_still_posts(self):
@@ -416,8 +417,8 @@ class ExistingReplyTests(unittest.TestCase):
         self.assertEqual(params['access_token'], 'user-token')
 
     def test_instagram_likes_reject_page_token(self):
-        meta_client._user_token_cache = None
-        self.addCleanup(setattr, meta_client, '_user_token_cache', None)
+        meta_client._user_token_cache = {}
+        self.addCleanup(setattr, meta_client, '_user_token_cache', {})
         identity = MagicMock()
         identity.json.return_value = {'id': 'page'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
@@ -427,8 +428,8 @@ class ExistingReplyTests(unittest.TestCase):
                 meta_client.get_user_access_token()
 
     def test_user_token_is_the_configured_non_page_token(self):
-        meta_client._user_token_cache = None
-        self.addCleanup(setattr, meta_client, '_user_token_cache', None)
+        meta_client._user_token_cache = {}
+        self.addCleanup(setattr, meta_client, '_user_token_cache', {})
         identity = MagicMock()
         identity.json.return_value = {'id': 'user'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
@@ -441,7 +442,7 @@ class ExistingReplyTests(unittest.TestCase):
     def test_facebook_likes_use_comment_likes_edge(self):
         with patch.object(meta_client, 'graph_post', return_value={'success': True}) as send:
             meta_client.like_comment('fb-comment', platform='facebook')
-        send.assert_called_once_with('fb-comment/likes')
+        send.assert_called_once_with('fb-comment/likes', page_key='hindolroad')
 
     def test_graph_post_retries_meta_code_one_once(self):
         temporary = MagicMock(headers={})
@@ -596,7 +597,7 @@ class ExistingReplyTests(unittest.TestCase):
             )
 
         get.assert_called_once_with(
-            'parent', fields='comments.limit(100){id,from}'
+            'parent', fields='comments.limit(100){id,from}', page_key='hindolroad'
         )
 
     def test_facebook_does_not_run_fallback_when_edge_finds_reply(self):
@@ -614,7 +615,8 @@ class ExistingReplyTests(unittest.TestCase):
 
         get.assert_not_called()
         pages.assert_called_once_with(
-            'parent/comments', fields='id,from', filter='stream', limit=100
+            'parent/comments', fields='id,from', filter='stream', limit=100,
+            page_key='hindolroad',
         )
 
     def test_meta_reply_endpoints(self):
@@ -622,12 +624,13 @@ class ExistingReplyTests(unittest.TestCase):
             for platform, edge in (('facebook','comments'), ('instagram','replies')):
                 meta_client.reply_to_comment('parent', '🙏', platform=platform)
                 send.assert_called_with(
-                    f'parent/{edge}', message='🙏', retry_on_temporary_error=False
+                    f'parent/{edge}', message='🙏', retry_on_temporary_error=False,
+                    page_key='hindolroad',
                 )
 
     def test_configured_page_token_skips_user_token_exchange(self):
-        meta_client._page_token_cache = None
-        self.addCleanup(setattr, meta_client, '_page_token_cache', None)
+        meta_client._page_token_cache = {}
+        self.addCleanup(setattr, meta_client, '_page_token_cache', {})
         identity = MagicMock()
         identity.json.return_value = {'id': 'page'}
         with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page'), \
@@ -636,6 +639,47 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(meta_client.get_page_access_token(), 'token')
             get.assert_called_once()
             self.assertTrue(get.call_args.args[0].endswith('/me'))
+
+    def test_page_token_cache_does_not_leak_between_pages(self):
+        # Regression test: the token/username caches used to be single-slot
+        # module globals, which would silently return one page's token for
+        # another page's requests the moment a second page existed.
+        meta_client._page_token_cache = {}
+        self.addCleanup(setattr, meta_client, '_page_token_cache', {})
+        second_page = meta_client.config.PageConfig(
+            key='second', label='Second',
+            facebook_page_id='page-2', facebook_page_access_token='token-2',
+            meta_user_access_token='token-2', instagram_user_id='',
+            facebook_post_ids=[], instagram_media_ids=[],
+            facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
+        )
+
+        def fake_get(url, params=None, **kwargs):
+            resp = MagicMock()
+            token = (params or {}).get('access_token')
+            page_id = {'token-1': 'page-1', 'token-2': 'page-2'}.get(token)
+            resp.json.return_value = {'id': page_id}
+            return resp
+
+        with patch.object(meta_client.config, 'FACEBOOK_PAGE_ID', 'page-1'), \
+             patch.object(meta_client.config, 'FACEBOOK_PAGE_ACCESS_TOKEN', 'token-1'), \
+             patch.object(
+                 meta_client.config, 'PAGES',
+                 {**meta_client.config.PAGES, 'second': second_page},
+             ), \
+             patch.object(meta_client._http_session, 'get', side_effect=fake_get):
+            default_token = meta_client.get_page_access_token()
+            second_token = meta_client.get_page_access_token(page_key='second')
+            # Calling the default page again must still return its own
+            # cached token, not whatever was cached for 'second' last.
+            default_token_again = meta_client.get_page_access_token()
+
+        self.assertEqual(default_token, 'token-1')
+        self.assertEqual(second_token, 'token-2')
+        self.assertEqual(default_token_again, 'token-1')
+        self.assertEqual(meta_client._page_token_cache['hindolroad'], 'token-1')
+        self.assertEqual(meta_client._page_token_cache['second'], 'token-2')
 
     def test_poll_skips_manual_replies_without_generating(self):
         for platform in ('facebook', 'instagram'):
