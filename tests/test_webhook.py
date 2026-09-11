@@ -93,6 +93,56 @@ class WebhookTests(unittest.TestCase):
         }]}]}
         self.assertEqual(webhook.extract_comment_events(payload), [])
 
+    def _facebook_comment_payload(self, entry_id: str, comment_id: str = "c1") -> dict:
+        return {
+            "object": "page",
+            "entry": [{"id": entry_id, "changes": [{"field": "feed", "value": {
+                "item": "comment", "verb": "add", "comment_id": comment_id,
+                "post_id": "post", "message": "hi",
+                "from": {"id": "viewer", "name": "Viewer"},
+            }}]}],
+        }
+
+    def _with_second_page(self):
+        second_page = config.PageConfig(
+            key="second", label="Second", facebook_page_id="page-2",
+            facebook_page_access_token="", meta_user_access_token="",
+            instagram_user_id="", facebook_post_ids=[], instagram_media_ids=[],
+            facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            persona="", persona_dir=config.REPLY_EXAMPLES_DIR,
+        )
+        return (
+            patch.object(config, "PAGES", {**config.PAGES, "second": second_page}),
+            patch.object(config, "PAGES_BY_FACEBOOK_ID", {"page-2": "second"}),
+        )
+
+    def test_unmatched_entry_id_is_dropped_once_a_second_page_exists(self):
+        pages_patch, ids_patch = self._with_second_page()
+        with pages_patch, ids_patch:
+            events = webhook.extract_comment_events(
+                self._facebook_comment_payload("unknown-page")
+            )
+        self.assertEqual(events, [])
+
+    def test_matched_entry_id_resolves_to_the_correct_page(self):
+        pages_patch, ids_patch = self._with_second_page()
+        with pages_patch, ids_patch:
+            events = webhook.extract_comment_events(
+                self._facebook_comment_payload("page-2")
+            )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["page_key"], "second")
+
+    def test_unmatched_entry_id_falls_back_to_default_with_only_one_page(self):
+        # Preserves existing single-page webhook behavior/fixtures: none of
+        # them include entry.id, and this must keep working exactly as
+        # before as long as only one page is configured.
+        events = webhook.extract_comment_events(
+            self._facebook_comment_payload("")
+        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["page_key"], config.DEFAULT_PAGE_KEY)
+
     def test_event_is_drafted_posted_liked_and_recorded(self):
         event = {
             "platform": "instagram", "comment_id": "comment",

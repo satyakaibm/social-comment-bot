@@ -22,6 +22,7 @@ def extract_comment_events(payload: dict) -> list[dict]:
     events = []
     source = payload.get("object")
     for entry in payload.get("entry", []):
+        entry_id = entry.get("id", "")
         for change in entry.get("changes", []):
             value = change.get("value") or {}
             if source == "page" and change.get("field") == "feed":
@@ -36,6 +37,7 @@ def extract_comment_events(payload: dict) -> list[dict]:
                 author = value.get("from") or {}
                 events.append({
                     "platform": "facebook",
+                    "page_key": config.resolve_page_key("facebook", entry_id),
                     "comment_id": value.get("comment_id"),
                     "container_id": value.get("post_id"),
                     "text": value.get("message", ""),
@@ -48,6 +50,7 @@ def extract_comment_events(payload: dict) -> list[dict]:
                 media = value.get("media") or {}
                 events.append({
                     "platform": "instagram",
+                    "page_key": config.resolve_page_key("instagram", entry_id),
                     "comment_id": value.get("id"),
                     "container_id": media.get("id") or value.get("media_id"),
                     "text": value.get("text", ""),
@@ -55,7 +58,24 @@ def extract_comment_events(payload: dict) -> list[dict]:
                     "author_id": author.get("id", ""),
                     "published_at": value.get("timestamp", ""),
                 })
-    return [event for event in events if event["comment_id"] and event["container_id"]]
+    valid = []
+    for event in events:
+        if not event["comment_id"] or not event["container_id"]:
+            continue
+        if event["page_key"] is None:
+            # More than one page is configured and this entry.id didn't
+            # match any of them -- drop rather than guess, since silently
+            # misattributing an event means the wrong persona/token/quota
+            # bucket, not just a missing one.
+            print(
+                f"Dropped {event['platform']} webhook event "
+                f"{event['comment_id']}: could not match its Page/Instagram "
+                "id to any configured page.",
+                flush=True,
+            )
+            continue
+        valid.append(event)
+    return valid
 
 
 def queue_payload(payload: dict) -> int:
@@ -86,12 +106,19 @@ def queue_payload(payload: dict) -> int:
 def process_event(event: dict) -> None:
     platform = event["platform"]
     comment_id = event["comment_id"]
-    if platform == "facebook" and event.get("author_id") == config.FACEBOOK_PAGE_ID:
+    # event.get(...) rather than direct indexing: hand-built events (tests,
+    # or any future caller that predates page routing) default to the one
+    # existing page, matching behavior before multi-page support.
+    page_key = event.get("page_key") or config.DEFAULT_PAGE_KEY
+    if (
+        platform == "facebook"
+        and event.get("author_id") == config.PAGES[page_key].facebook_page_id
+    ):
         return
     if (
         platform == "instagram"
         and event.get("author", "").casefold()
-        == meta_client.get_instagram_username().casefold()
+        == meta_client.get_instagram_username(page_key=page_key).casefold()
     ):
         return
 
@@ -101,13 +128,14 @@ def process_event(event: dict) -> None:
 
     existing = None
     if platform != "facebook" or config.FACEBOOK_VERIFY_EXISTING_REPLIES:
-        existing = meta_client.find_own_reply(comment_id, platform=platform)
+        existing = meta_client.find_own_reply(comment_id, platform=platform, page_key=page_key)
     if existing:
         with db.connect() as conn:
             db.insert_comment(
                 conn,
                 comment_id=comment_id,
                 platform=platform,
+                page_key=page_key,
                 video_id=event["container_id"],
                 video_title=event["container_id"],
                 author=event["author"],
@@ -123,7 +151,7 @@ def process_event(event: dict) -> None:
         if platform == "facebook"
         else meta_client.get_instagram_media_caption
     )
-    title = get_title(event["container_id"]) or event["container_id"]
+    title = get_title(event["container_id"], page_key=page_key) or event["container_id"]
 
     with db.connect() as conn:
         daily_limit_reached = (
@@ -140,6 +168,7 @@ def process_event(event: dict) -> None:
                 conn,
                 comment_id=comment_id,
                 platform=platform,
+                page_key=page_key,
                 video_id=event["container_id"],
                 video_title=title,
                 author=event["author"],
@@ -165,6 +194,7 @@ def process_event(event: dict) -> None:
 
     reply = draft_reply(
         platform=platform,
+        page_key=page_key,
         context_title=title,
         author=event["author"],
         comment_text=event["text"],
@@ -174,6 +204,7 @@ def process_event(event: dict) -> None:
             conn,
             comment_id=comment_id,
             platform=platform,
+            page_key=page_key,
             video_id=event["container_id"],
             video_title=title,
             author=event["author"],
