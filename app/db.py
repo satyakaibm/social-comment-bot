@@ -592,38 +592,43 @@ def activity_summary(
         ("7 Day", timedelta(days=7)),
         ("365 Days", timedelta(days=365)),
     )
+    # Named parameters (not positional "?") so the same :platform value can
+    # be bound once and reused everywhere it appears in the query, instead
+    # of needing its position in a params list kept in lockstep with every
+    # "?" -- that positional scheme previously required hand-duplicating
+    # `platform` 3-6 times per query and was one query edit away from a
+    # silently wrong (not erroring) dashboard count.
+    platform_filter = (
+        "AND COALESCE(c.platform, s.platform) = :platform" if platform else ""
+    )
+    detailed_filter = "AND c.platform = :platform" if platform else ""
+    sql = f"""
+        SELECT
+            SUM(CASE WHEN datetime(COALESCE(c.created_at, s.created_at)) >= datetime(:cutoff)
+                      {platform_filter} THEN 1 ELSE 0 END)
+                AS received,
+            SUM(CASE WHEN COALESCE(c.status, s.status) = 'posted'
+                      AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(:cutoff)
+                      {platform_filter} THEN 1 ELSE 0 END)
+                AS posted,
+            SUM(CASE WHEN COALESCE(c.status, s.status) = 'already_replied'
+                      AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(:cutoff)
+                      {platform_filter} THEN 1 ELSE 0 END)
+                AS already_replied,
+            SUM(CASE WHEN c.status = 'posted'
+                      AND datetime(c.updated_at) >= datetime(:cutoff)
+                      {detailed_filter} THEN 1 ELSE 0 END)
+                AS detailed_posted
+        FROM seen_comments s
+        LEFT JOIN comments c ON c.comment_id = s.comment_id
+    """
     summaries = []
     for label, duration in windows:
         cutoff = (reference_time - duration).isoformat()
-        platform_filter = "AND COALESCE(c.platform, s.platform) = ?" if platform else ""
-        params = (
-            [cutoff, platform, cutoff, platform, cutoff, platform]
-            if platform
-            else [cutoff, cutoff, cutoff]
-        )
-        row = conn.execute(
-            f"""
-            SELECT
-                SUM(CASE WHEN datetime(COALESCE(c.created_at, s.created_at)) >= datetime(?)
-                          {platform_filter} THEN 1 ELSE 0 END)
-                    AS received,
-                SUM(CASE WHEN COALESCE(c.status, s.status) = 'posted'
-                          AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(?)
-                          {platform_filter} THEN 1 ELSE 0 END)
-                    AS posted,
-                SUM(CASE WHEN COALESCE(c.status, s.status) = 'already_replied'
-                          AND datetime(COALESCE(c.updated_at, s.updated_at)) >= datetime(?)
-                          {platform_filter} THEN 1 ELSE 0 END)
-                    AS already_replied,
-                SUM(CASE WHEN c.status = 'posted'
-                          AND datetime(c.updated_at) >= datetime(?)
-                          {"AND c.platform = ?" if platform else ""} THEN 1 ELSE 0 END)
-                    AS detailed_posted
-            FROM seen_comments s
-            LEFT JOIN comments c ON c.comment_id = s.comment_id
-            """,
-            params + ([cutoff, platform] if platform else [cutoff]),
-        ).fetchone()
+        params = {"cutoff": cutoff}
+        if platform:
+            params["platform"] = platform
+        row = conn.execute(sql, params).fetchone()
         posted = int(row["posted"] or 0)
         already_replied = int(row["already_replied"] or 0)
         summaries.append(
