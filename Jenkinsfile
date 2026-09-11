@@ -140,7 +140,7 @@ gcloud config set project project-e1de8eb7-3b06-4142-9b3 --quiet
 # against.
 gcloud compute ssh social-comment-bot \
   --zone=us-central1-a --project=project-e1de8eb7-3b06-4142-9b3 --tunnel-through-iap --quiet \
-  --command="cd /opt/social-comment-bot && git pull && sudo docker compose up -d --build && sleep 5 && curl -sf http://localhost:9001/api/health" \
+  --command="cd /opt/social-comment-bot && sudo git pull && sudo docker compose up -d --build && sleep 5 && curl -sf http://localhost:9001/api/health" \
   -- -o StrictHostKeyChecking=no
 DEPLOY
                     '''
