@@ -138,6 +138,16 @@ def poll_and_draft() -> int:
                             f"Skipped YouTube comment {comment_id} before database insert: "
                             "Hindolroad already replied."
                         )
+                        # Without this, the comment never becomes known to
+                        # comment_exists() and find_own_reply() -- an API
+                        # call -- gets re-run for it on every future cycle
+                        # forever, burning real YouTube quota for an answer
+                        # that will never change.
+                        db.remember_seen_comment(
+                            conn, comment_id, platform="youtube",
+                            status="already_replied",
+                        )
+                        conn.commit()  # see the insert_comment commit below
                         continue
 
                     try:
