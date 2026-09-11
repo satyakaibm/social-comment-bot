@@ -109,6 +109,9 @@ class WebhookTests(unittest.TestCase):
             facebook_page_access_token="", meta_user_access_token="",
             instagram_user_id="", facebook_post_ids=[], instagram_media_ids=[],
             facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id="", youtube_oauth_client_secret="",
+            youtube_refresh_token="", youtube_video_ids=[],
+            youtube_daily_reply_limit=0,
             persona="", persona_dir=config.REPLY_EXAMPLES_DIR,
         )
         return (
@@ -157,8 +160,12 @@ class WebhookTests(unittest.TestCase):
              patch.object(webhook.meta_client, "reply_to_comment", return_value="reply") as reply, \
              patch.object(webhook.meta_client, "like_comment") as like:
             webhook.process_event(event)
-        reply.assert_called_once_with("comment", "@viewer 🙏", platform="instagram")
-        like.assert_called_once_with("comment", platform="instagram")
+        reply.assert_called_once_with(
+            "comment", "@viewer 🙏", platform="instagram", page_key="hindolroad"
+        )
+        like.assert_called_once_with(
+            "comment", platform="instagram", page_key="hindolroad"
+        )
         with db.connect() as conn:
             row = conn.execute(
                 "SELECT status, reply_comment_id FROM comments WHERE comment_id='comment'"

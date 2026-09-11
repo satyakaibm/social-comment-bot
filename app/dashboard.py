@@ -116,6 +116,9 @@ def _filters():
     platform = request.args.get("platform", "").strip()
     if platform not in PLATFORMS:
         platform = ""
+    page_key = request.args.get("page_key", "").strip()
+    if page_key not in config.PAGES:
+        page_key = ""
     query = request.args.get("q", "").strip()
     try:
         page = max(1, int(request.args.get("page", "1")))
@@ -124,14 +127,15 @@ def _filters():
     sort_order = request.args.get("sort", "desc").lower()
     if sort_order not in {"asc", "desc"}:
         sort_order = "desc"
-    return status, platform, query, page, sort_order
+    return status, platform, page_key, query, page, sort_order
 
 
 def _index_url(**overrides) -> str:
-    status, platform, query, page, sort_order = _filters()
+    status, platform, page_key, query, page, sort_order = _filters()
     params = {
         "status": overrides.get("status", status),
         "platform": overrides.get("platform", platform),
+        "page_key": overrides.get("page_key", page_key),
         "q": overrides.get("q", query),
         "page": str(overrides.get("page", page)),
         "sort": overrides.get("sort", sort_order),
@@ -150,6 +154,8 @@ def _row_dict(row) -> dict:
     item = dict(row)
     item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
     item["video_title"] = (item.get("video_title") or "")[:50]
+    page = config.PAGES.get(item.get("page_key") or "")
+    item["page_label"] = page.label if page else ""
     return item
 
 
@@ -158,24 +164,42 @@ def _quota_cards(conn, platform: str) -> list[dict]:
     cards = []
     youtube_period = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
     for name in selected:
-        period = youtube_period if name == "youtube" else "rolling"
-        row = db.get_quota_usage(conn, name, period)
-        used = int(row["used"]) if row else 0
-        limit_value = int(row["limit_value"]) if row else (
-            config.YOUTUBE_DAILY_QUOTA_LIMIT if name == "youtube" else 100
+        if name == "youtube":
+            period = youtube_period
+            row = db.get_quota_usage(conn, name, period)
+            used = int(row["used"]) if row else 0
+            limit_value = int(row["limit_value"]) if row else config.YOUTUBE_DAILY_QUOTA_LIMIT
+            cards.append({
+                "platform": name,
+                "page_label": "",
+                "used": used if row else None,
+                "remaining": max(0, limit_value - used) if row else None,
+                "limit": limit_value,
+                "unit": "units",
+                "description": "Tracked today by this bot; YouTube resets at midnight Pacific Time.",
+            })
+            continue
+        page_keys = (
+            config.facebook_page_keys() if name == "facebook" else config.instagram_page_keys()
         )
-        cards.append({
-            "platform": name,
-            "used": used if row else None,
-            "remaining": max(0, limit_value - used) if row else None,
-            "limit": limit_value,
-            "unit": "units" if name == "youtube" else "%",
-            "description": (
-                "Tracked today by this bot; YouTube resets at midnight Pacific Time."
-                if name == "youtube" else
-                "Latest rolling usage reported by Meta; Facebook and Instagram limits are dynamic."
-            ),
-        })
+        multi = len(page_keys) > 1
+        # No page configured for this platform at all (fresh checkout / test
+        # env) -- still show one unlabeled card, matching pre-multi-page
+        # behavior, instead of silently rendering nothing.
+        for page_key in page_keys or [config.DEFAULT_PAGE_KEY]:
+            quota_name = name if page_key == config.DEFAULT_PAGE_KEY else f"{name}:{page_key}"
+            row = db.get_quota_usage(conn, quota_name, "rolling")
+            used = int(row["used"]) if row else 0
+            limit_value = int(row["limit_value"]) if row else 100
+            cards.append({
+                "platform": name,
+                "page_label": config.PAGES[page_key].label if multi else "",
+                "used": used if row else None,
+                "remaining": max(0, limit_value - used) if row else None,
+                "limit": limit_value,
+                "unit": "%",
+                "description": "Latest rolling usage reported by Meta; Facebook and Instagram limits are dynamic.",
+            })
     return cards
 
 
@@ -420,16 +444,19 @@ def create_app() -> Flask:
 
     @app.get("/")
     def index():
-        status, platform, query, page, sort_order = _filters()
+        status, platform, page_key, query, page, sort_order = _filters()
         offset = (page - 1) * PAGE_SIZE
         with db.connect() as conn:
-            counts = db.count_by_status(conn, platform=platform or None)
-            activity = db.activity_summary(conn, platform=platform or None)
+            counts = db.count_by_status(conn, platform=platform or None, page_key=page_key or None)
+            activity = db.activity_summary(
+                conn, platform=platform or None, page_key=page_key or None
+            )
             quota_cards = _quota_cards(conn, platform)
             total = db.count_comments(
                 conn,
                 status=status,
                 platform=platform or None,
+                page_key=page_key or None,
                 query=query or None,
             )
             rows = [
@@ -438,6 +465,7 @@ def create_app() -> Flask:
                     conn,
                     status=status,
                     platform=platform or None,
+                    page_key=page_key or None,
                     query=query or None,
                     sort_order=sort_order,
                     limit=PAGE_SIZE,
@@ -445,6 +473,13 @@ def create_app() -> Flask:
                 )
             ]
         pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+        if platform == "facebook":
+            page_choice_keys = config.facebook_page_keys()
+        elif platform == "instagram":
+            page_choice_keys = config.instagram_page_keys()
+        else:
+            page_choice_keys = []
+        page_choices = [config.PAGES[k] for k in page_choice_keys]
         return render_template(
             "dashboard.html",
             rows=rows,
@@ -453,8 +488,10 @@ def create_app() -> Flask:
             quota_cards=quota_cards,
             statuses=STATUSES,
             platforms=PLATFORMS,
+            page_choices=page_choices,
             status=status,
             platform=platform,
+            page_key=page_key,
             query=query,
             page=page,
             pages=pages,

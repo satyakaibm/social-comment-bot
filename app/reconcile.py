@@ -1,6 +1,6 @@
 from googleapiclient.errors import HttpError
 
-from app import db
+from app import config, db
 from app.youtube_client import (
     find_own_reply,
     get_client,
@@ -10,14 +10,15 @@ from app.youtube_client import (
 )
 
 
-def reconcile_youtube_pending() -> dict[str, int | bool]:
-    """Remove already-answered YouTube comments from the pending queue."""
+def reconcile_youtube_pending(page_key: str = config.DEFAULT_PAGE_KEY) -> dict[str, int | bool]:
+    """Remove already-answered YouTube comments from page_key's pending queue."""
     db.init_db()
     with db.connect() as conn:
         rows = db.list_for_post(
             conn,
             statuses=["pending_review"],
             platform="youtube",
+            page_key=page_key,
         )
 
     result: dict[str, int | bool] = {
@@ -32,7 +33,7 @@ def reconcile_youtube_pending() -> dict[str, int | bool]:
         return result
 
     try:
-        youtube = get_client()
+        youtube = get_client(page_key=page_key)
         oauth_channel_id = get_my_channel_id(youtube)
         video_owners = get_video_channel_ids(
             youtube, (row["video_id"] for row in rows)

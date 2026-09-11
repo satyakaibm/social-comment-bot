@@ -22,13 +22,12 @@ def _is_transient_db_error(exc: BaseException) -> bool:
     )
 
 
-def cmd_poll(_args) -> None:
+def _poll_youtube_channel(page_key: str) -> int:
     retries = 3
     delay = 5
     for attempt in range(1, retries + 1):
         try:
-            n = poll_and_draft()
-            break
+            return poll_and_draft(page_key=page_key)
         except sqlite3.OperationalError as exc:
             if not _is_transient_db_error(exc) or attempt == retries:
                 raise
@@ -38,32 +37,68 @@ def cmd_poll(_args) -> None:
                 file=sys.stderr,
             )
             time.sleep(delay)
-    print(f"Queued {n} new comment(s) for review.")
+    return 0
 
 
-def cmd_poll_facebook(_args) -> None:
-    n = poll_facebook_and_draft()
-    print(f"Queued {n} new Facebook comment(s) for review.")
+def cmd_poll(args) -> None:
+    page_keys = [args.page] if getattr(args, "page", None) else config.youtube_page_keys()
+    total = 0
+    for page_key in page_keys:
+        n = _poll_youtube_channel(page_key)
+        label = config.PAGES[page_key].label
+        print(f"[{label}] Queued {n} new comment(s) for review.")
+        total += n
+    if len(page_keys) > 1:
+        print(f"Total queued: {total}")
 
 
-def cmd_poll_instagram(_args) -> None:
-    n = poll_instagram_and_draft()
-    print(f"Queued {n} new Instagram comment(s) for review.")
+def cmd_poll_facebook(args) -> None:
+    page_keys = [args.page] if getattr(args, "page", None) else config.facebook_page_keys()
+    total = 0
+    for page_key in page_keys:
+        n = poll_facebook_and_draft(page_key=page_key)
+        label = config.PAGES[page_key].label
+        print(f"[{label}] Queued {n} new Facebook comment(s) for review.")
+        total += n
+    if len(page_keys) > 1:
+        print(f"Total queued: {total}")
+
+
+def cmd_poll_instagram(args) -> None:
+    page_keys = [args.page] if getattr(args, "page", None) else config.instagram_page_keys()
+    total = 0
+    for page_key in page_keys:
+        n = poll_instagram_and_draft(page_key=page_key)
+        label = config.PAGES[page_key].label
+        print(f"[{label}] Queued {n} new Instagram comment(s) for review.")
+        total += n
+    if len(page_keys) > 1:
+        print(f"Total queued: {total}")
 
 
 def cmd_poll_all(_args) -> None:
     total = 0
-    for name, fn in (
-        ("YouTube", poll_and_draft),
-        ("Facebook", poll_facebook_and_draft),
-        ("Instagram", poll_instagram_and_draft),
-    ):
+    for page_key in config.youtube_page_keys():
+        label = config.PAGES[page_key].label
         try:
-            n = fn()
-            print(f"{name}: queued {n} new comment(s).")
+            n = _poll_youtube_channel(page_key)
+            print(f"YouTube [{label}]: queued {n} new comment(s).")
             total += n
         except Exception as e:
-            print(f"{name} poll failed: {e}")
+            print(f"YouTube [{label}] poll failed: {e}")
+
+    for platform, page_keys, fn in (
+        ("Facebook", config.facebook_page_keys(), poll_facebook_and_draft),
+        ("Instagram", config.instagram_page_keys(), poll_instagram_and_draft),
+    ):
+        for page_key in page_keys:
+            label = config.PAGES[page_key].label
+            try:
+                n = fn(page_key=page_key)
+                print(f"{platform} [{label}]: queued {n} new comment(s).")
+                total += n
+            except Exception as e:
+                print(f"{platform} [{label}] poll failed: {e}")
     print(f"Total queued: {total}")
 
 
@@ -94,12 +129,14 @@ def cmd_run(_args) -> None:
         "review — run `review` and `post` separately to publish them. Ctrl+C to stop."
     )
     while True:
-        try:
-            n = poll_and_draft()
-            if n:
-                print(f"Queued {n} new comment(s) for review.")
-        except Exception as e:  # keep the loop alive across transient API errors
-            print(f"Poll cycle failed: {e}")
+        for page_key in config.youtube_page_keys():
+            try:
+                n = poll_and_draft(page_key=page_key)
+                if n:
+                    label = config.PAGES[page_key].label
+                    print(f"[{label}] Queued {n} new comment(s) for review.")
+            except Exception as e:  # keep the loop alive across transient API errors
+                print(f"Poll cycle failed: {e}")
         time.sleep(config.POLL_INTERVAL_SECONDS)
 
 
@@ -137,32 +174,51 @@ def cmd_prune(args) -> None:
     )
 
 
-def cmd_reconcile_youtube(_args) -> None:
+def cmd_reconcile_youtube(args) -> None:
     from app.reconcile import reconcile_youtube_pending
 
-    result = reconcile_youtube_pending()
-    print(
-        "YouTube reconciliation: "
-        f"total={result['total']}, checked={result['checked']}, "
-        f"already_replied={result['already_replied']}, "
-        f"unanswered={result['unanswered']}, errors={result['errors']}, "
-        f"quota_exhausted={result['quota_exhausted']}"
-    )
+    page_keys = [args.page] if getattr(args, "page", None) else config.youtube_page_keys()
+    for page_key in page_keys:
+        label = config.PAGES[page_key].label
+        result = reconcile_youtube_pending(page_key=page_key)
+        print(
+            f"YouTube reconciliation [{label}]: "
+            f"total={result['total']}, checked={result['checked']}, "
+            f"already_replied={result['already_replied']}, "
+            f"unanswered={result['unanswered']}, errors={result['errors']}, "
+            f"quota_exhausted={result['quota_exhausted']}"
+        )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="social-comment-bot")
     sub = parser.add_subparsers(required=True)
 
-    sub.add_parser("poll", help="Fetch new YouTube comments and draft replies").set_defaults(
-        func=cmd_poll
+    poll_p = sub.add_parser("poll", help="Fetch new YouTube comments and draft replies")
+    poll_p.add_argument(
+        "--page",
+        choices=tuple(config.PAGES),
+        help="Only poll this channel (default: every configured YouTube channel)",
     )
-    sub.add_parser(
+    poll_p.set_defaults(func=cmd_poll)
+    poll_fb_p = sub.add_parser(
         "poll-facebook", help="Fetch new Facebook comments and draft replies"
-    ).set_defaults(func=cmd_poll_facebook)
-    sub.add_parser(
+    )
+    poll_fb_p.add_argument(
+        "--page",
+        choices=tuple(config.PAGES),
+        help="Only poll this page (default: every configured Facebook page)",
+    )
+    poll_fb_p.set_defaults(func=cmd_poll_facebook)
+    poll_ig_p = sub.add_parser(
         "poll-instagram", help="Fetch new Instagram comments and draft replies"
-    ).set_defaults(func=cmd_poll_instagram)
+    )
+    poll_ig_p.add_argument(
+        "--page",
+        choices=tuple(config.PAGES),
+        help="Only poll this page (default: every configured Instagram page)",
+    )
+    poll_ig_p.set_defaults(func=cmd_poll_instagram)
     sub.add_parser(
         "poll-all", help="Fetch new comments from YouTube, Facebook, and Instagram"
     ).set_defaults(func=cmd_poll_all)
@@ -210,10 +266,16 @@ def main() -> None:
     sub.add_parser(
         "dashboard", help="Open the dashboard with the Meta webhook receiver"
     ).set_defaults(func=cmd_dashboard)
-    sub.add_parser(
+    reconcile_p = sub.add_parser(
         "reconcile-youtube",
-        help="Remove comments already answered by Hindolroad from YouTube pending review",
-    ).set_defaults(func=cmd_reconcile_youtube)
+        help="Remove comments already answered from a YouTube channel's pending review",
+    )
+    reconcile_p.add_argument(
+        "--page",
+        choices=tuple(config.PAGES),
+        help="Only reconcile this channel (default: every configured YouTube channel)",
+    )
+    reconcile_p.set_defaults(func=cmd_reconcile_youtube)
     prune_p = sub.add_parser(
         "prune",
         help=(

@@ -208,6 +208,12 @@
           <a class="activity-platform {% if not platform %}active{% endif %}" href="/?status={{ status }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All platforms</a>
           {% for p in platforms %}<a class="activity-platform {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p }}</a>{% endfor %}
         </nav>
+        {% if page_choices|length > 1 %}
+        <nav class="activity-platforms" aria-label="Analytics page">
+          <a class="activity-platform {% if not page_key %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ platform }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All pages</a>
+          {% for p in page_choices %}<a class="activity-platform {% if page_key == p.key %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ platform }}&amp;page_key={{ p.key }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p.label }}</a>{% endfor %}
+        </nav>
+        {% endif %}
       </div>
       <div class="intro-actions">
         <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway Health</span></a>
@@ -237,7 +243,7 @@
       </div>
       {% for quota in quota_cards %}
         <div class="quota-inline" aria-label="{{ quota.platform }} API quota usage">
-          <div class="quota-head">{{ quota.platform }} API quota{% if quota.platform == 'youtube' %} (Daily){% else %} (Dynamic){% endif %}</div>
+          <div class="quota-head">{{ quota.platform }}{% if quota.page_label %} — {{ quota.page_label }}{% endif %} API quota{% if quota.platform == 'youtube' %} (Daily){% else %} (Dynamic){% endif %}</div>
           <div class="quota-values">
             <div class="quota-value"><strong>{{ quota.used if quota.used is not none else '—' }}{% if quota.unit == '%' and quota.used is not none %}%{% endif %}</strong><span>Used{% if quota.unit == 'units' %} units{% endif %}</span></div>
             <div class="quota-value"><strong>{{ quota.remaining if quota.remaining is not none else '—' }}{% if quota.unit == '%' and quota.remaining is not none %}%{% endif %}</strong><span>Remaining{% if quota.unit == 'units' %} units{% endif %}</span></div>
@@ -250,7 +256,7 @@
 
     <nav class="stats" aria-label="Comment status">
       {% for s in statuses %}
-        <a class="stat {% if s == status %}active{% endif %}" href="/?status={{ s }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">
+        <a class="stat {% if s == status %}active{% endif %}" href="/?status={{ s }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">
           <span class="stat-label">{{ s.replace('_', ' ') }}</span><span class="stat-value">{{ counts.get(s, 0) }}</span>
         </a>
       {% endfor %}
@@ -265,7 +271,7 @@
         </form>
       {% endif %}
       <form class="search" method="get">
-        <input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="sort" value="{{ sort_order }}">{% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}
+        <input type="hidden" name="status" value="{{ status }}"><input type="hidden" name="sort" value="{{ sort_order }}">{% if platform %}<input type="hidden" name="platform" value="{{ platform }}">{% endif %}{% if page_key %}<input type="hidden" name="page_key" value="{{ page_key }}">{% endif %}
         <div class="search-wrap"><svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg><input type="search" name="q" value="{{ query }}" placeholder="Search comments, authors, replies or titles"></div>
         <button type="submit">Search</button>
       </form>
@@ -277,18 +283,18 @@
     {% else %}
       {% set qs = query_string and ('?' + query_string) or '' %}
       <div class="grid-wrap"><table class="db">
-        <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th><th><a class="sort-button" href="/?status={{ status }}&amp;sort={{ next_sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}" title="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}" aria-label="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}">Posted (IST) <span class="sort-arrow" aria-hidden="true">{{ '↓' if sort_order == 'desc' else '↑' }}</span></a></th><th>Actions</th></tr></thead>
+        <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th><th><a class="sort-button" href="/?status={{ status }}&amp;sort={{ next_sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}" title="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}" aria-label="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}">Posted (IST) <span class="sort-arrow" aria-hidden="true">{{ '↓' if sort_order == 'desc' else '↑' }}</span></a></th><th>Actions</th></tr></thead>
         <tbody>{% for row in rows %}<tr>
-          <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span></td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status.replace('_', ' ') }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td><td>{{ row.posted_at_ist or '—' }}</td>
+          <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span>{% if row.page_label %}<br><span class="narrow">{{ row.page_label }}</span>{% endif %}</td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status.replace('_', ' ') }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td><td>{{ row.posted_at_ist or '—' }}</td>
           <td>{% if row.status == 'failed' %}<form method="post"><textarea name="draft_reply" rows="3">{{ row.draft_reply or '' }}</textarea><div class="actions"><button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Retry reply</button></div></form>{% else %}—{% endif %}</td>
         </tr>{% endfor %}</tbody>
       </table></div>
     {% endif %}
 
     {% if pages > 1 %}<nav class="pager" aria-label="Pagination">
-      {% if page > 1 %}<a href="/?status={{ status }}&amp;page={{ page - 1 }}&amp;sort={{ sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">← Previous</a>{% endif %}
+      {% if page > 1 %}<a href="/?status={{ status }}&amp;page={{ page - 1 }}&amp;sort={{ sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">← Previous</a>{% endif %}
       <span>Page {{ page }} of {{ pages }}</span>
-      {% if page < pages %}<a href="/?status={{ status }}&amp;page={{ page + 1 }}&amp;sort={{ sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">Next →</a>{% endif %}
+      {% if page < pages %}<a href="/?status={{ status }}&amp;page={{ page + 1 }}&amp;sort={{ sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">Next →</a>{% endif %}
     </nav>{% endif %}
   </main>
   <footer class="site-footer">

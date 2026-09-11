@@ -116,7 +116,7 @@ class PruneTests(unittest.TestCase):
             self.assertEqual(seen["comment_id"], "legacy")
             self.assertIsNotNone(db.get_comment(conn, "legacy"))
 
-    def test_page_key_migration_backfills_facebook_and_instagram_only(self):
+    def test_page_key_migration_backfills_every_platform(self):
         # Simulate a DB created before multi-page support: same tables, but
         # without the page_key column at all, as every real DB predating
         # this feature looks like.
@@ -184,16 +184,17 @@ class PruneTests(unittest.TestCase):
                         "SELECT comment_id, page_key FROM seen_comments"
                     )
                 }
-            # Backfilled to the only page that could possibly have existed
-            # at migration time; YouTube is untouched (page_key not
-            # applicable, stays '').
+            # Backfilled to the only page/channel that could possibly have
+            # existed at migration time, across every platform including
+            # YouTube (now page-aware too, for multi-channel support).
             self.assertEqual(comment_page_keys["fb1"], db.DEFAULT_PAGE_KEY)
             self.assertEqual(comment_page_keys["ig1"], db.DEFAULT_PAGE_KEY)
-            self.assertEqual(comment_page_keys["yt1"], "")
+            self.assertEqual(comment_page_keys["yt1"], db.DEFAULT_PAGE_KEY)
             # sync_seen_stats_from_comments mirrors the same page_key into
             # seen_comments so page attribution survives a later prune.
             self.assertEqual(seen_page_keys["fb1"], db.DEFAULT_PAGE_KEY)
             self.assertEqual(seen_page_keys["ig1"], db.DEFAULT_PAGE_KEY)
+            self.assertEqual(seen_page_keys["yt1"], db.DEFAULT_PAGE_KEY)
 
             # Idempotent: a second init_db() on an already-migrated DB must
             # not error or re-run the backfill in a way that changes anything.

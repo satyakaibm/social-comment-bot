@@ -49,9 +49,39 @@ def _has_recent_reply_check(row) -> bool:
     )
 
 
+def _daily_limit_for(platform: str, page_key: str) -> int:
+    """Daily reply cap for one (platform, page_key) combination.
+
+    An empty/unrecognized page_key (legacy rows inserted before multi-page
+    support, or the configured default page itself) reads the live
+    top-level FACEBOOK_DAILY_REPLY_LIMIT/INSTAGRAM_DAILY_REPLY_LIMIT/
+    YOUTUBE_DAILY_REPLY_LIMIT constants -- not config.PAGES[...], which is
+    frozen at import time and wouldn't see a test's
+    patch.object(config, "FACEBOOK_DAILY_REPLY_LIMIT", ...). Any other real
+    page reads its own config.PAGES entry.
+    """
+    if platform not in ("facebook", "instagram", "youtube"):
+        return 0
+    if not page_key or page_key == config.DEFAULT_PAGE_KEY:
+        if platform == "facebook":
+            return config.FACEBOOK_DAILY_REPLY_LIMIT
+        if platform == "instagram":
+            return config.INSTAGRAM_DAILY_REPLY_LIMIT
+        return config.YOUTUBE_DAILY_REPLY_LIMIT
+    page = config.PAGES.get(page_key)
+    if page is None:
+        return 0
+    if platform == "facebook":
+        return page.facebook_daily_reply_limit
+    if platform == "instagram":
+        return page.instagram_daily_reply_limit
+    return page.youtube_daily_reply_limit
+
+
 def post_approved(
     *,
     platform: str | None = None,
+    page_key: str | None = None,
     video_id: str | None = None,
     limit: int | None = None,
     include_pending: bool = False,
@@ -81,16 +111,19 @@ def post_approved(
     posted = 0
     consecutive_platform_errors = 0
     youtube_like_notice_printed = False
-    likes_to_send: list[tuple[str, str]] = []
-    youtube = None  # lazily created only if a YouTube reply needs posting
-    channel_id = None
-    daily_limits = {
-        "youtube": config.YOUTUBE_DAILY_REPLY_LIMIT,
-        "facebook": config.FACEBOOK_DAILY_REPLY_LIMIT,
-        "instagram": config.INSTAGRAM_DAILY_REPLY_LIMIT,
-    }
-    daily_posted: dict[str, int] = {}
-    daily_limit_notice_printed: set[str] = set()
+    likes_to_send: list[tuple[str, str, str]] = []
+    # Keyed by page_key -- each configured YouTube channel authenticates
+    # with its own OAuth client and has its own "my channel" identity, so a
+    # client/identity built for one channel must never be reused for
+    # another's comments.
+    youtube_clients: dict[str, object] = {}
+    youtube_channel_ids: dict[str, str] = {}
+    youtube_page_ready: dict[str, bool] = {}
+    # Keyed by (platform, page_key) rather than bare platform -- two pages
+    # sharing the same "facebook"/"instagram" platform string must not
+    # share one daily counter (see _daily_limit_for).
+    daily_posted: dict[tuple[str, str], int] = {}
+    daily_limit_notice_printed: set[tuple[str, str]] = set()
     statuses = ["failed"] if only_failed else ["approved"]
     if not only_failed and include_pending:
         statuses.append("pending_review")
@@ -105,6 +138,7 @@ def post_approved(
             conn,
             statuses=statuses,
             platform=platform,
+            page_key=page_key,
             video_id=video_id,
             comment_id=comment_id,
             # Load all candidates so stale rows can be rejected without consuming
@@ -130,42 +164,70 @@ def post_approved(
             conn.commit()
         rows = current_rows[:limit] if limit is not None else current_rows
         youtube_rows = [row for row in rows if row["platform"] == "youtube"]
-        video_channel_ids = {}
-        youtube_identity_ready = not youtube_rows
+        video_channel_ids: dict[str, str] = {}
         if youtube_rows:
             # reset_stale_posting() can open a SQLite write transaction even
             # when it does not recover any rows. Release it before the
             # YouTube helpers record API quota usage through another SQLite
             # connection, otherwise the identity check can lock itself.
             conn.commit()
-            try:
-                youtube = get_client()
-                channel_id = get_my_channel_id(youtube)
-                video_channel_ids = get_video_channel_ids(
-                    youtube, (row["video_id"] for row in youtube_rows)
-                )
-                youtube_identity_ready = True
-            except Exception as exc:
-                emit(
-                    "Could not verify the Hindolroad YouTube channel identity; "
-                    f"skipping YouTube publishing: {exc}"
-                )
+            rows_by_yt_page: dict[str, list] = {}
+            for row in youtube_rows:
+                rows_by_yt_page.setdefault(row["page_key"] or config.DEFAULT_PAGE_KEY, []).append(row)
+            for yt_page_key, page_rows in rows_by_yt_page.items():
+                try:
+                    client = get_client(page_key=yt_page_key)
+                    youtube_clients[yt_page_key] = client
+                    youtube_channel_ids[yt_page_key] = get_my_channel_id(client)
+                    video_channel_ids.update(
+                        get_video_channel_ids(client, (row["video_id"] for row in page_rows))
+                    )
+                    youtube_page_ready[yt_page_key] = True
+                except Exception as exc:
+                    label = (
+                        config.PAGES[yt_page_key].label
+                        if yt_page_key != config.DEFAULT_PAGE_KEY
+                        else "Hindolroad"
+                    )
+                    emit(
+                        f"Could not verify the {label} YouTube channel identity; "
+                        f"skipping YouTube publishing: {exc}"
+                    )
+                    youtube_page_ready[yt_page_key] = False
 
         for row in rows:
             platform = row["platform"]
-            daily_limit = daily_limits.get(platform, 0)
+            row_page_key = row["page_key"]
+            # Legacy rows (any platform, written before this column existed)
+            # store page_key='' -- meta_client/youtube_clients both index
+            # config.PAGES directly for a non-default key, so this must
+            # never be passed through empty (KeyError). count_posted_today
+            # above intentionally still receives the raw row_page_key, since
+            # its own falsy-check is what makes an empty value mean
+            # "unfiltered", matching legacy rows that predate this column.
+            meta_page_key = row_page_key or config.DEFAULT_PAGE_KEY
+            daily_key = (platform, row_page_key)
+            daily_limit = _daily_limit_for(platform, row_page_key)
             if daily_limit > 0:
-                if platform not in daily_posted:
-                    daily_posted[platform] = db.count_posted_today(conn, platform)
-                if daily_posted[platform] >= daily_limit:
-                    if platform not in daily_limit_notice_printed:
+                if daily_key not in daily_posted:
+                    daily_posted[daily_key] = db.count_posted_today(
+                        conn, platform, page_key=row_page_key
+                    )
+                if daily_posted[daily_key] >= daily_limit:
+                    if daily_key not in daily_limit_notice_printed:
                         unit = "reply" if daily_limit == 1 else "replies"
-                        emit(
-                            f"{platform.title()} daily limit of {daily_limit} "
-                            f"{unit} reached; remaining comments are left for "
-                            "the next day."
+                        page_label = (
+                            f" ({config.PAGES[row_page_key].label})"
+                            if row_page_key and row_page_key in config.PAGES
+                            and row_page_key != config.DEFAULT_PAGE_KEY
+                            else ""
                         )
-                        daily_limit_notice_printed.add(platform)
+                        emit(
+                            f"{platform.title()}{page_label} daily limit of "
+                            f"{daily_limit} {unit} reached; remaining comments "
+                            "are left for the next day."
+                        )
+                        daily_limit_notice_printed.add(daily_key)
                     continue
             original_status = row["status"]
             if not db.claim_comment_for_post(
@@ -182,7 +244,7 @@ def post_approved(
                     existing_reply = None
                 elif platform == "youtube":
                     video_owner_id = video_channel_ids.get(row["video_id"], "")
-                    if not youtube_identity_ready or not video_owner_id:
+                    if not youtube_page_ready.get(meta_page_key) or not video_owner_id:
                         emit(
                             "Could not confirm the video owner for YouTube comment "
                             f"{row['comment_id']}; skipping to prevent a duplicate reply."
@@ -190,12 +252,9 @@ def post_approved(
                         db.update_status(conn, row["comment_id"], original_status)
                         conn.commit()
                         continue
-                    if youtube is None:
-                        youtube = get_client()
-                    if channel_id is None:
-                        channel_id = get_my_channel_id(youtube)
+                    youtube = youtube_clients[meta_page_key]
                     own_channel_ids = {
-                        channel_id,
+                        youtube_channel_ids[meta_page_key],
                         video_owner_id,
                     }
                     existing_reply = find_own_reply(
@@ -203,7 +262,9 @@ def post_approved(
                     )
                 elif platform in ("facebook", "instagram"):
                     check_started = monotonic()
-                    existing_reply = meta_client.find_own_reply(row["comment_id"], platform=platform)
+                    existing_reply = meta_client.find_own_reply(
+                        row["comment_id"], platform=platform, page_key=meta_page_key
+                    )
                     db.record_reply_check(conn, row["comment_id"])
                     conn.commit()
                     check_seconds = monotonic() - check_started
@@ -249,8 +310,7 @@ def post_approved(
                 conn.commit()
             try:
                 if platform == "youtube":
-                    if youtube is None:
-                        youtube = get_client()
+                    youtube = youtube_clients[meta_page_key]
                     resp = execute(
                         youtube.comments().insert(
                             part="snippet",
@@ -266,7 +326,8 @@ def post_approved(
                     reply_id = resp["id"]
                 elif platform in ("facebook", "instagram"):
                     reply_id = meta_client.reply_to_comment(
-                        row["comment_id"], reply_text, platform=platform
+                        row["comment_id"], reply_text, platform=platform,
+                        page_key=meta_page_key,
                     )
                 else:
                     emit(f"Unknown platform {platform!r} for comment {row['comment_id']}, skipping.")
@@ -281,14 +342,14 @@ def post_approved(
                 )
                 conn.commit()
                 posted += 1
-                daily_posted[platform] = daily_posted.get(platform, 0) + 1
+                daily_posted[daily_key] = daily_posted.get(daily_key, 0) + 1
                 consecutive_platform_errors = 0
                 emit(f"Posted reply to {platform} comment {row['comment_id']}.")
                 if like_comments and platform in ("facebook", "instagram"):
                     # Replies are time-sensitive. Queue likes until every
                     # reply in this batch has been sent so a slow like cannot
                     # delay later commenters receiving their reply.
-                    likes_to_send.append((platform, row["comment_id"]))
+                    likes_to_send.append((platform, row["comment_id"], meta_page_key))
                 elif like_comments and platform == "youtube":
                     if not youtube_like_notice_printed:
                         emit(
@@ -347,9 +408,11 @@ def post_approved(
                 f"Reply posting finished; liking {len(likes_to_send)} "
                 "Facebook/Instagram comment(s)."
             )
-        for like_platform, like_comment_id in likes_to_send:
+        for like_platform, like_comment_id, like_page_key in likes_to_send:
             try:
-                meta_client.like_comment(like_comment_id, platform=like_platform)
+                meta_client.like_comment(
+                    like_comment_id, platform=like_platform, page_key=like_page_key
+                )
                 emit(f"Liked {like_platform} comment {like_comment_id}.")
             except (meta_client.GraphAPIError, RequestException, ValueError) as exc:
                 emit(

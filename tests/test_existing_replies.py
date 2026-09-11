@@ -60,7 +60,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='facebook'), 1)
 
         find.assert_not_called()
-        send.assert_called_once_with('facebook', '🙏', platform='facebook')
+        send.assert_called_once_with('facebook', '🙏', platform='facebook', page_key='hindolroad')
 
     def test_recent_instagram_check_is_reused_for_its_first_post(self):
         with db.connect() as conn:
@@ -76,7 +76,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='instagram'), 1)
 
         find.assert_not_called()
-        send.assert_called_once_with('instagram-recent', '🙏', platform='instagram')
+        send.assert_called_once_with('instagram-recent', '🙏', platform='instagram', page_key='hindolroad')
 
     def test_youtube_post_checks_oauth_and_video_owner_identities(self):
         self.seed('youtube')
@@ -109,6 +109,120 @@ class ExistingReplyTests(unittest.TestCase):
         with db.connect() as conn:
             quota = db.get_quota_usage(conn, 'youtube', 'test')
             self.assertEqual(quota['used'], 1)
+
+    def test_youtube_multi_channel_does_not_leak_client_or_identity(self):
+        # Regression test: each configured YouTube channel authenticates with
+        # its own OAuth client and has its own "my channel" identity. Before
+        # this, post_approved() built one client/identity pair and reused it
+        # for every YouTube row regardless of which channel actually owned
+        # the video -- a second channel's replies would have posted using
+        # the first channel's OAuth identity.
+        second_page = meta_client.config.PageConfig(
+            key='second', label='Second', facebook_page_id='', facebook_page_access_token='',
+            meta_user_access_token='', instagram_user_id='', facebook_post_ids=[],
+            instagram_media_ids=[], facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id='client-2', youtube_oauth_client_secret='secret-2',
+            youtube_refresh_token='refresh-2', youtube_video_ids=[], youtube_daily_reply_limit=0,
+            persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
+        )
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id='yt-default', platform='youtube', page_key='hindolroad',
+                video_id='vid-default', video_title='Title', author='viewer',
+                text='Jai Maa', published_at='', draft_reply='🙏',
+            )
+            db.update_status(conn, 'yt-default', 'approved')
+            db.insert_comment(
+                conn, comment_id='yt-second', platform='youtube', page_key='second',
+                video_id='vid-second', video_title='Title', author='viewer',
+                text='Jai Maa', published_at='', draft_reply='🙏',
+            )
+            db.update_status(conn, 'yt-second', 'approved')
+
+        clients = {'hindolroad': MagicMock(), 'second': MagicMock()}
+        for client in clients.values():
+            client.comments.return_value.insert.return_value.execute.return_value = {'id': 'new'}
+        channel_ids = {'hindolroad': 'oauth-default', 'second': 'oauth-second'}
+        video_owners = {'vid-default': 'oauth-default', 'vid-second': 'oauth-second'}
+
+        def fake_get_client(page_key=post.config.DEFAULT_PAGE_KEY):
+            return clients[page_key]
+
+        def fake_get_my_channel_id(client):
+            for key, candidate in clients.items():
+                if candidate is client:
+                    return channel_ids[key]
+            raise AssertionError('unexpected client instance')
+
+        def fake_get_video_channel_ids(client, video_ids):
+            return {video_id: video_owners[video_id] for video_id in video_ids}
+
+        with patch.object(post.config, 'PAGES', {**post.config.PAGES, 'second': second_page}), \
+             patch.object(post, 'get_client', side_effect=fake_get_client), \
+             patch.object(post, 'get_my_channel_id', side_effect=fake_get_my_channel_id), \
+             patch.object(post, 'get_video_channel_ids', side_effect=fake_get_video_channel_ids), \
+             patch.object(post, 'find_own_reply', return_value=None):
+            posted = post.post_approved(platform='youtube')
+
+        self.assertEqual(posted, 2)
+        clients['hindolroad'].comments.return_value.insert.assert_called_once()
+        clients['second'].comments.return_value.insert.assert_called_once()
+
+    def test_youtube_daily_reply_limit_is_independent_per_channel(self):
+        second_page = meta_client.config.PageConfig(
+            key='second', label='Second', facebook_page_id='', facebook_page_access_token='',
+            meta_user_access_token='', instagram_user_id='', facebook_post_ids=[],
+            instagram_media_ids=[], facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id='client-2', youtube_oauth_client_secret='secret-2',
+            youtube_refresh_token='refresh-2', youtube_video_ids=[], youtube_daily_reply_limit=2,
+            persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
+        )
+        with db.connect() as conn:
+            for i in range(2):
+                comment_id = f'hindolroad-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='youtube', page_key='hindolroad',
+                    video_id='vid-default', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+            for i in range(3):
+                comment_id = f'second-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='youtube', page_key='second',
+                    video_id='vid-second', video_title='Title', author='viewer',
+                    text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+
+        youtube = MagicMock()
+        youtube.comments.return_value.insert.return_value.execute.return_value = {'id': 'new'}
+
+        with patch.object(post.config, 'YOUTUBE_DAILY_REPLY_LIMIT', 1), \
+             patch.object(post.config, 'PAGES', {**post.config.PAGES, 'second': second_page}), \
+             patch.object(post, 'get_client', return_value=youtube), \
+             patch.object(post, 'get_my_channel_id', return_value='owner'), \
+             patch.object(
+                 post, 'get_video_channel_ids',
+                 return_value={'vid-default': 'owner', 'vid-second': 'owner'},
+             ), \
+             patch.object(post, 'find_own_reply', return_value=None):
+            posted = post.post_approved(platform='youtube')
+
+        # 1 for hindolroad (its own limit) + 2 for second (its own, higher
+        # limit) -- neither channel's cap affected the other's count.
+        self.assertEqual(posted, 3)
+        with db.connect() as conn:
+            hindolroad_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='hindolroad' AND platform='youtube' AND status='posted'"
+            ).fetchone()['n']
+            second_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='second' AND platform='youtube' AND status='posted'"
+            ).fetchone()['n']
+        self.assertEqual(hindolroad_posted, 1)
+        self.assertEqual(second_posted, 2)
 
     def test_graph_error_marks_comment_failed(self):
         self.seed('facebook')
@@ -257,6 +371,59 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='facebook'), 0)
         send.assert_not_called()
 
+    def test_daily_reply_limit_is_independent_per_page(self):
+        # Regression test: two pages sharing the "facebook" platform string
+        # must not share one daily counter -- hitting one page's limit must
+        # not block the other page's comments from posting.
+        second_page = meta_client.config.PageConfig(
+            key='second', label='Second', facebook_page_id='page-2',
+            facebook_page_access_token='', meta_user_access_token='',
+            instagram_user_id='', facebook_post_ids=[], instagram_media_ids=[],
+            facebook_daily_reply_limit=2, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id='', youtube_oauth_client_secret='',
+            youtube_refresh_token='', youtube_video_ids=[],
+            youtube_daily_reply_limit=0,
+            persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
+        )
+        with db.connect() as conn:
+            for i in range(2):
+                comment_id = f'hindolroad-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='facebook',
+                    page_key='hindolroad', video_id='media', video_title='Title',
+                    author='viewer', text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+            for i in range(3):
+                comment_id = f'second-{i}'
+                db.insert_comment(
+                    conn, comment_id=comment_id, platform='facebook',
+                    page_key='second', video_id='media', video_title='Title',
+                    author='viewer', text='Jai Maa', published_at='', draft_reply='🙏',
+                )
+                db.update_status(conn, comment_id, 'approved')
+
+        with patch.object(post.config, 'FACEBOOK_DAILY_REPLY_LIMIT', 1), \
+             patch.object(post.config, 'PAGES', {**post.config.PAGES, 'second': second_page}), \
+             patch.object(meta_client, 'find_own_reply', return_value=None), \
+             patch.object(meta_client, 'reply_to_comment', return_value='new'):
+            posted = post.post_approved(platform='facebook')
+
+        # 1 for hindolroad (its own limit) + 2 for second (its own, higher
+        # limit) -- neither page's cap affected the other's count.
+        self.assertEqual(posted, 3)
+        with db.connect() as conn:
+            hindolroad_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='hindolroad' AND status='posted'"
+            ).fetchone()['n']
+            second_posted = conn.execute(
+                "SELECT COUNT(*) AS n FROM comments "
+                "WHERE page_key='second' AND status='posted'"
+            ).fetchone()['n']
+        self.assertEqual(hindolroad_posted, 1)
+        self.assertEqual(second_posted, 2)
+
     def test_failed_reply_is_checked_and_retried(self):
         self.seed('instagram')
         with db.connect() as conn:
@@ -270,7 +437,7 @@ class ExistingReplyTests(unittest.TestCase):
                 post.post_approved(platform='instagram', include_failed=True), 1
             )
 
-        send.assert_called_once_with('instagram', '@viewer 🙏', platform='instagram')
+        send.assert_called_once_with('instagram', '@viewer 🙏', platform='instagram', page_key='hindolroad')
         with db.connect() as conn:
             row = db.get_comment(conn, 'instagram')
             self.assertEqual(row['status'], 'posted')
@@ -348,7 +515,7 @@ class ExistingReplyTests(unittest.TestCase):
         with patch.object(meta_client, 'find_own_reply', return_value=None), \
              patch.object(meta_client, 'reply_to_comment', return_value='new') as send:
             self.assertEqual(post.post_approved(platform='facebook'), 1)
-            send.assert_called_once_with('facebook', '🙏', platform='facebook')
+            send.assert_called_once_with('facebook', '🙏', platform='facebook', page_key='hindolroad')
 
     def test_malformed_json_draft_is_cleaned_before_instagram_post(self):
         self.seed('instagram')
@@ -362,7 +529,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='instagram'), 1)
 
         cleaned = '@viewer ଜୟ ମା ଦକ୍ଷିଣକାଳୀ!'
-        send.assert_called_once_with('instagram', cleaned, platform='instagram')
+        send.assert_called_once_with('instagram', cleaned, platform='instagram', page_key='hindolroad')
         with db.connect() as conn:
             self.assertEqual(db.get_comment(conn, 'instagram')['draft_reply'], cleaned)
 
@@ -374,7 +541,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(
                 post.post_approved(platform='instagram', like_comments=True), 1
             )
-            like.assert_called_once_with('instagram', platform='instagram')
+            like.assert_called_once_with('instagram', platform='instagram', page_key='hindolroad')
 
     def test_replies_are_posted_before_likes_begin(self):
         for comment_id in ('facebook-first', 'facebook-second'):
@@ -652,6 +819,9 @@ class ExistingReplyTests(unittest.TestCase):
             meta_user_access_token='token-2', instagram_user_id='',
             facebook_post_ids=[], instagram_media_ids=[],
             facebook_daily_reply_limit=0, instagram_daily_reply_limit=0,
+            youtube_oauth_client_id="", youtube_oauth_client_secret="",
+            youtube_refresh_token="", youtube_video_ids=[],
+            youtube_daily_reply_limit=0,
             persona='', persona_dir=meta_client.config.REPLY_EXAMPLES_DIR,
         )
 
