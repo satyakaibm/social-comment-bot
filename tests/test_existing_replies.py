@@ -667,6 +667,13 @@ class ExistingReplyTests(unittest.TestCase):
         with db.connect() as conn:
             self.assertEqual(len(db.list_by_status(conn, 'already_replied')), 2)
             self.assertIsNone(db.get_comment(conn, 'youtube'))
+            # Regression: a comment skipped here still needs to become known
+            # to comment_exists() (via the lightweight seen_comments
+            # fingerprint, since it never gets a full comments row) --
+            # otherwise find_own_reply() re-runs an API call for it on
+            # every future poll forever, burning real YouTube quota for an
+            # answer that will never change.
+            self.assertTrue(db.comment_exists(conn, 'youtube'))
 
     def test_youtube_poll_stops_drafting_once_daily_gemini_cap_is_reached(self):
         threads = [
