@@ -31,16 +31,38 @@ def is_quota_exceeded(error: Exception) -> bool:
     return any(reason in str(content) for reason in quota_reasons)
 
 
-def get_client() -> Resource:
-    config.require(
-        "YOUTUBE_OAUTH_CLIENT_ID", "YOUTUBE_OAUTH_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"
-    )
+def get_client(page_key: str = config.DEFAULT_PAGE_KEY) -> Resource:
+    """Build an authenticated client for one configured YouTube channel.
+
+    The default page reads the live top-level YOUTUBE_* constants (not
+    config.PAGES[...], which is frozen at import time and wouldn't see a
+    test's patch.object(config, "YOUTUBE_REFRESH_TOKEN", ...)); any other
+    configured channel reads its own config.PAGES entry.
+    """
+    if page_key == config.DEFAULT_PAGE_KEY:
+        config.require(
+            "YOUTUBE_OAUTH_CLIENT_ID", "YOUTUBE_OAUTH_CLIENT_SECRET", "YOUTUBE_REFRESH_TOKEN"
+        )
+        client_id = config.YOUTUBE_OAUTH_CLIENT_ID
+        client_secret = config.YOUTUBE_OAUTH_CLIENT_SECRET
+        refresh_token = config.YOUTUBE_REFRESH_TOKEN
+    else:
+        page = config.PAGES[page_key]
+        if not (page.youtube_oauth_client_id and page.youtube_oauth_client_secret and page.youtube_refresh_token):
+            raise RuntimeError(
+                f"Missing YouTube OAuth config for page '{page_key}': set "
+                "YOUTUBE_OAUTH_CLIENT_ID/YOUTUBE_OAUTH_CLIENT_SECRET/"
+                f"YOUTUBE_REFRESH_TOKEN with this page's suffix in .env."
+            )
+        client_id = page.youtube_oauth_client_id
+        client_secret = page.youtube_oauth_client_secret
+        refresh_token = page.youtube_refresh_token
     creds = Credentials(
         token=None,
-        refresh_token=config.YOUTUBE_REFRESH_TOKEN,
+        refresh_token=refresh_token,
         token_uri=TOKEN_URI,
-        client_id=config.YOUTUBE_OAUTH_CLIENT_ID,
-        client_secret=config.YOUTUBE_OAUTH_CLIENT_SECRET,
+        client_id=client_id,
+        client_secret=client_secret,
         scopes=SCOPES,
     )
     return build("youtube", "v3", credentials=creds, cache_discovery=False)

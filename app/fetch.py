@@ -50,13 +50,13 @@ def _video_title_cache(youtube):
     return get
 
 
-def poll_and_draft() -> int:
-    """Fetch new top-level comments and draft replies for them.
+def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
+    """Fetch new top-level comments and draft replies for page_key's channel.
 
     Returns the number of new comments queued for review.
     """
     db.init_db()
-    youtube = get_client()
+    youtube = get_client(page_key=page_key)
     channel_id = get_my_channel_id(youtube)
     video_title = _video_title_cache(youtube)
 
@@ -67,7 +67,12 @@ def poll_and_draft() -> int:
         iter_uploaded_video_ids(youtube, uploads_playlist_id),
         max(0, config.YOUTUBE_VIDEO_LIMIT),
     ))
-    video_ids = list(dict.fromkeys([*config.YOUTUBE_VIDEO_IDS, *latest_video_ids]))
+    configured_video_ids = (
+        config.YOUTUBE_VIDEO_IDS
+        if page_key == config.DEFAULT_PAGE_KEY
+        else config.PAGES[page_key].youtube_video_ids
+    )
+    video_ids = list(dict.fromkeys([*configured_video_ids, *latest_video_ids]))
 
     new_count = 0
     remaining = max(0, config.YOUTUBE_COMMENT_LIMIT)
@@ -145,7 +150,7 @@ def poll_and_draft() -> int:
                         # that will never change.
                         db.remember_seen_comment(
                             conn, comment_id, platform="youtube",
-                            status="already_replied",
+                            status="already_replied", page_key=page_key,
                         )
                         conn.commit()  # see the insert_comment commit below
                         continue
@@ -153,6 +158,7 @@ def poll_and_draft() -> int:
                     try:
                         reply = draft_reply(
                             platform="youtube",
+                            page_key=page_key,
                             context_title=title,
                             author=author,
                             comment_text=text,
@@ -164,6 +170,8 @@ def poll_and_draft() -> int:
                     db.insert_comment(
                         conn,
                         comment_id=comment_id,
+                        platform="youtube",
+                        page_key=page_key,
                         video_id=actual_video_id,
                         video_title=title,
                         author=author,

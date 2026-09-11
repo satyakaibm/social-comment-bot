@@ -176,6 +176,11 @@ class PageConfig:
     instagram_media_ids: list[str]
     facebook_daily_reply_limit: int
     instagram_daily_reply_limit: int
+    youtube_oauth_client_id: str
+    youtube_oauth_client_secret: str
+    youtube_refresh_token: str
+    youtube_video_ids: list[str]
+    youtube_daily_reply_limit: int
     persona: str
     persona_dir: Path
 
@@ -189,7 +194,8 @@ def _build_page_config(suffix: str) -> "PageConfig | None":
     """
     facebook_page_id = os.environ.get(f"FACEBOOK_PAGE_ID{suffix}", "").strip()
     instagram_user_id = os.environ.get(f"INSTAGRAM_USER_ID{suffix}", "").strip()
-    if not facebook_page_id and not instagram_user_id:
+    youtube_refresh_token = os.environ.get(f"YOUTUBE_REFRESH_TOKEN{suffix}", "").strip()
+    if not facebook_page_id and not instagram_user_id and not youtube_refresh_token:
         return None
 
     key = os.environ.get(f"PAGE_KEY{suffix}", "").strip() or ("hindolroad" if suffix == "" else "")
@@ -229,6 +235,19 @@ def _build_page_config(suffix: str) -> "PageConfig | None":
         instagram_daily_reply_limit=int(
             os.environ.get(f"INSTAGRAM_DAILY_REPLY_LIMIT{suffix}", "0")
         ),
+        youtube_oauth_client_id=os.environ.get(f"YOUTUBE_OAUTH_CLIENT_ID{suffix}", ""),
+        youtube_oauth_client_secret=os.environ.get(
+            f"YOUTUBE_OAUTH_CLIENT_SECRET{suffix}", ""
+        ),
+        youtube_refresh_token=youtube_refresh_token,
+        youtube_video_ids=[
+            v.strip()
+            for v in os.environ.get(f"YOUTUBE_VIDEO_IDS{suffix}", "").split(",")
+            if v.strip()
+        ],
+        youtube_daily_reply_limit=int(
+            os.environ.get(f"YOUTUBE_DAILY_REPLY_LIMIT{suffix}", "0")
+        ),
         persona=_load_reply_persona(suffix=suffix, persona_dir=persona_dir),
         persona_dir=persona_dir,
     )
@@ -261,6 +280,11 @@ if not PAGES:
         instagram_media_ids=[],
         facebook_daily_reply_limit=0,
         instagram_daily_reply_limit=0,
+        youtube_oauth_client_id="",
+        youtube_oauth_client_secret="",
+        youtube_refresh_token="",
+        youtube_video_ids=[],
+        youtube_daily_reply_limit=0,
         persona=_load_reply_persona(),
         persona_dir=REPLY_EXAMPLES_DIR,
     )
@@ -283,6 +307,11 @@ def facebook_page_keys() -> list[str]:
 def instagram_page_keys() -> list[str]:
     """Keys of pages with an Instagram account configured, in PAGES order."""
     return [p.key for p in PAGES.values() if p.instagram_user_id]
+
+
+def youtube_page_keys() -> list[str]:
+    """Keys of pages with a YouTube channel configured, in PAGES order."""
+    return [p.key for p in PAGES.values() if p.youtube_refresh_token]
 
 
 def resolve_page_key(platform: str, entry_id: str) -> str | None:

@@ -5,6 +5,23 @@ from pathlib import Path
 
 from app.config import DB_PATH, DEFAULT_PAGE_KEY
 
+
+def _page_key_filter(page_key: str | None) -> tuple[str, list]:
+    """Build a `page_key` SQL filter fragment, treating '' as the default page.
+
+    insert_comment()'s page_key defaults to '' and many rows (especially
+    YouTube, pre-multi-channel) were written that way rather than with an
+    explicit DEFAULT_PAGE_KEY -- so filtering *for* the default page must
+    match both, the same equivalence already used when normalizing a row's
+    page_key elsewhere (e.g. post.py's `row_page_key or DEFAULT_PAGE_KEY`).
+    """
+    if not page_key:
+        return "", []
+    if page_key == DEFAULT_PAGE_KEY:
+        return " AND (page_key = ? OR page_key = '')", [page_key]
+    return " AND page_key = ?", [page_key]
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS comments (
     comment_id TEXT PRIMARY KEY,
@@ -108,13 +125,11 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE comments ADD COLUMN page_key TEXT NOT NULL DEFAULT ''"
             )
-            # At migration time only one page (Hindolroad) has ever existed,
-            # so every pre-existing Facebook/Instagram row unambiguously
-            # belongs to it. YouTube rows keep page_key='' -- not applicable,
-            # YouTube stays single-account.
+            # At migration time only one page (Hindolroad) has ever existed
+            # across every platform, so every pre-existing row -- YouTube
+            # included -- unambiguously belongs to it.
             conn.execute(
-                """UPDATE comments SET page_key = ?
-                   WHERE platform IN ('facebook', 'instagram') AND page_key = ''""",
+                "UPDATE comments SET page_key = ? WHERE page_key = ''",
                 (DEFAULT_PAGE_KEY,),
             )
         user_columns = {
@@ -203,8 +218,7 @@ def _migrate_seen_comments(conn: sqlite3.Connection) -> None:
     if "page_key" not in columns:
         conn.execute("ALTER TABLE seen_comments ADD COLUMN page_key TEXT")
         conn.execute(
-            """UPDATE seen_comments SET page_key = ?
-               WHERE platform IN ('facebook', 'instagram') AND page_key IS NULL""",
+            "UPDATE seen_comments SET page_key = ? WHERE page_key IS NULL",
             (DEFAULT_PAGE_KEY,),
         )
     conn.execute(
@@ -472,9 +486,8 @@ def insert_comment(
 ) -> None:
     # video_id/video_title double as the generic "container" id/title for
     # non-YouTube platforms (Facebook post id/message, Instagram media id/caption).
-    # page_key stays '' for YouTube (not applicable, single-account); for
-    # Facebook/Instagram it identifies which configured Page/account this
-    # comment belongs to (see config.PAGES).
+    # page_key identifies which configured page/channel (see config.PAGES)
+    # this comment belongs to, across all three platforms.
     ts = now()
     cursor = conn.execute(
         """
@@ -564,12 +577,11 @@ def count_posted_today(
 ) -> int:
     """Count replies posted so far in the current IST calendar day.
 
-    Used to enforce a configurable daily reply cap per platform (and, for
-    Facebook/Instagram, per page -- two pages sharing the same platform
-    string must not share one counter), separate from the per-cycle publish
-    limit. `updated_at` is the time a row moved to 'posted', which is the
-    only status change that represents an actual reply going out. page_key
-    is ignored for YouTube (always '', not applicable -- single-account).
+    Used to enforce a configurable daily reply cap per platform and page --
+    two pages/channels sharing the same platform string must not share one
+    counter -- separate from the per-cycle publish limit. `updated_at` is
+    the time a row moved to 'posted', which is the only status change that
+    represents an actual reply going out.
     """
     sql = """
         SELECT COUNT(*) AS n FROM comments
@@ -578,9 +590,9 @@ def count_posted_today(
               = date('now', '+5 hours', '+30 minutes')
     """
     params: list = [platform]
-    if page_key:
-        sql += " AND page_key = ?"
-        params.append(page_key)
+    clause, extra = _page_key_filter(page_key)
+    sql += clause
+    params.extend(extra)
     row = conn.execute(sql, params).fetchone()
     return row["n"]
 
@@ -608,17 +620,14 @@ def count_drafted_today(conn: sqlite3.Connection) -> int:
 def count_by_status(
     conn: sqlite3.Connection, *, platform: str | None = None, page_key: str | None = None
 ) -> dict[str, int]:
-    sql = "SELECT status, COUNT(*) AS n FROM comments"
-    clauses = []
+    sql = "SELECT status, COUNT(*) AS n FROM comments WHERE 1=1"
     params = []
     if platform:
-        clauses.append("platform = ?")
+        sql += " AND platform = ?"
         params.append(platform)
-    if page_key:
-        clauses.append("page_key = ?")
-        params.append(page_key)
-    if clauses:
-        sql += " WHERE " + " AND ".join(clauses)
+    clause, extra = _page_key_filter(page_key)
+    sql += clause
+    params.extend(extra)
     sql += " GROUP BY status"
     rows = conn.execute(sql, params).fetchall()
     return {row["status"]: row["n"] for row in rows}
@@ -649,10 +658,18 @@ def activity_summary(
         "AND COALESCE(c.platform, s.platform) = :platform" if platform else ""
     )
     detailed_filter = "AND c.platform = :platform" if platform else ""
-    page_key_filter = (
-        "AND COALESCE(c.page_key, s.page_key) = :page_key" if page_key else ""
-    )
-    detailed_page_key_filter = "AND c.page_key = :page_key" if page_key else ""
+    # '' and DEFAULT_PAGE_KEY are the same page (see _page_key_filter) --
+    # many rows, especially YouTube's pre-multi-channel, were written with
+    # page_key='' rather than an explicit default key.
+    if page_key == DEFAULT_PAGE_KEY:
+        page_key_filter = "AND COALESCE(c.page_key, s.page_key) IN (:page_key, '')"
+        detailed_page_key_filter = "AND c.page_key IN (:page_key, '')"
+    elif page_key:
+        page_key_filter = "AND COALESCE(c.page_key, s.page_key) = :page_key"
+        detailed_page_key_filter = "AND c.page_key = :page_key"
+    else:
+        page_key_filter = ""
+        detailed_page_key_filter = ""
     sql = f"""
         SELECT
             SUM(CASE WHEN datetime(COALESCE(c.created_at, s.created_at)) >= datetime(:cutoff)
@@ -724,9 +741,9 @@ def list_comments(
     if platform:
         sql += " AND platform = ?"
         params.append(platform)
-    if page_key:
-        sql += " AND page_key = ?"
-        params.append(page_key)
+    clause, extra = _page_key_filter(page_key)
+    sql += clause
+    params.extend(extra)
     if query:
         like = f"%{query}%"
         sql += " AND (author LIKE ? OR text LIKE ? OR draft_reply LIKE ? OR video_title LIKE ?)"
@@ -755,9 +772,9 @@ def count_comments(
     if platform:
         sql += " AND platform = ?"
         params.append(platform)
-    if page_key:
-        sql += " AND page_key = ?"
-        params.append(page_key)
+    clause, extra = _page_key_filter(page_key)
+    sql += clause
+    params.extend(extra)
     if query:
         like = f"%{query}%"
         sql += " AND (author LIKE ? OR text LIKE ? OR draft_reply LIKE ? OR video_title LIKE ?)"
@@ -781,9 +798,9 @@ def list_for_post(
     if platform:
         sql += " AND platform = ?"
         params.append(platform)
-    if page_key:
-        sql += " AND page_key = ?"
-        params.append(page_key)
+    clause, extra = _page_key_filter(page_key)
+    sql += clause
+    params.extend(extra)
     if video_id:
         sql += " AND video_id = ?"
         params.append(video_id)
