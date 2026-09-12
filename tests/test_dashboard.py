@@ -656,6 +656,39 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'aria-label="Analytics page"', page.data)
         self.assertIn(b"Second Page", page.data)
 
+    def test_youtube_page_filter_narrows_results_and_shows_channel_pills(self):
+        from tests.helpers import make_page_config
+
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id="yt-second", platform="youtube", page_key="travel",
+                video_id="vid2", video_title="Goa",
+                author="viewer2", text="when", published_at="", draft_reply="winter",
+            )
+        pages = {
+            config.DEFAULT_PAGE_KEY: make_page_config(
+                key=config.DEFAULT_PAGE_KEY,
+                label="Hindolroad",
+                youtube_refresh_token="yt-default",
+            ),
+            "travel": make_page_config(
+                key="travel",
+                label="Travel Explorer",
+                youtube_refresh_token="yt-travel",
+            ),
+        }
+        with patch.object(config, "PAGES", pages):
+            filtered = self.client.get(
+                "/?status=pending_review&platform=youtube&page_key=travel"
+            )
+            switcher = self.client.get("/?platform=youtube")
+
+        self.assertIn(b"yt-second", filtered.data)
+        self.assertNotIn(b"What time is aarti?", filtered.data)
+        self.assertIn(b'aria-label="Analytics page"', switcher.data)
+        self.assertIn(b"Travel Explorer", switcher.data)
+        self.assertIn(b"Hindolroad", switcher.data)
+
 
 if __name__ == "__main__":
     unittest.main()

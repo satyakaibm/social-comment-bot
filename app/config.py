@@ -201,8 +201,8 @@ def _build_page_config(suffix: str) -> "PageConfig | None":
     key = os.environ.get(f"PAGE_KEY{suffix}", "").strip() or ("hindolroad" if suffix == "" else "")
     if not key:
         raise RuntimeError(
-            f"PAGE_KEY{suffix} is required once FACEBOOK_PAGE_ID{suffix} or "
-            f"INSTAGRAM_USER_ID{suffix} is set."
+            f"PAGE_KEY{suffix} is required once FACEBOOK_PAGE_ID{suffix}, "
+            f"INSTAGRAM_USER_ID{suffix}, or YOUTUBE_REFRESH_TOKEN{suffix} is set."
         )
     label = os.environ.get(f"PAGE_LABEL{suffix}", "").strip() or key.replace("_", " ").title()
 
