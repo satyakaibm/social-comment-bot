@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2a38">
+  <title>Insights · Content My Trip</title>
+  <style>
+    :root { --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; --ink:#17252c; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    .topbar { height:74px; padding:0 26px; display:flex; align-items:center; justify-content:space-between; background:#fff; border-bottom:1px solid var(--line); }
+    .brand { display:flex; align-items:center; gap:10px; color:var(--navy); font-weight:850; text-decoration:none; }
+    .brand img { width:120px; height:40px; object-fit:contain; }
+    .back { color:var(--navy); font-size:13px; font-weight:750; text-decoration:none; }
+    .page { max-width:1200px; margin:0 auto; padding:40px 24px 80px; }
+    .eyebrow { display:block; margin-bottom:8px; color:var(--coral); font-size:11px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
+    h1 { margin:0 0 10px; color:var(--navy); font-size:30px; letter-spacing:-.03em; }
+    .summary { margin:0 0 22px; color:var(--muted); font-size:14px; line-height:1.6; }
+    .filters { display:flex; flex-wrap:wrap; gap:7px; margin-bottom:8px; }
+    .chip { padding:8px 12px; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:10px; font-size:12px; font-weight:700; text-decoration:none; text-transform:capitalize; }
+    .chip:hover,.chip.active { color:var(--navy); background:#fff4ef; border-color:#ffc7b6; }
+    .refresh-note { margin:14px 0 18px; color:var(--muted); font-size:12px; font-weight:700; }
+    .table-wrap { max-width:100%; overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 5px 18px rgba(15,42,56,.035); }
+    table.video-stats { width:100%; min-width:640px; border-collapse:separate; border-spacing:0; font-size:13px; }
+    table.video-stats th { padding:12px 14px; color:#61737c; background:#f1f5f6; border-bottom:1px solid var(--line); text-align:left; font-size:10.5px; font-weight:800; letter-spacing:.065em; text-transform:uppercase; }
+    table.video-stats td { padding:12px 14px; border-bottom:1px solid #e9eef0; vertical-align:top; }
+    table.video-stats tbody tr:last-child td { border-bottom:0; }
+    table.video-stats tbody tr:hover { background:#fbfcfc; }
+    table.video-stats td.title { max-width:360px; overflow:hidden; color:var(--navy); font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .platform-badge { display:inline-flex; align-items:center; padding:5px 8px; border-radius:7px; font-size:10px; font-weight:800; text-transform:capitalize; }
+    .platform-youtube { color:#bd2335; background:#fff0f2; }
+    .platform-facebook { color:#2459a8; background:#eef4ff; }
+    .platform-instagram { color:#a52f68; background:#fff0f7; }
+    .empty { padding:60px 24px; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:14px; text-align:center; font-size:13px; }
+    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px} }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
+    <a class="back" href="/">&larr; Back to dashboard</a>
+  </header>
+  <main class="page">
+    <span class="eyebrow">Social Comment Studio</span>
+    <h1>Insights</h1>
+    <p class="summary">Likes, comments, and shares for every video or post the bot is watching.</p>
+
+    <nav class="filters" aria-label="Platform">
+      <a class="chip {% if not platform %}active{% endif %}" href="/insights">All platforms</a>
+      {% for p in platforms %}<a class="chip {% if platform == p %}active{% endif %}" href="/insights?platform={{ p }}">{{ p }}</a>{% endfor %}
+    </nav>
+    {% if page_choices|length > 1 %}
+    <nav class="filters" aria-label="Channel">
+      <a class="chip {% if not page_key %}active{% endif %}" href="/insights{% if platform %}?platform={{ platform }}{% endif %}">All channels</a>
+      {% for p in page_choices %}<a class="chip {% if page_key == p.key %}active{% endif %}" href="/insights?platform={{ platform }}&amp;page_key={{ p.key }}">{{ p.label }}</a>{% endfor %}
+    </nav>
+    {% endif %}
+
+    <p class="refresh-note">Refreshes every {{ video_stats_refresh_minutes }} min</p>
+
+    {% if video_stats %}
+    <div class="table-wrap">
+      <table class="video-stats">
+        <thead>
+          <tr>
+            <th>Platform</th>
+            {% if page_choices|length > 1 %}<th>Channel</th>{% endif %}
+            <th>Title</th>
+            <th>Likes</th>
+            <th>Comments</th>
+            <th>Shares</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for v in video_stats %}
+          <tr>
+            <td><span class="platform-badge platform-{{ v.platform }}">{{ v.platform }}</span></td>
+            {% if page_choices|length > 1 %}<td>{{ v.page_label }}</td>{% endif %}
+            <td class="title" title="{{ v.video_title or v.video_id }}">{{ v.video_title or v.video_id }}</td>
+            <td>{{ v.like_count if v.like_count is not none else '—' }}</td>
+            <td>{{ v.comment_count if v.comment_count is not none else '—' }}</td>
+            <td>{{ v.share_count if v.share_count is not none else '—' }}</td>
+            <td>{{ v.updated_at_ist or '—' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty">No engagement data yet — this fills in automatically shortly after the bot starts.</div>
+    {% endif %}
+  </main>
+</body>
+</html>
