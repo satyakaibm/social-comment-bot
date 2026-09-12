@@ -144,6 +144,15 @@
     td.wrap { max-width:260px; white-space:pre-wrap; word-break:break-word; }
     td.narrow { max-width:150px; color:#61737c; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; word-break:break-all; }
     td.title { max-width:240px; overflow:hidden; color:var(--navy); font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .video-stats-note { color:var(--muted); font-size:11px; font-weight:700; white-space:nowrap; }
+    .video-stats-wrap { margin-top:16px; padding-top:15px; max-width:100%; overflow-x:auto; border-top:1px solid var(--line); }
+    table.video-stats { width:100%; min-width:520px; border-collapse:separate; border-spacing:0; font-size:12px; }
+    table.video-stats th { padding:9px 11px; color:#61737c; background:#f1f5f6; border-bottom:1px solid var(--line); text-align:left; font-size:10px; font-weight:800; letter-spacing:.065em; text-transform:uppercase; }
+    table.video-stats td { padding:10px 11px; border-bottom:1px solid #e9eef0; vertical-align:top; }
+    table.video-stats tbody tr:last-child td { border-bottom:0; }
+    table.video-stats tbody tr:hover { background:#fffaf8; }
+    table.video-stats td.title { max-width:320px; overflow:hidden; color:var(--navy); font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
+    .video-stats-empty { margin:16px 0 0; padding-top:15px; color:var(--muted); font-size:12px; border-top:1px solid var(--line); }
     .platform-badge,.status-badge { display:inline-flex; align-items:center; padding:5px 8px; border-radius:7px; font-size:10px; font-weight:800; text-transform:capitalize; }
     .platform-youtube { color:#bd2335; background:#fff0f2; }
     .platform-facebook { color:#2459a8; background:#eef4ff; }
@@ -209,9 +218,9 @@
           {% for p in platforms %}<a class="activity-platform {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p }}</a>{% endfor %}
         </nav>
         {% if page_choices|length > 1 %}
-        <nav class="activity-platforms" aria-label="Analytics page">
-          <a class="activity-platform {% if not page_key %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ platform }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All pages</a>
-          {% for p in page_choices %}<a class="activity-platform {% if page_key == p.key %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ platform }}&amp;page_key={{ p.key }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p.label }}</a>{% endfor %}
+        <nav class="activity-platforms" aria-label="Channel">
+          <a class="activity-platform {% if not page_key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All channels</a>
+          {% for p in page_choices %}<a class="activity-platform {% if page_key == p.key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}&amp;page_key={{ p.key }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p.label }}</a>{% endfor %}
         </nav>
         {% endif %}
       </div>
@@ -252,6 +261,45 @@
           <p class="quota-note">{{ quota.description }}{% if quota.used is none %} Waiting for the next API request.{% endif %}</p>
         </div>
       {% endfor %}
+    </section>
+
+    <section class="activity" aria-label="Video and post engagement">
+      <div class="activity-head">
+        <h2 class="activity-title">Video &amp; post engagement</h2>
+        <span class="video-stats-note">Refreshes every {{ video_stats_refresh_minutes }} min</span>
+      </div>
+      {% if video_stats %}
+      <div class="video-stats-wrap">
+        <table class="video-stats">
+          <thead>
+            <tr>
+              <th>Platform</th>
+              {% if page_choices|length > 1 %}<th>Channel</th>{% endif %}
+              <th>Title</th>
+              <th>Likes</th>
+              <th>Comments</th>
+              <th>Shares</th>
+              <th>Updated</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for v in video_stats %}
+            <tr>
+              <td><span class="platform-badge platform-{{ v.platform }}">{{ v.platform }}</span></td>
+              {% if page_choices|length > 1 %}<td>{{ v.page_label }}</td>{% endif %}
+              <td class="title" title="{{ v.video_title or v.video_id }}">{{ v.video_title or v.video_id }}</td>
+              <td>{{ v.like_count if v.like_count is not none else '—' }}</td>
+              <td>{{ v.comment_count if v.comment_count is not none else '—' }}</td>
+              <td>{{ v.share_count if v.share_count is not none else '—' }}</td>
+              <td>{{ v.updated_at_ist or '—' }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="video-stats-empty">No engagement data yet — this fills in automatically shortly after the bot starts.</p>
+      {% endif %}
     </section>
 
     <nav class="stats" aria-label="Comment status">

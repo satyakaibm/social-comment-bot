@@ -460,6 +460,26 @@ def get_facebook_post_message(post_id: str, *, page_key: str = config.DEFAULT_PA
     return data.get("message", "")
 
 
+def get_facebook_post_stats(
+    post_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY
+) -> dict:
+    """Return a Facebook post's like/comment/share counts.
+
+    Graph API omits the "shares" field entirely on a post with zero shares,
+    so its absence here means zero shares, not unknown.
+    """
+    data = graph_get(
+        post_id,
+        fields="likes.summary(true).limit(0),comments.summary(true).limit(0),shares",
+        page_key=page_key,
+    )
+    return {
+        "like_count": data.get("likes", {}).get("summary", {}).get("total_count"),
+        "comment_count": data.get("comments", {}).get("summary", {}).get("total_count"),
+        "share_count": data.get("shares", {}).get("count", 0),
+    }
+
+
 # --- Instagram (via the linked Facebook Page's access token) ---
 
 
@@ -499,6 +519,21 @@ def iter_instagram_media_comments(
 def get_instagram_media_caption(media_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY) -> str:
     data = graph_get(media_id, fields="caption", page_key=page_key)
     return data.get("caption", "")
+
+
+def get_instagram_media_stats(
+    media_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY
+) -> dict:
+    """Return an Instagram media's like/comment counts.
+
+    Instagram's Graph API has no public share-count field, so callers only
+    get likes and comments back.
+    """
+    data = graph_get(media_id, fields="like_count,comments_count", page_key=page_key)
+    return {
+        "like_count": data.get("like_count"),
+        "comment_count": data.get("comments_count"),
+    }
 
 
 def get_instagram_username(*, page_key: str = config.DEFAULT_PAGE_KEY) -> str:
