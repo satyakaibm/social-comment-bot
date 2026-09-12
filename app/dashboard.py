@@ -275,7 +275,7 @@ def create_app() -> Flask:
     @app.before_request
     def require_dashboard_login():
         public = request.endpoint in {
-            "login", "signup", "static", "health_api", "favicon",
+            "login", "static", "health_api", "favicon",
             "privacy", "terms", "data_deletion",
         }
         if public or request.path.startswith("/webhooks/meta"):
@@ -360,7 +360,7 @@ def create_app() -> Flask:
                 return render_template(
                     "signup.html", error="That User ID is already registered.", username=username
                 ), 409
-            return redirect(url_for("login", registered="1"))
+            return redirect(url_for("settings", user_created="1"))
         return render_template("signup.html", username="")
 
     @app.route("/profile/password", methods=("GET", "POST"))
@@ -623,7 +623,10 @@ def create_app() -> Flask:
 
     @app.get("/settings")
     def settings():
-        return render_template("settings.html")
+        return render_template(
+            "settings.html",
+            user_created=request.args.get("user_created") == "1",
+        )
 
     @app.get("/health")
     def health():
@@ -643,6 +646,7 @@ app = create_app()
 
 def create_serving_app() -> Flask:
     """Build the combined dashboard and Meta webhook service for Gunicorn."""
+    config.validate_runtime_security()
     config.require(
         "META_APP_SECRET",
         "META_WEBHOOK_VERIFY_TOKEN",
@@ -674,6 +678,7 @@ def run() -> None:
     host = config.DASHBOARD_HOST
     port = config.DASHBOARD_PORT
     require_port(host, port)
+    config.validate_runtime_security()
     config.require("META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN")
     start_event_worker(app)
     start_video_stats_worker(app)

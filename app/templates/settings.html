@@ -37,11 +37,16 @@
     <span class="eyebrow">Social Comment Studio</span>
     <h1>Settings</h1>
     <p class="summary">Account settings, plus the public policy pages used for Meta App Review.</p>
+    {% if user_created %}<p class="summary" style="color:#086142">Portal user created. They can sign in from the login page.</p>{% endif %}
 
     <span class="section-label">Account</span>
     <div class="links">
       <a class="link-card" href="/profile/password">
         <span><span class="link-card-title">Reset password</span><span class="link-card-url">/profile/password</span></span>
+        <span class="link-card-arrow" aria-hidden="true">&#8594;</span>
+      </a>
+      <a class="link-card" href="/signup">
+        <span><span class="link-card-title">Add portal user</span><span class="link-card-url">Create a login for another operator</span></span>
         <span class="link-card-arrow" aria-hidden="true">&#8594;</span>
       </a>
     </div>

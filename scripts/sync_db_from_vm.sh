@@ -35,13 +35,15 @@ trap cleanup_remote EXIT
 
 gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --tunnel-through-iap --quiet \
   --command="sudo docker exec social-comment-bot-dashboard-1 python -c \"
-import sqlite3
-src = sqlite3.connect('/app/data/comments.db')
-dst = sqlite3.connect('/app/data/comments_sync.db')
+from app.db import open_connection
+import os
+os.remove('/app/data/comments_sync.db') if os.path.exists('/app/data/comments_sync.db') else None
+src = open_connection('/app/data/comments.db')
+dst = open_connection('/app/data/comments_sync.db')
 src.backup(dst)
 dst.close()
 src.close()
-\" && sudo chmod 644 ${REMOTE_SNAPSHOT}"
+\" && sudo chmod 600 ${REMOTE_SNAPSHOT}"
 
 gcloud compute scp --zone="$ZONE" --project="$PROJECT" --tunnel-through-iap --quiet \
   "${INSTANCE}:${REMOTE_SNAPSHOT}" "$LOCAL_TMP"

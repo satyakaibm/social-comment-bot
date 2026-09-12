@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f2a38">
-  <title>Sign up · Content My Trip</title>
+  <title>Add portal user · Content My Trip</title>
   <style>
     :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
     * { box-sizing:border-box; }
@@ -28,8 +28,8 @@
   <main>
     <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
     <p class="eyebrow">Social Comment Studio</p>
-    <h1>Create account</h1>
-    <p class="copy">Register for access to the comment management portal.</p>
+    <h1>Add portal user</h1>
+    <p class="copy">Create a login for someone who should review comments. Only signed-in operators can add accounts.</p>
     {% if error %}<p class="message">{{ error }}</p>{% endif %}
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -43,7 +43,7 @@
       <input id="confirm-password" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required>
       <button type="submit">Create account</button>
     </form>
-    <p class="login-link">Already registered? <a href="/login">Sign in</a></p>
+    <p class="login-link"><a href="/settings">Back to settings</a></p>
   </main>
 </body>
 </html>

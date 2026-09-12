@@ -1,9 +1,14 @@
+import fcntl
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from app import config
 from app.config import DB_PATH, DEFAULT_PAGE_KEY
+
+SQLITE_HEADER = b"SQLite format 3\x00"
 
 
 def _page_key_filter(page_key: str | None) -> tuple[str, list]:
@@ -105,10 +110,113 @@ PRUNEABLE_COMMENT_STATUSES = ("posted", "already_replied", "rejected")
 PRUNEABLE_WEBHOOK_STATUSES = ("processed", "failed")
 
 
+def _restrict_db_file(path: Path) -> None:
+    if path.exists():
+        os.chmod(path, 0o600)
+
+
+def is_plaintext_sqlite(path: Path) -> bool:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(16) == SQLITE_HEADER
+    except OSError:
+        return False
+
+
+def _sqlcipher_module():
+    try:
+        from sqlcipher3 import dbapi2 as sqlcipher
+    except ImportError as exc:
+        raise RuntimeError(
+            "DB_ENCRYPTION_KEY is set but sqlcipher3 is not installed. "
+            "Run: pip install sqlcipher3-binary"
+        ) from exc
+    return sqlcipher
+
+
+def _pragma_key_sql(key: str) -> str:
+    if "'" in key or "\x00" in key:
+        raise RuntimeError("DB_ENCRYPTION_KEY must not contain quotes or NUL bytes.")
+    return f"PRAGMA key = '{key}'"
+
+
+def _apply_key(conn, key: str) -> None:
+    setter = getattr(conn, "set_key", None)
+    if setter is not None:
+        setter(key)
+    else:
+        conn.execute(_pragma_key_sql(key))
+    conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+
+
+def _encrypt_plaintext_file(path: Path, key: str) -> None:
+    sqlcipher = _sqlcipher_module()
+    _pragma_key_sql(key)
+    tmp = path.with_name(path.name + ".encrypting")
+    if tmp.exists():
+        tmp.unlink()
+    escaped_tmp = str(tmp).replace("'", "''")
+    source = sqlcipher.connect(str(path), timeout=30)
+    try:
+        source.execute(f"ATTACH DATABASE '{escaped_tmp}' AS encrypted KEY '{key}'")
+        source.execute("SELECT sqlcipher_export('encrypted')")
+        source.execute("DETACH DATABASE encrypted")
+    finally:
+        source.close()
+    os.replace(tmp, path)
+    _restrict_db_file(path)
+
+
+def _ensure_encrypted(path: Path, key: str) -> None:
+    if not path.exists() or path.stat().st_size == 0:
+        return
+    if not is_plaintext_sqlite(path):
+        return
+    lock_path = path.with_name(path.name + ".encrypt.lock")
+    with lock_path.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if path.exists() and is_plaintext_sqlite(path):
+            _encrypt_plaintext_file(path, key)
+
+
+def open_connection(path: Path | str | None = None, *, migrate_plaintext: bool = True):
+    """Open comments.db, encrypting a legacy plaintext file when a key is set."""
+    db_path = Path(path) if path is not None else Path(DB_PATH)
+    key = config.DB_ENCRYPTION_KEY
+    if not key:
+        if db_path.exists() and db_path.stat().st_size > 0 and not is_plaintext_sqlite(db_path):
+            raise RuntimeError(
+                f"{db_path} is encrypted. Set DB_ENCRYPTION_KEY to the same "
+                "value used when it was encrypted."
+            )
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        _restrict_db_file(db_path)
+        return conn
+
+    if not migrate_plaintext and db_path.exists() and is_plaintext_sqlite(db_path):
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    _ensure_encrypted(db_path, key)
+    sqlcipher = _sqlcipher_module()
+    conn = sqlcipher.connect(str(db_path), timeout=30)
+    conn.row_factory = sqlcipher.Row
+    try:
+        _apply_key(conn, key)
+    except Exception as exc:
+        conn.close()
+        raise RuntimeError(
+            f"Could not open encrypted database {db_path}. Check DB_ENCRYPTION_KEY."
+        ) from exc
+    _restrict_db_file(db_path)
+    return conn
+
+
 @contextmanager
 def connect():
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
+    conn = open_connection()
     try:
         yield conn
         conn.commit()
@@ -378,8 +486,7 @@ def import_seen_stats_from_backup(backup_path) -> int:
         raise FileNotFoundError(f"Backup not found: {path}")
     init_db()
     imported = 0
-    bak = sqlite3.connect(path)
-    bak.row_factory = sqlite3.Row
+    bak = open_connection(path, migrate_plaintext=False)
     try:
         tables = {
             row[0] for row in bak.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -1064,7 +1171,7 @@ def prune_storage(conn: sqlite3.Connection, *, older_than_days: int = 0) -> dict
 
 
 def vacuum_db() -> None:
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = open_connection()
     try:
         conn.execute("VACUUM")
     finally:

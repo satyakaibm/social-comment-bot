@@ -6,3 +6,4 @@ google-genai>=0.3
 requests>=2.31
 Flask>=3.0
 gunicorn>=23.0
+sqlcipher3-binary>=0.5.4; sys_platform == "linux"
