@@ -56,7 +56,6 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page.data)
         self.assertNotIn(b'class="service-nav"', page.data)
         self.assertIn(b"Social Comment Studio", page.data)
-        self.assertIn(b"Gateway Health", page.data)
         self.assertNotIn(b"Gateway operational", page.data)
         self.assertIn(b'<footer class="site-footer">', page.data)
         self.assertIn(b"Capture. Curate. Publish.", page.data)
@@ -265,16 +264,14 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'sort=desc', ascending.data)
         self.assertIn("↑".encode(), ascending.data)
 
-    def test_gateway_health_is_inside_community_banner(self):
+    def test_gateway_health_is_on_settings_page_not_the_banner(self):
         page = self.client.get("/")
-        markup = page.data.decode()
-        banner_start = markup.index('class="intro"')
-        banner_end = markup.index("</section>", markup.index('class="intro"'))
-        gateway = markup.index("Gateway Health")
-        self.assertLess(banner_start, gateway)
-        self.assertLess(gateway, banner_end)
-        self.assertNotIn('class="service-nav"', markup)
-        self.assertNotIn('class="service-link"', markup)
+        self.assertNotIn(b"Gateway Health", page.data)
+        self.assertNotIn(b'class="service-nav"', page.data)
+        self.assertNotIn(b'class="service-link"', page.data)
+        settings_page = self.client.get("/settings")
+        self.assertIn(b"Gateway Health", settings_page.data)
+        self.assertIn(b'href="/health"', settings_page.data)
 
     def test_comment_table_paginates_in_batches_of_one_hundred(self):
         with db.connect() as conn:
@@ -658,10 +655,10 @@ class DashboardTests(unittest.TestCase):
 
     def test_page_filter_pills_shown_only_with_multiple_pages(self):
         page = self.client.get("/?platform=facebook")
-        self.assertNotIn(b'aria-label="Channel"', page.data)
+        self.assertNotIn(b'aria-label="Switch channel"', page.data)
         with self._with_second_page():
             page = self.client.get("/?platform=facebook")
-        self.assertIn(b'aria-label="Channel"', page.data)
+        self.assertIn(b'aria-label="Switch channel"', page.data)
         self.assertIn(b"Second Page", page.data)
 
     def test_youtube_page_filter_narrows_results_and_shows_channel_pills(self):
@@ -693,14 +690,14 @@ class DashboardTests(unittest.TestCase):
 
         self.assertIn(b"yt-second", filtered.data)
         self.assertNotIn(b"What time is aarti?", filtered.data)
-        self.assertIn(b'aria-label="Channel"', switcher.data)
+        self.assertIn(b'aria-label="Switch channel"', switcher.data)
         self.assertIn(b"Travel Explorer", switcher.data)
         self.assertIn(b"Hindolroad", switcher.data)
 
     def test_page_filter_pills_shown_on_all_platforms_too(self):
         with self._with_second_page():
             page = self.client.get("/")
-        self.assertIn(b'aria-label="Channel"', page.data)
+        self.assertIn(b'aria-label="Switch channel"', page.data)
         self.assertIn(b"Second Page", page.data)
 
     def test_video_engagement_section_shows_cached_counts(self):
