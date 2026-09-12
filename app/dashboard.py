@@ -596,6 +596,10 @@ def create_app() -> Flask:
     def faq():
         return render_template("faq.html")
 
+    @app.get("/about")
+    def about():
+        return render_template("about.html")
+
     @app.get("/settings")
     def settings():
         return render_template("settings.html")

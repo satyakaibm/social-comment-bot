@@ -193,14 +193,14 @@
   <header class="site-header">
     <div class="topbar">
       <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
-      <a class="topbar-title" href="/">Content My Trip</a>
+      <a class="topbar-title" href="/">Social Comment Bot</a>
       <div class="topbar-actions">
         <details class="profile">
           <summary aria-label="Open My Profile menu" title="My Profile">{{ profile_initial }}</summary>
           <div class="profile-menu">
             <div class="profile-menu-head"><span class="profile-menu-title">Account</span><span class="profile-menu-user">{{ dashboard_username }}</span></div>
             <a href="/profile">My Profile</a>
-            <a href="/profile/password">Reset password</a>
+            <a href="/about">About me</a>
             <a href="/faq">FAQ</a>
             <a href="/settings">Settings</a>
             <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Log out</button></form>
@@ -359,7 +359,7 @@
         </nav>
         <nav aria-label="Footer account navigation">
           <h2 class="footer-title">Account</h2>
-          <ul class="footer-links"><li><a href="/profile">My Profile</a></li><li><a href="/profile/password">Reset password</a></li><li><a href="/faq">FAQ</a></li><li><a href="/settings">Settings</a></li><li><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="min-height:0;padding:0;color:rgba(247,239,228,.72);background:transparent;box-shadow:none;font-size:12px;">Log out</button></form></li></ul>
+          <ul class="footer-links"><li><a href="/profile">My Profile</a></li><li><a href="/about">About me</a></li><li><a href="/faq">FAQ</a></li><li><a href="/settings">Settings</a></li><li><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="min-height:0;padding:0;color:rgba(247,239,228,.72);background:transparent;box-shadow:none;font-size:12px;">Log out</button></form></li></ul>
         </nav>
       </div>
       <div class="footer-bottom"><span>&copy; {{ current_year }} Content My Trip. All rights reserved.</span><span>Capture. Curate. Publish.</span></div>
