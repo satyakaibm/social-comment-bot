@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0f2a38">
+  <title>About me · Content My Trip</title>
+  <style>
+    :root { --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; --ink:#17252c; --good:#086142; --good-soft:#e9f8f1; --warn:#996010; --warn-soft:#fff6e7; --bad:#98253d; --bad-soft:#fff0f3; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    .topbar { height:74px; padding:0 26px; display:flex; align-items:center; justify-content:space-between; background:#fff; border-bottom:1px solid var(--line); }
+    .brand { display:flex; align-items:center; gap:10px; color:var(--navy); font-weight:850; text-decoration:none; }
+    .brand img { width:120px; height:40px; object-fit:contain; }
+    .back { color:var(--navy); font-size:13px; font-weight:750; text-decoration:none; }
+    .page { max-width:760px; margin:0 auto; padding:40px 24px 80px; }
+    .eyebrow { display:block; margin-bottom:8px; color:var(--coral); font-size:11px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
+    h1 { margin:0 0 10px; color:var(--navy); font-size:30px; letter-spacing:-.03em; }
+    .summary { margin:0 0 24px; color:var(--muted); font-size:14px; line-height:1.6; }
+    .jump { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 34px; padding:0; list-style:none; }
+    .jump a { display:inline-block; padding:7px 12px; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:20px; font-size:12px; font-weight:700; text-decoration:none; }
+    .jump a:hover { background:#fff4ef; border-color:#ffc7b6; color:var(--coral); }
+    section.topic { padding-top:26px; margin-top:26px; border-top:1px solid var(--line); scroll-margin-top:18px; }
+    section.topic:first-of-type { margin-top:0; border-top:0; padding-top:0; }
+    h2 { margin:0 0 10px; color:var(--navy); font-size:19px; letter-spacing:-.01em; }
+    .topic p { margin:0 0 12px; color:var(--ink); font-size:14.5px; line-height:1.65; }
+    .topic p:last-child { margin-bottom:0; }
+    .topic ul, .topic ol { margin:0 0 12px; padding-left:20px; color:var(--ink); font-size:14.5px; line-height:1.65; }
+    .topic li { margin-bottom:8px; }
+    .topic li:last-child { margin-bottom:0; }
+    .mini-table { width:100%; border-collapse:collapse; margin:0 0 4px; font-size:13.5px; }
+    .mini-table th, .mini-table td { padding:10px 12px; text-align:left; border-bottom:1px solid var(--line); vertical-align:top; }
+    .mini-table th { color:var(--muted); font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; }
+    .mini-table tr:last-child td { border-bottom:0; }
+    .pill { display:inline-flex; align-items:center; padding:4px 9px; border-radius:7px; font-size:11px; font-weight:800; white-space:nowrap; }
+    .pill-good { color:var(--good); background:var(--good-soft); }
+    .pill-warn { color:var(--warn); background:var(--warn-soft); }
+    .pill-bad { color:var(--bad); background:var(--bad-soft); }
+    .note { margin-top:14px; padding:14px 16px; color:#124054; background:#eef7f8; border:1px solid #cdeaec; border-radius:12px; font-size:13.5px; line-height:1.6; }
+    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px}.mini-table{font-size:12.5px}.mini-table th,.mini-table td{padding:8px} }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
+    <a class="back" href="/">&larr; Back to dashboard</a>
+  </header>
+  <main class="page">
+    <span class="eyebrow">Social Comment Studio</span>
+    <h1>About me</h1>
+    <p class="summary">
+      A plain-English tour of this dashboard — what everything on the page means, and where
+      the bot behind it actually lives.
+    </p>
+
+    <ul class="jump">
+      <li><a href="#what">What this is</a></li>
+      <li><a href="#filters">Switching platforms</a></li>
+      <li><a href="#activity">Activity numbers</a></li>
+      <li><a href="#quota">API usage</a></li>
+      <li><a href="#engagement">Likes &amp; comments</a></li>
+      <li><a href="#statuses">What each status means</a></li>
+      <li><a href="#table">The comment list</a></li>
+      <li><a href="#retry">Retrying a reply</a></li>
+      <li><a href="#account">Your account</a></li>
+      <li><a href="#hosting">Where this runs</a></li>
+    </ul>
+
+    <section class="topic" id="what">
+      <h2>What this is</h2>
+      <p>
+        This dashboard shows every comment the bot has spotted on YouTube, Facebook, and
+        Instagram, what it wrote back, and whether that reply actually got posted. It's also
+        where you go to fix anything that didn't go out on the first try.
+      </p>
+    </section>
+
+    <section class="topic" id="filters">
+      <h2>Switching platforms and channels</h2>
+      <p>
+        The buttons near the top let you look at one platform at a time — YouTube, Facebook,
+        or Instagram — or all of them together. If more than one page or channel is connected
+        for a platform, a second row of buttons lets you pick between those too. Everything
+        else on the page follows whatever you've selected here.
+      </p>
+    </section>
+
+    <section class="topic" id="activity">
+      <h2>Activity numbers</h2>
+      <p>
+        Pick a time range — the last hour, day, week, or year — to see how the bot has been
+        doing lately:
+      </p>
+      <ul>
+        <li><strong>Comments found</strong> — every comment that came in during that time.</li>
+        <li><strong>Bot replies sent</strong> — how many of those the bot actually answered.</li>
+        <li><strong>Had a reply already</strong> — comments someone had already replied to, so the bot left them alone.</li>
+        <li><strong>Comments taken care of</strong> — replies sent plus ones that already had a reply. In other words, the ones that needed no further attention.</li>
+      </ul>
+    </section>
+
+    <section class="topic" id="quota">
+      <h2>API usage (quota)</h2>
+      <p>
+        Each platform only allows a certain amount of activity per day, so this shows how much
+        of that allowance has been used and how much is left, once you've picked a single
+        platform. YouTube resets once a day; Facebook and Instagram set their own limit as we
+        go, so that number can move around. A dash just means nothing has been used yet — not
+        a problem.
+      </p>
+    </section>
+
+    <section class="topic" id="engagement">
+      <h2>Likes, comments &amp; shares</h2>
+      <p>
+        A simple table of how each video or post is doing, refreshed automatically every so
+        often. This is about how well the content itself is performing, not about the bot's
+        replies.
+      </p>
+    </section>
+
+    <section class="topic" id="statuses">
+      <h2>What each status means</h2>
+      <p>Click any of the six tiles on the dashboard to see only comments in that state:</p>
+      <table class="mini-table">
+        <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill pill-warn">Pending review</span></td><td>A reply is ready but waiting — usually so someone can look it over first.</td></tr>
+          <tr><td><span class="pill pill-warn">Posting</span></td><td>The reply is being sent right now. This only lasts a moment.</td></tr>
+          <tr><td><span class="pill pill-good">Posted</span></td><td>The reply went out successfully. This is what you'll see most.</td></tr>
+          <tr><td><span class="pill pill-bad">Failed</span></td><td>Something went wrong trying to post it. You can try again — see "Retrying a reply" below.</td></tr>
+          <tr><td><span class="pill pill-good">Already replied</span></td><td>Someone had already replied, so the bot didn't post a second time.</td></tr>
+          <tr><td><span class="pill pill-bad">Rejected</span></td><td>The bot chose not to reply — for example, the comment was too old, or it kept failing and gave up.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="topic" id="table">
+      <h2>The comment list</h2>
+      <p>Every comment matching your current filters shows up here, with these columns:</p>
+      <ul>
+        <li><strong>Comment ID / Content ID</strong> — the platform's own reference numbers, mostly useful for looking something up directly on YouTube, Facebook, or Instagram.</li>
+        <li><strong>Platform &amp; content title</strong> — where the comment was left, and on what video or post.</li>
+        <li><strong>Author &amp; comment</strong> — who wrote it, and what they said.</li>
+        <li><strong>Status</strong> — one of the six outcomes above.</li>
+        <li><strong>Draft reply</strong> — what the bot wrote (or tried to post).</li>
+        <li><strong>Error</strong> — the reason it failed, shown only when it did.</li>
+        <li><strong>Dates</strong> — when the comment was published, first seen, and posted.</li>
+      </ul>
+      <p>Use the search box to find something by comment text, author, reply, or video title.</p>
+    </section>
+
+    <section class="topic" id="retry">
+      <h2>Retrying a failed reply</h2>
+      <p>Only failed comments can be retried — new comments are already handled automatically.</p>
+      <ol>
+        <li><strong>One comment:</strong> open the <span class="pill pill-bad">Failed</span> tile, fix the draft reply if needed, and click <strong>Retry reply</strong>.</li>
+        <li><strong>Several at once:</strong> from the same view, click <strong>Retry failed replies</strong> to have the bot try every failed comment again in the background. Refresh the page after a moment to see the result.</li>
+      </ol>
+    </section>
+
+    <section class="topic" id="account">
+      <h2>Your account</h2>
+      <p>Click your initial in the top-right corner to find:</p>
+      <ul>
+        <li><strong>My Profile</strong> — your display name and email.</li>
+        <li><strong>Reset password</strong> — change your password. This signs you out everywhere, so you'll need to log back in.</li>
+        <li><strong>Gateway Health</strong> — a quick status check for the part of the bot that receives Facebook and Instagram comments.</li>
+      </ul>
+    </section>
+
+    <section class="topic" id="hosting">
+      <h2>Where this runs</h2>
+      <p>
+        The dashboard lives on its own computer in the cloud, not on anyone's laptop — so it
+        keeps working even if everyone's laptops are turned off or restarted. Your browser
+        reaches it through a secure connection that doesn't require opening that computer up
+        to the internet at large.
+      </p>
+      <p>
+        If that cloud computer ever needs to restart, the dashboard switches itself back on
+        automatically — nobody has to log in and start anything by hand.
+      </p>
+      <p>
+        Updates to the bot go out through a separate tool that a person starts on purpose —
+        it double-checks everything still works, then sends the update to the cloud computer.
+        It no longer happens automatically the moment code changes are merged; someone chooses
+        when an update goes out.
+      </p>
+      <div class="note">
+        Only one copy of this dashboard should ever be running. Two copies would each keep
+        their own separate record of what's been replied to, and could end up replying to the
+        same comment twice.
+      </div>
+    </section>
+  </main>
+</body>
+</html>
