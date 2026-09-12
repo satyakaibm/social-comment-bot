@@ -53,7 +53,7 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn(b'<header class="site-header">', page.data)
         self.assertIn(b'<div class="topbar">', page.data)
-        self.assertIn(b'class="topbar-title" href="/">Content My Trip</a>', page.data)
+        self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page.data)
         self.assertNotIn(b'class="service-nav"', page.data)
         self.assertIn(b"Social Comment Studio", page.data)
         self.assertIn(b"Gateway Health", page.data)
@@ -98,6 +98,7 @@ class DashboardTests(unittest.TestCase):
     def test_settings_page_lists_policy_links(self):
         page = self.client.get("/settings")
         self.assertEqual(page.status_code, 200)
+        self.assertIn(b'href="/profile/password"', page.data)
         self.assertIn(b'href="/privacy"', page.data)
         self.assertIn(b'href="/terms"', page.data)
         self.assertIn(b'href="/datadeletion"', page.data)
@@ -458,7 +459,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'title="My Profile">A</summary>', page.data)
         self.assertIn(b"My Profile", page.data)
         self.assertIn(b'class="profile-menu-user">admin</span>', page.data)
-        self.assertIn(b"Reset password", page.data)
+        self.assertIn(b'href="/settings"', page.data)
         self.assertIn(b"Log out", page.data)
 
         profile_page = self.client.get("/profile")
