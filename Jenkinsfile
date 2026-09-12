@@ -116,9 +116,15 @@ gcloud config set project project-e1de8eb7-3b06-4142-9b3 --quiet
 # by project+zone+name over Google's own IAP tunnel rather than a raw
 # internet address, so there's no real host-spoofing exposure here to check
 # against.
+# A flat `sleep 5 && curl` here used to fail the build (exit 56, connection
+# reset) purely from timing: gunicorn/the app were still finishing their
+# cold start on a freshly recreated container, well after the deploy step
+# itself had already succeeded. Retrying for up to a minute absorbs that
+# startup variance while still failing the build (via the final `[ "$ok" =
+# 1 ]`) if the app genuinely never comes up.
 gcloud compute ssh social-comment-bot \
   --zone=us-central1-a --project=project-e1de8eb7-3b06-4142-9b3 --tunnel-through-iap --quiet \
-  --command="cd /opt/social-comment-bot && sudo git pull && sudo docker compose up -d --build && sleep 5 && curl -sf http://localhost:9001/api/health" \
+  --command="cd /opt/social-comment-bot && sudo git pull && sudo docker compose up -d --build && ok=0; for i in \$(seq 1 12); do curl -sf http://localhost:9001/api/health >/dev/null 2>&1 && { ok=1; break; }; sleep 5; done; [ \"\$ok\" = 1 ]" \
   -- -o StrictHostKeyChecking=no
 DEPLOY
                     '''
