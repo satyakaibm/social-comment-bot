@@ -29,6 +29,14 @@ YOUTUBE_DAILY_REPLY_LIMIT = int(os.environ.get("YOUTUBE_DAILY_REPLY_LIMIT", "0")
 PUBLISH_ERROR_LIMIT = int(os.environ.get("PUBLISH_ERROR_LIMIT", "3"))
 COMMENT_MAX_AGE_DAYS = int(os.environ.get("COMMENT_MAX_AGE_DAYS", "90"))
 
+# How often the dashboard's background worker refreshes cached like/share/
+# comment counts for videos and posts, and how many of the most recently
+# active videos/posts (per platform) it refreshes each cycle -- bounded so a
+# channel with a long history cannot spend the whole cycle, or a day's Meta
+# rate limit, re-fetching stats for posts nobody is looking at.
+VIDEO_STATS_REFRESH_MINUTES = int(os.environ.get("VIDEO_STATS_REFRESH_MINUTES", "30"))
+VIDEO_STATS_CONTAINER_LIMIT = int(os.environ.get("VIDEO_STATS_CONTAINER_LIMIT", "50"))
+
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
 FACEBOOK_PAGE_ACCESS_TOKEN = os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN", "")
@@ -312,6 +320,13 @@ def instagram_page_keys() -> list[str]:
 def youtube_page_keys() -> list[str]:
     """Keys of pages with a YouTube channel configured, in PAGES order."""
     return [p.key for p in PAGES.values() if p.youtube_refresh_token]
+
+
+def all_page_keys() -> list[str]:
+    """Keys of every configured page, in PAGES order -- used by the dashboard's
+    channel switcher when no single platform is selected.
+    """
+    return list(PAGES.keys())
 
 
 def resolve_page_key(platform: str, entry_id: str) -> str | None:

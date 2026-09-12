@@ -89,6 +89,28 @@ def get_video_channel_ids(youtube: Resource, video_ids) -> dict[str, str]:
     return owners
 
 
+def get_video_stats(youtube: Resource, video_ids) -> dict[str, dict]:
+    """Return each video's like/comment counts, batching lookups to save quota.
+
+    YouTube's Data API has no share-count field, so callers only get likes
+    and comments back. A video with likes or comments hidden by its owner
+    omits that field entirely, which comes through here as None.
+    """
+    unique_ids = list(dict.fromkeys(video_id for video_id in video_ids if video_id))
+    stats: dict[str, dict] = {}
+    for start in range(0, len(unique_ids), 50):
+        response = execute(youtube.videos().list(
+            part="statistics", id=",".join(unique_ids[start:start + 50])
+        ))
+        for item in response.get("items", []):
+            counts = item.get("statistics", {})
+            stats[item["id"]] = {
+                "like_count": int(counts["likeCount"]) if "likeCount" in counts else None,
+                "comment_count": int(counts["commentCount"]) if "commentCount" in counts else None,
+            }
+    return stats
+
+
 def find_own_reply(
     youtube: Resource,
     comment_id: str,
