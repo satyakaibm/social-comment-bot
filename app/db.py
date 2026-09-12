@@ -283,6 +283,13 @@ def init_db() -> None:
                ON dashboard_users(email COLLATE NOCASE)
                WHERE email IS NOT NULL AND email <> ''"""
         )
+        # Speeds up the dashboard's status/platform/channel filters and any
+        # per-video lookup (e.g. list_for_post, video_stats' join) now that
+        # comments has grown past what a full table scan handles quickly.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_video ON comments(platform, video_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_platform_page_key ON comments(platform, page_key)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_updated_at ON comments(updated_at)")
         _migrate_seen_comments(conn)
         sync_seen_stats_from_comments(conn)
 
