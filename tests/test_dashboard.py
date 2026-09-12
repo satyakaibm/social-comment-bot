@@ -702,14 +702,24 @@ class DashboardTests(unittest.TestCase):
                 conn, platform="youtube", video_id="vid", page_key=config.DEFAULT_PAGE_KEY,
                 video_title="Aarti", like_count=42, share_count=None, comment_count=7,
             )
-        page = self.client.get("/")
-        self.assertIn(b'aria-label="Video and post engagement"', page.data)
+        page = self.client.get("/insights")
+        self.assertEqual(page.status_code, 200)
         self.assertIn(b"42", page.data)
         self.assertIn(b"7", page.data)
 
     def test_video_engagement_section_shows_empty_state_with_no_cached_stats(self):
-        page = self.client.get("/")
+        page = self.client.get("/insights")
         self.assertIn(b"No engagement data yet", page.data)
+
+    def test_dashboard_links_to_insights(self):
+        page = self.client.get("/")
+        self.assertIn(b'href="/insights"', page.data)
+        self.assertNotIn(b'aria-label="Video and post engagement"', page.data)
+
+    def test_insights_requires_login(self):
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        self.assertEqual(self.client.get("/insights").status_code, 302)
 
 
 if __name__ == "__main__":

@@ -75,6 +75,8 @@
     .eyebrow { margin:0 0 12px; color:#ffb098; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
     h1 { margin:0; color:var(--navy); font-size:clamp(28px,4vw,42px); line-height:1.08; letter-spacing:-.035em; }
     .intro-actions { display:flex; align-items:center; gap:12px; }
+    .insights-link { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
+    .insights-link:hover { color:#fff; background:rgba(255,255,255,.16); }
     .auto-refresh { width:40px; min-height:40px; padding:0; display:grid; place-items:center; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:50%; box-shadow:none; }
     .auto-refresh:hover { color:#fff; background:rgba(255,255,255,.16); }
     .auto-refresh[aria-pressed="true"] { color:var(--navy); background:#fff; border-color:#fff; }
@@ -144,15 +146,6 @@
     td.wrap { max-width:260px; white-space:pre-wrap; word-break:break-word; }
     td.narrow { max-width:150px; color:#61737c; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:10px; word-break:break-all; }
     td.title { max-width:240px; overflow:hidden; color:var(--navy); font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
-    .video-stats-note { color:var(--muted); font-size:11px; font-weight:700; white-space:nowrap; }
-    .video-stats-wrap { margin-top:16px; padding-top:15px; max-width:100%; overflow-x:auto; border-top:1px solid var(--line); }
-    table.video-stats { width:100%; min-width:520px; border-collapse:separate; border-spacing:0; font-size:12px; }
-    table.video-stats th { padding:9px 11px; color:#61737c; background:#f1f5f6; border-bottom:1px solid var(--line); text-align:left; font-size:10px; font-weight:800; letter-spacing:.065em; text-transform:uppercase; }
-    table.video-stats td { padding:10px 11px; border-bottom:1px solid #e9eef0; vertical-align:top; }
-    table.video-stats tbody tr:last-child td { border-bottom:0; }
-    table.video-stats tbody tr:hover { background:#fffaf8; }
-    table.video-stats td.title { max-width:320px; overflow:hidden; color:var(--navy); font-weight:700; text-overflow:ellipsis; white-space:nowrap; }
-    .video-stats-empty { margin:16px 0 0; padding-top:15px; color:var(--muted); font-size:12px; border-top:1px solid var(--line); }
     .platform-badge,.status-badge { display:inline-flex; align-items:center; padding:5px 8px; border-radius:7px; font-size:10px; font-weight:800; text-transform:capitalize; }
     .platform-youtube { color:#bd2335; background:#fff0f2; }
     .platform-facebook { color:#2459a8; background:#eef4ff; }
@@ -226,6 +219,10 @@
       </div>
       <div class="intro-actions">
         <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway Health</span></a>
+        <a class="insights-link" href="/insights{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
+          <span>Insights</span>
+        </a>
         <button class="auto-refresh" id="auto-refresh" type="button" aria-label="Enable auto refresh" aria-pressed="false" title="Enable auto refresh">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M6.1 9a7 7 0 0 1 11.5-2.6L20 11M4 13l2.4 4.6A7 7 0 0 0 17.9 15"></path></svg>
         </button>
@@ -261,45 +258,6 @@
           <p class="quota-note">{{ quota.description }}{% if quota.used is none %} Waiting for the next API request.{% endif %}</p>
         </div>
       {% endfor %}
-    </section>
-
-    <section class="activity" aria-label="Video and post engagement">
-      <div class="activity-head">
-        <h2 class="activity-title">Video &amp; post engagement</h2>
-        <span class="video-stats-note">Refreshes every {{ video_stats_refresh_minutes }} min</span>
-      </div>
-      {% if video_stats %}
-      <div class="video-stats-wrap">
-        <table class="video-stats">
-          <thead>
-            <tr>
-              <th>Platform</th>
-              {% if page_choices|length > 1 %}<th>Channel</th>{% endif %}
-              <th>Title</th>
-              <th>Likes</th>
-              <th>Comments</th>
-              <th>Shares</th>
-              <th>Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-          {% for v in video_stats %}
-            <tr>
-              <td><span class="platform-badge platform-{{ v.platform }}">{{ v.platform }}</span></td>
-              {% if page_choices|length > 1 %}<td>{{ v.page_label }}</td>{% endif %}
-              <td class="title" title="{{ v.video_title or v.video_id }}">{{ v.video_title or v.video_id }}</td>
-              <td>{{ v.like_count if v.like_count is not none else '—' }}</td>
-              <td>{{ v.comment_count if v.comment_count is not none else '—' }}</td>
-              <td>{{ v.share_count if v.share_count is not none else '—' }}</td>
-              <td>{{ v.updated_at_ist or '—' }}</td>
-            </tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% else %}
-      <p class="video-stats-empty">No engagement data yet — this fills in automatically shortly after the bot starts.</p>
-      {% endif %}
     </section>
 
     <nav class="stats" aria-label="Comment status">

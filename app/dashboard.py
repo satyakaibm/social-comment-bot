@@ -213,6 +213,18 @@ def _quota_cards(conn, platform: str) -> list[dict]:
     return cards
 
 
+def _page_choices(platform: str) -> list:
+    if platform == "facebook":
+        page_choice_keys = config.facebook_page_keys()
+    elif platform == "instagram":
+        page_choice_keys = config.instagram_page_keys()
+    elif platform == "youtube":
+        page_choice_keys = config.youtube_page_keys()
+    else:
+        page_choice_keys = config.all_page_keys()
+    return [config.PAGES[k] for k in page_choice_keys]
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = config.DASHBOARD_SECRET
@@ -462,12 +474,6 @@ def create_app() -> Flask:
                 conn, platform=platform or None, page_key=page_key or None
             )
             quota_cards = _quota_cards(conn, platform)
-            video_stats = [
-                _video_stats_row(row)
-                for row in db.list_video_stats(
-                    conn, platform=platform or None, page_key=page_key or None
-                )
-            ]
             total = db.count_comments(
                 conn,
                 status=status,
@@ -489,23 +495,13 @@ def create_app() -> Flask:
                 )
             ]
         pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
-        if platform == "facebook":
-            page_choice_keys = config.facebook_page_keys()
-        elif platform == "instagram":
-            page_choice_keys = config.instagram_page_keys()
-        elif platform == "youtube":
-            page_choice_keys = config.youtube_page_keys()
-        else:
-            page_choice_keys = config.all_page_keys()
-        page_choices = [config.PAGES[k] for k in page_choice_keys]
+        page_choices = _page_choices(platform)
         return render_template(
             "dashboard.html",
             rows=rows,
             counts=counts,
             activity=activity,
             quota_cards=quota_cards,
-            video_stats=video_stats,
-            video_stats_refresh_minutes=config.VIDEO_STATS_REFRESH_MINUTES,
             statuses=STATUSES,
             platforms=PLATFORMS,
             page_choices=page_choices,
@@ -599,6 +595,31 @@ def create_app() -> Flask:
     @app.get("/about")
     def about():
         return render_template("about.html")
+
+    @app.get("/insights")
+    def insights():
+        platform = request.args.get("platform", "").strip()
+        if platform not in PLATFORMS:
+            platform = ""
+        page_key = request.args.get("page_key", "").strip()
+        if page_key not in config.PAGES:
+            page_key = ""
+        with db.connect() as conn:
+            video_stats = [
+                _video_stats_row(row)
+                for row in db.list_video_stats(
+                    conn, platform=platform or None, page_key=page_key or None
+                )
+            ]
+        return render_template(
+            "insights.html",
+            video_stats=video_stats,
+            video_stats_refresh_minutes=config.VIDEO_STATS_REFRESH_MINUTES,
+            platforms=PLATFORMS,
+            page_choices=_page_choices(platform),
+            platform=platform,
+            page_key=page_key,
+        )
 
     @app.get("/settings")
     def settings():
