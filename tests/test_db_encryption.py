@@ -38,7 +38,7 @@ class DbEncryptionTests(unittest.TestCase):
             self.assertTrue(db.is_plaintext_sqlite(self.db_path))
             self.assertEqual(stat_mode(self.db_path) & 0o777, 0o600)
 
-    @unittest.skipUnless(sqlcipher, "sqlcipher3-binary is published for Linux (Docker/CI)")
+    @unittest.skipUnless(sqlcipher, "sqlcipher3 is published for Linux (Docker/CI)")
     def test_encrypts_existing_plaintext_and_reads_rows(self):
         with patch.object(config, "DB_ENCRYPTION_KEY", ""):
             db.init_db()
