@@ -2,7 +2,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from app import generate
+from app import config, generate
+
+from tests.helpers import make_page_config
 
 
 class _FakeChat:
@@ -55,3 +57,25 @@ class GenerateTests(unittest.TestCase):
 
         self.assertEqual(youtube, "🙏")
         self.assertEqual(instagram, "@viewer 🙏")
+
+    def test_second_page_uses_its_persona_and_generic_style_not_hindolroad_rules(self):
+        second = make_page_config(
+            key="travel",
+            persona="You are a witty travel community manager.",
+        )
+        client = SimpleNamespace(chats=_FakeChats())
+        with patch.object(config, "PAGES", {**config.PAGES, "travel": second}), \
+             patch.object(generate, "_get_client", return_value=client), \
+             patch.object(generate, "load_examples", return_value=[]):
+            reply = generate.draft_reply(
+                platform="youtube",
+                page_key="travel",
+                context_title="Goa",
+                author="viewer",
+                comment_text="When to visit?",
+            )
+
+        self.assertEqual(reply, "🙏")
+        system = client.chats.created[0]["config"].system_instruction
+        self.assertIn("witty travel community manager", system)
+        self.assertNotIn("hindolroad / Hindolroad", system)

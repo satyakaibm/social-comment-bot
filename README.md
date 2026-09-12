@@ -72,6 +72,20 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### Tests
+
+Install the extra test runner, then run the suite from the repo root. Tests mock
+YouTube, Meta, and Gemini — they do not call live APIs or touch `data/comments.db`.
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Jenkins runs the same suite inside `Dockerfile.test` on every push (`docker build
+-f Dockerfile.test`). Add a failing test with the change it protects; keep
+network and credentials out of the suite.
+
 Create a `.env` in the project root. You only need credentials for the platforms you use, plus a Gemini API key for drafting.
 
 ```env

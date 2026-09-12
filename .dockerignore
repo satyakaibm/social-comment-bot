@@ -3,6 +3,7 @@
 !Dockerfile.test
 !requirements.txt
 !requirements-dev.txt
+!pytest.ini
 !app/
 !app/**
 !tests/
