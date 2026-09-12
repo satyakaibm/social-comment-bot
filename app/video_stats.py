@@ -28,16 +28,17 @@ def _refresh_youtube(conn) -> int:
             continue
         for video_id, video_title in titles.items():
             counts = stats.get(video_id, {})
-            db.upsert_video_stats(
-                conn,
-                platform="youtube",
-                video_id=video_id,
-                page_key=page_key,
-                video_title=video_title or "",
-                like_count=counts.get("like_count"),
-                share_count=None,
-                comment_count=counts.get("comment_count"),
-            )
+            with db.connect() as write_conn:
+                db.upsert_video_stats(
+                    write_conn,
+                    platform="youtube",
+                    video_id=video_id,
+                    page_key=page_key,
+                    video_title=video_title or "",
+                    like_count=counts.get("like_count"),
+                    share_count=None,
+                    comment_count=counts.get("comment_count"),
+                )
             updated += 1
     return updated
 
@@ -59,16 +60,17 @@ def _refresh_facebook(conn) -> int:
                 flush=True,
             )
             continue
-        db.upsert_video_stats(
-            conn,
-            platform="facebook",
-            video_id=row["video_id"],
-            page_key=row["page_key"],
-            video_title=row.get("video_title") or "",
-            like_count=stats.get("like_count"),
-            share_count=stats.get("share_count"),
-            comment_count=stats.get("comment_count"),
-        )
+        with db.connect() as write_conn:
+            db.upsert_video_stats(
+                write_conn,
+                platform="facebook",
+                video_id=row["video_id"],
+                page_key=row["page_key"],
+                video_title=row.get("video_title") or "",
+                like_count=stats.get("like_count"),
+                share_count=stats.get("share_count"),
+                comment_count=stats.get("comment_count"),
+            )
         updated += 1
     return updated
 
@@ -90,16 +92,17 @@ def _refresh_instagram(conn) -> int:
                 flush=True,
             )
             continue
-        db.upsert_video_stats(
-            conn,
-            platform="instagram",
-            video_id=row["video_id"],
-            page_key=row["page_key"],
-            video_title=row.get("video_title") or "",
-            like_count=stats.get("like_count"),
-            share_count=None,
-            comment_count=stats.get("comment_count"),
-        )
+        with db.connect() as write_conn:
+            db.upsert_video_stats(
+                write_conn,
+                platform="instagram",
+                video_id=row["video_id"],
+                page_key=row["page_key"],
+                video_title=row.get("video_title") or "",
+                like_count=stats.get("like_count"),
+                share_count=None,
+                comment_count=stats.get("comment_count"),
+            )
         updated += 1
     return updated
 
@@ -113,6 +116,12 @@ def refresh_all() -> int:
     -- or a day's Meta rate limit -- re-fetching stats for posts nobody is
     currently viewing on the dashboard.
     """
+    # This connection is read-only (distinct_containers) -- each stats write
+    # below opens its own short-lived connection instead of reusing this
+    # one. Meta's graph_get() also writes to this same database (quota
+    # tracking) on every API call; if this connection held a write open
+    # across the Facebook/Instagram loops' many sequential API calls, that
+    # nested quota write would deadlock against it ("database is locked").
     with db.connect() as conn:
         return (
             _refresh_youtube(conn)
