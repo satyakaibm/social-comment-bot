@@ -496,6 +496,7 @@ def create_app() -> Flask:
             ]
         pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
         page_choices = _page_choices(platform)
+        selected_page_label = config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
         return render_template(
             "dashboard.html",
             rows=rows,
@@ -505,6 +506,7 @@ def create_app() -> Flask:
             statuses=STATUSES,
             platforms=PLATFORMS,
             page_choices=page_choices,
+            selected_page_label=selected_page_label,
             status=status,
             platform=platform,
             page_key=page_key,
@@ -604,19 +606,39 @@ def create_app() -> Flask:
         page_key = request.args.get("page_key", "").strip()
         if page_key not in config.PAGES:
             page_key = ""
+        sort_by = request.args.get("sort_by", "recent").strip()
+        if sort_by not in db.VIDEO_STATS_SORT_COLUMNS:
+            sort_by = "recent"
+        sort_dir = request.args.get("sort_dir", "desc").lower()
+        if sort_dir not in {"asc", "desc"}:
+            sort_dir = "desc"
+        window = request.args.get("window", "").strip()
+        if window not in db.VIDEO_STATS_WINDOWS:
+            window = ""
         with db.connect() as conn:
             video_stats = [
                 _video_stats_row(row)
                 for row in db.list_video_stats(
-                    conn, platform=platform or None, page_key=page_key or None
+                    conn,
+                    platform=platform or None,
+                    page_key=page_key or None,
+                    sort_by=sort_by,
+                    sort_dir=sort_dir,
+                    updated_within=db.VIDEO_STATS_WINDOWS[window][1] if window else None,
                 )
             ]
+        selected_page_label = config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
         return render_template(
             "insights.html",
             video_stats=video_stats,
             video_stats_refresh_minutes=config.VIDEO_STATS_REFRESH_MINUTES,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
+            selected_page_label=selected_page_label,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            window=window,
+            windows=db.VIDEO_STATS_WINDOWS,
             platform=platform,
             page_key=page_key,
         )

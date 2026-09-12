@@ -53,9 +53,6 @@
     .brand { display:flex; align-items:center; min-width:0; text-decoration:none; }
     .brand img { display:block; width:178px; height:58px; object-fit:contain; object-position:left center; }
     .topbar-title { position:absolute; left:50%; color:var(--navy); font-size:28px; font-weight:900; letter-spacing:-.025em; text-decoration:none; transform:translateX(-50%); white-space:nowrap; }
-    .gateway { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
-    .gateway { color:#086142; background:#e9f8f1; border:1px solid #c9ecdd; }
-    .gateway-dot { width:8px; height:8px; border-radius:50%; background:#20b878; box-shadow:0 0 0 4px rgba(32,184,120,.12); }
     .topbar-actions { display:flex; align-items:center; gap:9px; }
     .profile { position:relative; }
     .profile summary { width:42px; height:42px; display:grid; place-items:center; color:#fff; background:linear-gradient(135deg,var(--navy),var(--teal)); border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px var(--line),0 5px 14px rgba(15,42,56,.16); font-size:16px; font-weight:850; cursor:pointer; list-style:none; }
@@ -73,10 +70,23 @@
     .intro::after { content:""; position:absolute; width:150px; height:150px; right:-46px; bottom:-90px; border:26px solid rgba(255,106,61,.25); border-radius:50%; pointer-events:none; }
     .intro > * { position:relative; z-index:1; }
     .eyebrow { margin:0 0 12px; color:#ffb098; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+    .channel-indicator { display:inline-flex; align-items:center; gap:8px; margin:0 0 10px; padding:6px 13px; color:#fff; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.24); border-radius:999px; font-size:12px; font-weight:800; }
+    .channel-indicator-dot { width:7px; height:7px; border-radius:50%; background:var(--teal); }
     h1 { margin:0; color:var(--navy); font-size:clamp(28px,4vw,42px); line-height:1.08; letter-spacing:-.035em; }
     .intro-actions { display:flex; align-items:center; gap:12px; }
     .insights-link { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
     .insights-link:hover { color:#fff; background:rgba(255,255,255,.16); }
+    .channels-select { position:relative; }
+    .channels-select summary { min-height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:8px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:750; cursor:pointer; list-style:none; }
+    .channels-select summary::-webkit-details-marker { display:none; }
+    .channels-select summary:hover { color:#fff; background:rgba(255,255,255,.16); }
+    .channels-select[open] summary { color:#fff; background:rgba(255,255,255,.16); }
+    .channels-select summary .chevron { transition:transform .15s ease; }
+    .channels-select[open] summary .chevron { transform:rotate(180deg); }
+    .channels-menu { position:fixed; z-index:50; width:190px; padding:7px; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 16px 38px rgba(15,42,56,.16); }
+    .channels-menu a { width:100%; min-height:38px; padding:0 11px; display:flex; align-items:center; color:var(--ink); background:transparent; border-radius:8px; font-size:12px; font-weight:700; text-decoration:none; }
+    .channels-menu a:hover { color:var(--navy); background:#f3f7f8; }
+    .channels-menu a.active { color:var(--navy); background:#fff4ef; }
     .auto-refresh { width:40px; min-height:40px; padding:0; display:grid; place-items:center; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:50%; box-shadow:none; }
     .auto-refresh:hover { color:#fff; background:rgba(255,255,255,.16); }
     .auto-refresh[aria-pressed="true"] { color:var(--navy); background:#fff; border-color:#fff; }
@@ -176,7 +186,7 @@
     @media (max-width:1280px) { .grid-wrap{height:55vh} }
     @media (max-width:980px) { .topbar{padding:0 22px}.toolbar{align-items:stretch;flex-direction:column}form.search{width:100%}.grid-wrap{height:58vh}.footer-main{grid-template-columns:1.4fr 1fr 1fr;gap:28px} }
     @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column}.activity-platforms,.range-scroll{width:100%}.activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px}.footer-main{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.gateway{flex:0 0 auto}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 17px}.intro-actions{align-self:stretch;justify-content:flex-end}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 17px}.intro-actions{align-self:stretch;justify-content:flex-end}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
     @media (max-width:390px) { .activity-platform{padding:8px 10px}.range-button{padding:0 10px}.stat-label{font-size:9px}.search{flex-direction:column}.search button{width:100%}.grid-wrap{height:56vh} }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important} }
   </style>
@@ -205,20 +215,27 @@
   <main class="page" id="main-content" tabindex="-1">
     <section class="intro">
       <div>
+        <p class="channel-indicator"><span class="channel-indicator-dot"></span>{{ selected_page_label }}</p>
         <p class="eyebrow">Community workspace</p>
         <nav class="activity-platforms" aria-label="Analytics platform">
           <a class="activity-platform {% if not platform %}active{% endif %}" href="/?status={{ status }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All platforms</a>
           {% for p in platforms %}<a class="activity-platform {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p }}</a>{% endfor %}
         </nav>
-        {% if page_choices|length > 1 %}
-        <nav class="activity-platforms" aria-label="Channel">
-          <a class="activity-platform {% if not page_key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All channels</a>
-          {% for p in page_choices %}<a class="activity-platform {% if page_key == p.key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}&amp;page_key={{ p.key }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p.label }}</a>{% endfor %}
-        </nav>
-        {% endif %}
       </div>
       <div class="intro-actions">
-        <a class="gateway" href="/health"><span class="gateway-dot"></span><span>Gateway Health</span></a>
+        {% if page_choices|length > 1 %}
+        <details class="channels-select">
+          <summary aria-label="Switch channel">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
+            <span>{{ selected_page_label }}</span>
+            <svg class="chevron" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+          </summary>
+          <div class="channels-menu">
+            <a class="{% if not page_key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All channels</a>
+            {% for p in page_choices %}<a class="{% if page_key == p.key %}active{% endif %}" href="/?status={{ status }}{% if platform %}&amp;platform={{ platform }}{% endif %}&amp;page_key={{ p.key }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p.label }}</a>{% endfor %}
+          </div>
+        </details>
+        {% endif %}
         <a class="insights-link" href="/insights{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
           <span>Insights</span>
@@ -350,6 +367,22 @@
       update(readPreference());
       button.addEventListener('click', () => update(button.getAttribute('aria-pressed') !== 'true'));
     })();
+
+    document.querySelectorAll('details.channels-select').forEach((details) => {
+      const summary = details.querySelector('summary');
+      const menu = details.querySelector('.channels-menu');
+      const positionMenu = () => {
+        const rect = summary.getBoundingClientRect();
+        menu.style.top = `${rect.bottom + 8}px`;
+        menu.style.left = `${rect.left}px`;
+      };
+      details.addEventListener('toggle', () => { if (details.open) positionMenu(); });
+      window.addEventListener('scroll', () => { if (details.open) positionMenu(); }, true);
+      window.addEventListener('resize', () => { if (details.open) positionMenu(); });
+      document.addEventListener('click', (event) => {
+        if (details.open && !details.contains(event.target)) details.removeAttribute('open');
+      });
+    });
 
     document.querySelectorAll('.range-button').forEach((button) => {
       button.addEventListener('click', () => {

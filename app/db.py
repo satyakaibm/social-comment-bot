@@ -401,14 +401,44 @@ def upsert_video_stats(
     )
 
 
+VIDEO_STATS_SORT_COLUMNS = {
+    "recent": "last_comment_at",
+    "likes": "vs.like_count",
+    "comments": "vs.comment_count",
+    "shares": "vs.share_count",
+}
+
+
+VIDEO_STATS_WINDOWS = {
+    "1h": ("1 Hour", timedelta(hours=1)),
+    "24h": ("24 Hours", timedelta(hours=24)),
+    "7d": ("7 Day", timedelta(days=7)),
+    "365d": ("365 Days", timedelta(days=365)),
+}
+
+
 def list_video_stats(
     conn: sqlite3.Connection,
     *,
     platform: str | None = None,
     page_key: str | None = None,
-    limit: int = 20,
+    sort_by: str = "recent",
+    sort_dir: str = "desc",
+    updated_within: timedelta | None = None,
+    reference_time: datetime | None = None,
+    limit: int = 200,
 ) -> list[dict]:
-    """Return cached engagement counts, most recently commented-on first."""
+    """Return cached engagement counts, sorted by sort_by/sort_dir (most
+    recently commented-on first by default). NULLS LAST so videos with no
+    count yet (not first, not last, always yet to be measured) don't crowd
+    out ones with real numbers when sorting by likes/comments/shares.
+
+    updated_within restricts to rows whose stats were last refreshed inside
+    that window -- a freshness filter, not real historical engagement
+    growth, since video_stats only ever stores each video's latest snapshot.
+    """
+    column = VIDEO_STATS_SORT_COLUMNS.get(sort_by, VIDEO_STATS_SORT_COLUMNS["recent"])
+    direction = "ASC" if sort_dir == "asc" else "DESC"
     sql = """
         SELECT vs.*,
                MAX(c.created_at) AS last_comment_at,
@@ -428,9 +458,14 @@ def list_video_stats(
         else:
             sql += " AND vs.page_key = ?"
         params.append(page_key)
-    sql += """
+    if updated_within is not None:
+        reference_time = reference_time or datetime.now(timezone.utc)
+        cutoff = reference_time - updated_within
+        sql += " AND datetime(vs.updated_at) >= datetime(?)"
+        params.append(cutoff.isoformat())
+    sql += f"""
         GROUP BY vs.platform, vs.video_id
-        ORDER BY last_comment_at DESC, vs.updated_at DESC
+        ORDER BY {column} IS NULL, {column} {direction}, vs.updated_at DESC
         LIMIT ?
     """
     params.append(limit)
