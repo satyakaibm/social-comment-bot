@@ -6,4 +6,6 @@ google-genai>=0.3
 requests>=2.31
 Flask>=3.0
 gunicorn>=23.0
-sqlcipher3-binary>=0.5.4; sys_platform == "linux"
+# 0.6.2+ ships manylinux wheels for amd64 and aarch64. sqlcipher3-binary
+# has no aarch64 wheel, which broke Docker Desktop on Apple silicon.
+sqlcipher3>=0.6.2; sys_platform == "linux"

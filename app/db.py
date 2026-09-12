@@ -129,7 +129,7 @@ def _sqlcipher_module():
     except ImportError as exc:
         raise RuntimeError(
             "DB_ENCRYPTION_KEY is set but sqlcipher3 is not installed. "
-            "Run: pip install sqlcipher3-binary"
+            "Run: pip install sqlcipher3"
         ) from exc
     return sqlcipher
 
