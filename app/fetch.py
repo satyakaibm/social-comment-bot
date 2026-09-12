@@ -141,7 +141,7 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
                     if existing_reply:
                         print(
                             f"Skipped YouTube comment {comment_id} before database insert: "
-                            "Hindolroad already replied."
+                            "this channel already replied."
                         )
                         # Without this, the comment never becomes known to
                         # comment_exists() and find_own_reply() -- an API
