@@ -99,9 +99,26 @@ DASHBOARD_PASSWORD_HASH = (
     else os.environ.get("DASHBOARD_PASSWORD_HASH", "")
 )
 DASHBOARD_SESSION_HOURS = int(os.environ.get("DASHBOARD_SESSION_HOURS", "12"))
-DASHBOARD_COOKIE_SECURE = os.environ.get(
-    "DASHBOARD_COOKIE_SECURE", "false"
+# Local HTTP only. Production (HTTPS / Cloudflare Tunnel) must leave this unset
+# so the process refuses a default session secret, insecure cookies, or an
+# unencrypted comments database.
+DASHBOARD_INSECURE_LOCAL = os.environ.get(
+    "DASHBOARD_INSECURE_LOCAL", "false"
 ).lower() in ("1", "true", "yes", "on")
+_cookie_secure = os.environ.get("DASHBOARD_COOKIE_SECURE")
+if _cookie_secure is None or not _cookie_secure.strip():
+    DASHBOARD_COOKIE_SECURE = not DASHBOARD_INSECURE_LOCAL
+else:
+    DASHBOARD_COOKIE_SECURE = _cookie_secure.lower() in ("1", "true", "yes", "on")
+# Passphrase for SQLCipher. Empty keeps the legacy plaintext SQLite file
+# (tests and DASHBOARD_INSECURE_LOCAL). Serving without INSECURE_LOCAL requires
+# at least 32 characters; the first open encrypts an existing plaintext DB.
+DB_ENCRYPTION_KEY = os.environ.get("DB_ENCRYPTION_KEY", "").strip()
+
+_WEAK_DASHBOARD_SECRETS = frozenset(
+    {"", "localhost-dashboard", "change-this-local-secret"}
+)
+_MIN_SECRET_LENGTH = 32
 
 # Optional: comma-separated Facebook post IDs / Instagram media IDs to
 # restrict polling to. Leave blank to poll all posts/media on the account.
@@ -354,4 +371,40 @@ def require(*names: str) -> None:
         raise RuntimeError(
             f"Missing required config: {', '.join(missing)}. Set them in .env "
             "(see .env.example)."
+        )
+
+
+def dashboard_secret_is_weak(secret: str | None = None) -> bool:
+    value = DASHBOARD_SECRET if secret is None else secret
+    return value in _WEAK_DASHBOARD_SECRETS or len(value) < _MIN_SECRET_LENGTH
+
+
+def validate_runtime_security() -> None:
+    """Refuse to serve on the public HTTPS host with local-dev defaults.
+
+    Tests and `http://127.0.0.1` can set DASHBOARD_INSECURE_LOCAL=true.
+    bot.hindolroad.download must not.
+    """
+    if DASHBOARD_INSECURE_LOCAL:
+        return
+    errors = []
+    if dashboard_secret_is_weak():
+        errors.append(
+            "Set DASHBOARD_SECRET to a random value of at least 32 characters "
+            "(not localhost-dashboard or change-this-local-secret)."
+        )
+    if not DASHBOARD_COOKIE_SECURE:
+        errors.append(
+            "Set DASHBOARD_COOKIE_SECURE=true (required for HTTPS, including "
+            "https://bot.hindolroad.download/)."
+        )
+    if len(DB_ENCRYPTION_KEY) < _MIN_SECRET_LENGTH:
+        errors.append(
+            "Set DB_ENCRYPTION_KEY to a random value of at least 32 characters "
+            "so data/comments.db is encrypted at rest."
+        )
+    if errors:
+        raise RuntimeError(
+            "Refusing to start with insecure dashboard defaults:\n- "
+            + "\n- ".join(errors)
         )

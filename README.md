@@ -184,11 +184,17 @@ The dashboard and browser health page require a login. Meta webhooks and `/api/h
 ./.venv/bin/python scripts/generate_dashboard_password.py
 ```
 
-Set `DASHBOARD_USERNAME` and the generated `DASHBOARD_PASSWORD_HASH_B64` in `.env`, and use a strong random `DASHBOARD_SECRET` for session signing. The Base64 encoding keeps Docker Compose from interpreting characters inside the password hash. Set `DASHBOARD_COOKIE_SECURE=true` when users access the dashboard through HTTPS. Login sessions expire after `DASHBOARD_SESSION_HOURS` (12 by default), and repeated invalid attempts are temporarily rate limited.
+Set `DASHBOARD_USERNAME` and the generated `DASHBOARD_PASSWORD_HASH_B64` in `.env`, and use a strong random `DASHBOARD_SECRET` of at least 32 characters for session signing. The Base64 encoding keeps Docker Compose from interpreting characters inside the password hash. On https://bot.hindolroad.download/ the process will not start with the example secret, with `DASHBOARD_COOKIE_SECURE=false`, or without `DB_ENCRYPTION_KEY`. Local HTTP can set `DASHBOARD_INSECURE_LOCAL=true` to keep the old defaults. Login sessions expire after `DASHBOARD_SESSION_HOURS` (12 by default), and repeated invalid attempts are temporarily rate limited.
 
 After signing in, use **My Profile → Reset password** to change the password. The replacement hash is stored in the SQLite database and persists through container restarts. Changing the password invalidates existing dashboard sessions.
 
-New portal users can follow **Create an account** from the login page. User IDs are unique regardless of letter case, and every account uses the same password-strength requirements.
+New portal users are added from **Settings → Add portal user** after you are signed in. The public `/signup` page is not open. User IDs are unique regardless of letter case, and every account uses the same password-strength requirements.
+
+Set `DB_ENCRYPTION_KEY` to a random 32+ character value in `.env` (same file Docker and host cron already load). The first process that opens `data/comments.db` encrypts a legacy plaintext file in place. A copy of the database without that key is unreadable. Generate a key with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
 
 The avatar menu links to **My Profile**, where each user can maintain a display name and email address, review account dates, and open the password reset form. Email addresses are unique across portal accounts and are matched without regard to letter case.
 
@@ -275,3 +281,4 @@ Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]u
 - Instagram polling is capped so the first run does not draft replies for every historical comment.
 - `prune` clears handled dashboard comment text (`posted`, `already_replied`, `rejected`) and processed webhook payloads. `seen_comments` keeps each `comment_id` plus `created_at` / `updated_at` / `status`, so polling will not re-reply and the 1 Hour–365 Day activity counts still work. Use `import-stats` to restore those timestamps from a `comments.db.bak` file.
 - Do not commit `.env` or `data/comments.db`.
+- Production serving refuses to start without a 32+ character `DASHBOARD_SECRET`, `DASHBOARD_COOKIE_SECURE=true` (the default unless `DASHBOARD_INSECURE_LOCAL` is set), and `DB_ENCRYPTION_KEY`.

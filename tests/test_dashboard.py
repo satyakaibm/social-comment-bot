@@ -99,6 +99,7 @@ class DashboardTests(unittest.TestCase):
         page = self.client.get("/settings")
         self.assertEqual(page.status_code, 200)
         self.assertIn(b'href="/profile/password"', page.data)
+        self.assertIn(b'href="/signup"', page.data)
         self.assertIn(b'href="/privacy"', page.data)
         self.assertIn(b'href="/terms"', page.data)
         self.assertIn(b'href="/datadeletion"', page.data)
@@ -359,7 +360,7 @@ class DashboardTests(unittest.TestCase):
 
         login_page = client.get("/login?next=/?status=posted")
         self.assertIn(b"Welcome back", login_page.data)
-        self.assertIn(b"Create an account", login_page.data)
+        self.assertNotIn(b"Create an account", login_page.data)
         with client.session_transaction() as login_session:
             csrf_token = login_session["csrf_token"]
         invalid = client.post(
@@ -386,17 +387,21 @@ class DashboardTests(unittest.TestCase):
 
     def test_signup_creates_unique_user_and_redirects_to_login(self):
         client = self.app.test_client()
-        signup_page = client.get("/signup")
+        unauthenticated = client.get("/signup")
+        self.assertEqual(unauthenticated.status_code, 302)
+        self.assertIn("/login", unauthenticated.headers["Location"])
+
+        signup_page = self.client.get("/signup")
         self.assertEqual(signup_page.status_code, 200)
-        self.assertIn(b"Create account", signup_page.data)
+        self.assertIn(b"Add portal user", signup_page.data)
         self.assertIn(b'minlength="8"', signup_page.data)
         self.assertIn(
             b"one uppercase letter, one number, and one special character",
             signup_page.data,
         )
-        with client.session_transaction() as signup_session:
+        with self.client.session_transaction() as signup_session:
             token = signup_session["csrf_token"]
-        created = client.post(
+        created = self.client.post(
             "/signup",
             data={
                 "username": "new.user",
@@ -406,9 +411,9 @@ class DashboardTests(unittest.TestCase):
             },
         )
         self.assertEqual(created.status_code, 302)
-        self.assertIn("/login?registered=1", created.headers["Location"])
+        self.assertIn("/settings?user_created=1", created.headers["Location"])
 
-        duplicate = client.post(
+        duplicate = self.client.post(
             "/signup",
             data={
                 "username": "NEW.USER",
@@ -420,11 +425,11 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(duplicate.status_code, 409)
         self.assertIn(b"already registered", duplicate.data)
 
-        login_page = client.get("/login?registered=1")
-        self.assertIn(b"Account created", login_page.data)
-        with client.session_transaction() as login_session:
+        login_client = self.app.test_client()
+        login_page = login_client.get("/login")
+        with login_client.session_transaction() as login_session:
             login_token = login_session["csrf_token"]
-        logged_in = client.post(
+        logged_in = login_client.post(
             "/login",
             data={
                 "username": "new.user",
@@ -433,7 +438,7 @@ class DashboardTests(unittest.TestCase):
             },
         )
         self.assertEqual(logged_in.status_code, 302)
-        self.assertEqual(client.get("/").status_code, 200)
+        self.assertEqual(login_client.get("/").status_code, 200)
 
     def test_machine_health_and_meta_webhook_remain_public(self):
         client = self.app.test_client()
@@ -567,7 +572,9 @@ class DashboardTests(unittest.TestCase):
     def test_serving_app_starts_webhook_worker(self):
         with patch.object(config, "META_APP_SECRET", "secret"), \
              patch.object(config, "META_WEBHOOK_VERIFY_TOKEN", "verify"), \
-             patch.object(dashboard, "start_event_worker") as start:
+             patch.object(config, "DASHBOARD_INSECURE_LOCAL", True), \
+             patch.object(dashboard, "start_event_worker") as start, \
+             patch.object(dashboard, "start_video_stats_worker"):
             serving_app = dashboard.create_serving_app()
         start.assert_called_once_with(serving_app)
 
