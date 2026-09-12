@@ -1,22 +1,17 @@
-// Build+test runs on every push. Deploying to the production VM
-// (social-comment-bot on GCP) additionally requires a manual approval and
-// only ever runs for the master branch. Mirrors content_my_trip's Jenkinsfile
-// conventions (agent any on the controller's own Docker Desktop daemon,
-// githubPush() trigger, env.GIT_BRANCH-based branch check rather than
-// `when { branch }` since this is a plain Pipeline job, not multibranch).
+// Build+test and deploy must be started manually from the Jenkins console --
+// no SCM/webhook trigger fires this job on a GitHub push or merge, and no
+// approval prompt sits between a successful build and deploying to the
+// production VM (social-comment-bot on GCP); starting the job manually is
+// the approval. Deploy still only ever runs for the master branch. agent any
+// on the controller's own Docker Desktop daemon and an env.GIT_BRANCH-based
+// branch check rather than `when { branch }` mirror content_my_trip's
+// Jenkinsfile conventions; this is a plain Pipeline job, not multibranch.
 pipeline {
     agent any
 
     options {
         disableConcurrentBuilds()
         timestamps()
-    }
-
-    triggers {
-        // Same caveat as content_my_trip: only fires while a tunnel exposes
-        // this controller at <public-url>/github-webhook/ and the repo's
-        // webhook Payload URL is kept pointed at it.
-        githubPush()
     }
 
     environment {
@@ -55,23 +50,6 @@ pipeline {
                 // -d --build` after `git pull`), so there's no image
                 // registry in this project's deploy path to push to.
                 sh 'docker build -t social-comment-bot:$GIT_SHA .'
-            }
-        }
-
-        stage('Await deploy approval') {
-            when {
-                expression { env.GIT_BRANCH?.endsWith('/master') || env.GIT_BRANCH == 'master' }
-            }
-            steps {
-                // Scoped to just this stage rather than a pipeline-wide
-                // `options { timeout(...) }` -- input can legitimately sit
-                // pending for a while (approver isn't always watching), and
-                // a global timeout would also count that idle wait against
-                // the Test/Build stages above. Auto-aborts after an hour so
-                // a forgotten approval doesn't hold a queued build forever.
-                timeout(time: 60, unit: 'MINUTES') {
-                    input message: "Deploy ${env.GIT_SHA.take(7)} to production (social-comment-bot VM)?"
-                }
             }
         }
 
