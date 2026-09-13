@@ -87,6 +87,13 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"What time is aarti?", pending.data)
         self.assertIn(b"pending review", pending.data)
 
+    def test_authenticated_page_reuses_one_encrypted_connection(self):
+        with patch.object(db, "open_connection", wraps=db.open_connection) as open_db:
+            page = self.client.get("/")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual(open_db.call_count, 1)
+
     def test_faq_page_shows_count_guide(self):
         page = self.client.get("/faq")
         self.assertEqual(page.status_code, 200)

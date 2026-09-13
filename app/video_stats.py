@@ -20,7 +20,9 @@ def _refresh_youtube(conn) -> int:
         try:
             youtube = youtube_client.get_client(page_key)
             titles = {row["video_id"]: row["video_title"] for row in rows}
-            stats = youtube_client.get_video_stats(youtube, titles.keys())
+            stats = youtube_client.get_video_stats(
+                youtube, titles.keys(), quota_conn=conn
+            )
         except Exception as exc:
             print(
                 f"video_stats: YouTube stats fetch failed for page '{page_key}': {exc}",
@@ -29,17 +31,17 @@ def _refresh_youtube(conn) -> int:
             continue
         for video_id, video_title in titles.items():
             counts = stats.get(video_id, {})
-            with db.connect() as write_conn:
-                db.upsert_video_stats(
-                    write_conn,
-                    platform="youtube",
-                    video_id=video_id,
-                    page_key=page_key,
-                    video_title=video_title or "",
-                    like_count=counts.get("like_count"),
-                    share_count=None,
-                    comment_count=counts.get("comment_count"),
-                )
+            db.upsert_video_stats(
+                conn,
+                platform="youtube",
+                video_id=video_id,
+                page_key=page_key,
+                video_title=video_title or "",
+                like_count=counts.get("like_count"),
+                share_count=None,
+                comment_count=counts.get("comment_count"),
+            )
+            conn.commit()
             updated += 1
     return updated
 
@@ -52,7 +54,7 @@ def _refresh_facebook(conn) -> int:
     for row in containers:
         try:
             stats = meta_client.get_facebook_post_stats(
-                row["video_id"], page_key=row["page_key"]
+                row["video_id"], page_key=row["page_key"], quota_conn=conn
             )
         except Exception as exc:
             print(
@@ -61,17 +63,17 @@ def _refresh_facebook(conn) -> int:
                 flush=True,
             )
             continue
-        with db.connect() as write_conn:
-            db.upsert_video_stats(
-                write_conn,
-                platform="facebook",
-                video_id=row["video_id"],
-                page_key=row["page_key"],
-                video_title=row.get("video_title") or "",
-                like_count=stats.get("like_count"),
-                share_count=stats.get("share_count"),
-                comment_count=stats.get("comment_count"),
-            )
+        db.upsert_video_stats(
+            conn,
+            platform="facebook",
+            video_id=row["video_id"],
+            page_key=row["page_key"],
+            video_title=row.get("video_title") or "",
+            like_count=stats.get("like_count"),
+            share_count=stats.get("share_count"),
+            comment_count=stats.get("comment_count"),
+        )
+        conn.commit()
         updated += 1
     return updated
 
@@ -84,7 +86,7 @@ def _refresh_instagram(conn) -> int:
     for row in containers:
         try:
             stats = meta_client.get_instagram_media_stats(
-                row["video_id"], page_key=row["page_key"]
+                row["video_id"], page_key=row["page_key"], quota_conn=conn
             )
         except Exception as exc:
             print(
@@ -93,17 +95,17 @@ def _refresh_instagram(conn) -> int:
                 flush=True,
             )
             continue
-        with db.connect() as write_conn:
-            db.upsert_video_stats(
-                write_conn,
-                platform="instagram",
-                video_id=row["video_id"],
-                page_key=row["page_key"],
-                video_title=row.get("video_title") or "",
-                like_count=stats.get("like_count"),
-                share_count=None,
-                comment_count=stats.get("comment_count"),
-            )
+        db.upsert_video_stats(
+            conn,
+            platform="instagram",
+            video_id=row["video_id"],
+            page_key=row["page_key"],
+            video_title=row.get("video_title") or "",
+            like_count=stats.get("like_count"),
+            share_count=None,
+            comment_count=stats.get("comment_count"),
+        )
+        conn.commit()
         updated += 1
     return updated
 
@@ -117,12 +119,10 @@ def refresh_all() -> int:
     -- or a day's Meta rate limit -- re-fetching stats for posts nobody is
     currently viewing on the dashboard.
     """
-    # This connection is read-only (distinct_containers) -- each stats write
-    # below opens its own short-lived connection instead of reusing this
-    # one. Meta's graph_get() also writes to this same database (quota
-    # tracking) on every API call; if this connection held a write open
-    # across the Facebook/Instagram loops' many sequential API calls, that
-    # nested quota write would deadlock against it ("database is locked").
+    # Opening an encrypted SQLCipher database performs expensive key
+    # derivation. Keep one connection for the cycle and commit every short
+    # quota/stat update so request-serving processes are never locked across
+    # a remote API call.
     with db.connect() as conn:
         return (
             _refresh_youtube(conn)

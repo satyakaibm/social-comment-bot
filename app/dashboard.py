@@ -4,11 +4,12 @@ import re
 import secrets
 import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
-from flask import Flask, flash, redirect, render_template, request, session, url_for
+from flask import Flask, flash, g, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.serving import make_server
 
@@ -243,9 +244,27 @@ def create_app() -> Flask:
             legacy_auth["password_hash"] if legacy_auth else config.DASHBOARD_PASSWORD_HASH,
         )
 
+    @contextmanager
+    def request_db():
+        """Reuse the expensive SQLCipher connection for the whole request."""
+        if "dashboard_db" not in g:
+            g.dashboard_db = db.open_connection()
+        try:
+            yield g.dashboard_db
+            g.dashboard_db.commit()
+        except Exception:
+            g.dashboard_db.rollback()
+            raise
+
+    @app.teardown_appcontext
+    def close_request_db(_error=None):
+        conn = g.pop("dashboard_db", None)
+        if conn is not None:
+            conn.close()
+
     def dashboard_auth(username: str | None = None):
         username = username or session.get("dashboard_username", "")
-        with db.connect() as conn:
+        with request_db() as conn:
             return db.get_dashboard_user(conn, username) if username else None
 
     @app.route("/favicon.ico")
@@ -351,7 +370,7 @@ def create_app() -> Flask:
                 return render_template(
                     "signup.html", error="Passwords do not match.", username=username
                 ), 400
-            with db.connect() as conn:
+            with request_db() as conn:
                 created = db.create_dashboard_user(
                     conn, username, generate_password_hash(password)
                 )
@@ -390,7 +409,7 @@ def create_app() -> Flask:
                 return render_template(
                     "reset_password.html", error="New passwords do not match."
                 ), 400
-            with db.connect() as conn:
+            with request_db() as conn:
                 db.update_dashboard_user_password(
                     conn, session["dashboard_username"], generate_password_hash(new)
                 )
@@ -424,7 +443,7 @@ def create_app() -> Flask:
                 return render_template(
                     "profile.html", user=submitted_user, error="Enter a valid email address."
                 ), 400
-            with db.connect() as conn:
+            with request_db() as conn:
                 if db.dashboard_email_registered(
                     conn, email, excluding_username=session["dashboard_username"]
                 ):
@@ -467,7 +486,7 @@ def create_app() -> Flask:
     def index():
         status, platform, page_key, query, page, sort_order = _filters()
         offset = (page - 1) * PAGE_SIZE
-        with db.connect() as conn:
+        with request_db() as conn:
             counts = db.count_by_status(conn, platform=platform or None, page_key=page_key or None)
             activity = db.activity_summary(
                 conn, platform=platform or None, page_key=page_key or None
@@ -523,7 +542,7 @@ def create_app() -> Flask:
 
     @app.post("/comments/<comment_id>/publish")
     def publish(comment_id: str):
-        with db.connect() as conn:
+        with request_db() as conn:
             current = db.get_comment(conn, comment_id)
         if current is None:
             flash("Comment not found.", "error")
@@ -532,12 +551,12 @@ def create_app() -> Flask:
             flash("Only failed comments can be retried. New replies post automatically.", "error")
             return redirect(_index_url())
         draft = request.form.get("draft_reply", "").strip() or None
-        with db.connect() as conn:
+        with request_db() as conn:
             db.update_status(
                 conn, comment_id, "approved", draft_reply=draft, error=""
             )
         posted = post_approved(comment_id=comment_id, include_pending=True, limit=1)
-        with db.connect() as conn:
+        with request_db() as conn:
             updated = db.get_comment(conn, comment_id)
         if posted:
             flash("Reply posted.", "ok")
@@ -561,7 +580,7 @@ def create_app() -> Flask:
         platforms = (
             (selected_platform,) if selected_platform in PLATFORMS else PLATFORMS
         )
-        with db.connect() as conn:
+        with request_db() as conn:
             failed_count = sum(
                 db.count_by_status(conn, platform=name).get("failed", 0)
                 for name in platforms
@@ -614,7 +633,7 @@ def create_app() -> Flask:
         window = request.args.get("window", "").strip()
         if window not in db.VIDEO_STATS_WINDOWS:
             window = ""
-        with db.connect() as conn:
+        with request_db() as conn:
             video_stats = [
                 _video_stats_row(row)
                 for row in db.list_video_stats(

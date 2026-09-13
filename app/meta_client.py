@@ -124,7 +124,7 @@ def _quota_platform(path: str, page_key: str) -> str | None:
     return platform if page_key == config.DEFAULT_PAGE_KEY else f"{platform}:{page_key}"
 
 
-def _record_meta_usage(path: str, response, page_key: str) -> None:
+def _record_meta_usage(path: str, response, page_key: str, *, quota_conn=None) -> None:
     platform = _quota_platform(path, page_key)
     if not platform:
         return
@@ -145,7 +145,9 @@ def _record_meta_usage(path: str, response, page_key: str) -> None:
         )
     except (TypeError, ValueError, json.JSONDecodeError):
         return
-    db.set_quota_usage(platform, "rolling", min(100, used), 100)
+    db.set_quota_usage(
+        platform, "rolling", min(100, used), 100, conn=quota_conn
+    )
 
 
 def get_page_access_token(page_key: str = config.DEFAULT_PAGE_KEY) -> str:
@@ -221,14 +223,16 @@ def get_user_access_token(page_key: str = config.DEFAULT_PAGE_KEY) -> str:
     return _user_token_cache[page_key]
 
 
-def graph_get(path: str, *, page_key: str = config.DEFAULT_PAGE_KEY, **params) -> dict:
+def graph_get(
+    path: str, *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None, **params
+) -> dict:
     params["access_token"] = get_page_access_token(page_key)
     for attempt in range(GET_RETRIES):
         try:
             resp = _http_session.get(
                 _url(path), params=params, timeout=READ_TIMEOUT_SECONDS
             )
-            _record_meta_usage(path, resp, page_key)
+            _record_meta_usage(path, resp, page_key, quota_conn=quota_conn)
             data = resp.json()
             _raise_if_error(path, data)
             return data
@@ -461,17 +465,19 @@ def get_facebook_post_message(post_id: str, *, page_key: str = config.DEFAULT_PA
 
 
 def get_facebook_post_stats(
-    post_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY
+    post_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
 ) -> dict:
     """Return a Facebook post's like/comment/share counts.
 
     Graph API omits the "shares" field entirely on a post with zero shares,
     so its absence here means zero shares, not unknown.
     """
+    kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
     data = graph_get(
         post_id,
         fields="likes.summary(true).limit(0),comments.summary(true).limit(0),shares",
         page_key=page_key,
+        **kwargs,
     )
     return {
         "like_count": data.get("likes", {}).get("summary", {}).get("total_count"),
@@ -522,14 +528,20 @@ def get_instagram_media_caption(media_id: str, *, page_key: str = config.DEFAULT
 
 
 def get_instagram_media_stats(
-    media_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY
+    media_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
 ) -> dict:
     """Return an Instagram media's like/comment counts.
 
     Instagram's Graph API has no public share-count field, so callers only
     get likes and comments back.
     """
-    data = graph_get(media_id, fields="like_count,comments_count", page_key=page_key)
+    kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
+    data = graph_get(
+        media_id,
+        fields="like_count,comments_count",
+        page_key=page_key,
+        **kwargs,
+    )
     return {
         "like_count": data.get("like_count"),
         "comment_count": data.get("comments_count"),

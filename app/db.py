@@ -298,8 +298,28 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def add_quota_usage(platform: str, period_key: str, amount: int, limit_value: int) -> None:
+def add_quota_usage(
+    platform: str,
+    period_key: str,
+    amount: int,
+    limit_value: int,
+    *,
+    conn=None,
+) -> None:
     """Add locally observed API usage without coupling callers to a DB connection."""
+    if conn is not None:
+        conn.execute(
+            """INSERT INTO api_quota_usage
+                   (platform, period_key, used, limit_value, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(platform, period_key) DO UPDATE SET
+                   used = used + excluded.used,
+                   limit_value = excluded.limit_value,
+                   updated_at = excluded.updated_at""",
+            (platform, period_key, amount, limit_value, now()),
+        )
+        conn.commit()
+        return
     with connect() as conn:
         conn.execute(
             """INSERT INTO api_quota_usage
@@ -313,8 +333,28 @@ def add_quota_usage(platform: str, period_key: str, amount: int, limit_value: in
         )
 
 
-def set_quota_usage(platform: str, period_key: str, used: int, limit_value: int) -> None:
+def set_quota_usage(
+    platform: str,
+    period_key: str,
+    used: int,
+    limit_value: int,
+    *,
+    conn=None,
+) -> None:
     """Store the latest provider-reported rolling usage percentage."""
+    if conn is not None:
+        conn.execute(
+            """INSERT INTO api_quota_usage
+                   (platform, period_key, used, limit_value, updated_at)
+               VALUES (?, ?, ?, ?, ?)
+               ON CONFLICT(platform, period_key) DO UPDATE SET
+                   used = excluded.used,
+                   limit_value = excluded.limit_value,
+                   updated_at = excluded.updated_at""",
+            (platform, period_key, used, limit_value, now()),
+        )
+        conn.commit()
+        return
     with connect() as conn:
         conn.execute(
             """INSERT INTO api_quota_usage
