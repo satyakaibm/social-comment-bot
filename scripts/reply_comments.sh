@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One cron tick for YouTube, which does not provide comment webhooks.
-# Meta keeps polling until META_WEBHOOK_ENABLED=true after webhook activation.
+# One legacy polling tick for Meta when webhooks are disabled. YouTube runs
+# inside the dedicated youtube-comments container.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -27,9 +27,6 @@ exec >>"$LOG_FILE" 2>&1
 
 required_limits=(
   COMMENT_MAX_AGE_DAYS
-  YOUTUBE_VIDEO_LIMIT
-  YOUTUBE_COMMENT_LIMIT
-  YOUTUBE_PUBLISH_LIMIT
   PUBLISH_ERROR_LIMIT
   FACEBOOK_POST_LIMIT
   FACEBOOK_COMMENT_LIMIT
@@ -97,18 +94,10 @@ echo "==== Polling cycle started: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
 echo "Config: $POLLING_CONFIG_FILE"
 echo "Log: $LOG_FILE"
 echo "Comment age limit: ${COMMENT_MAX_AGE_DAYS} days."
-echo "Limits: YouTube ${YOUTUBE_VIDEO_LIMIT} videos/${YOUTUBE_COMMENT_LIMIT} comments/${YOUTUBE_PUBLISH_LIMIT} publishes; Facebook ${FACEBOOK_POST_LIMIT} posts/${FACEBOOK_COMMENT_LIMIT} comments/${FACEBOOK_PUBLISH_LIMIT} publishes; Instagram ${INSTAGRAM_MEDIA_LIMIT} media/${INSTAGRAM_COMMENT_LIMIT} comments/${INSTAGRAM_PUBLISH_LIMIT} publishes; stop after ${PUBLISH_ERROR_LIMIT} consecutive publish errors."
+echo "Limits: Facebook ${FACEBOOK_POST_LIMIT} posts/${FACEBOOK_COMMENT_LIMIT} comments/${FACEBOOK_PUBLISH_LIMIT} publishes; Instagram ${INSTAGRAM_MEDIA_LIMIT} media/${INSTAGRAM_COMMENT_LIMIT} comments/${INSTAGRAM_PUBLISH_LIMIT} publishes; stop after ${PUBLISH_ERROR_LIMIT} consecutive publish errors."
 failures=0
-youtube_poll_ok=false
 
-  echo "[$(date +"%H:%M:%S")] YouTube: polling latest comments..."
-  if run_cli poll; then
-    youtube_poll_ok=true
-    echo "[$(date +"%H:%M:%S")] YouTube: polling completed."
-  else
-    failures=$((failures + 1))
-    echo "[$(date +"%H:%M:%S")] YouTube: polling failed; publishing skipped for this cycle."
-  fi
+  echo "[$(date +"%H:%M:%S")] YouTube: handled by the dedicated youtube-comments container."
 
   if [[ "$meta_webhook_enabled" != "true" ]]; then
     echo "[$(date +"%H:%M:%S")] Facebook: polling latest comments..."
@@ -144,16 +133,6 @@ youtube_poll_ok=false
     fi
   else
     echo "[$(date +"%H:%M:%S")] Meta: polling skipped because webhooks are enabled."
-  fi
-
-  if [[ "$youtube_poll_ok" == "true" ]]; then
-    echo "[$(date +"%H:%M:%S")] YouTube: publishing up to $YOUTUBE_PUBLISH_LIMIT pending replies..."
-    if run_cli post --platform youtube --pending --retry-failed --limit "$YOUTUBE_PUBLISH_LIMIT"; then
-      echo "[$(date +"%H:%M:%S")] YouTube: publishing completed."
-    else
-      failures=$((failures + 1))
-      echo "[$(date +"%H:%M:%S")] YouTube: publishing failed."
-    fi
   fi
 
 echo "==== Polling cycle finished: $(date +"%Y-%m-%d %H:%M:%S %Z"); failed steps: $failures ===="

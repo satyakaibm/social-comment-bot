@@ -17,6 +17,11 @@ YOUTUBE_OAUTH_CLIENT_SECRET = os.environ.get("YOUTUBE_OAUTH_CLIENT_SECRET", "")
 YOUTUBE_REFRESH_TOKEN = os.environ.get("YOUTUBE_REFRESH_TOKEN", "")
 
 POLL_INTERVAL_SECONDS = int(os.environ.get("POLL_INTERVAL_SECONDS", "300"))
+YOUTUBE_POLL_INTERVAL_SECONDS = int(
+    os.environ.get("YOUTUBE_POLL_INTERVAL_SECONDS", "3600")
+)
+YOUTUBE_PUBLISH_LIMIT = int(os.environ.get("YOUTUBE_PUBLISH_LIMIT", "50"))
+POLLING_LOG_FILE = os.environ.get("POLLING_LOG_FILE", "data/polling.log")
 YOUTUBE_VIDEO_IDS = [
     v.strip() for v in os.environ.get("YOUTUBE_VIDEO_IDS", "").split(",") if v.strip()
 ]
