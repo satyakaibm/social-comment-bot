@@ -31,3 +31,27 @@ services:
     cap_drop:
       - ALL
     stop_grace_period: 30s
+
+  video-stats:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      REPLY_EXAMPLES_DIR: /app/reply_examples
+    command: ["nice", "-n", "15", "python", "-m", "app.video_stats"]
+    volumes:
+      - ./data:/app/data
+      - ./reply_examples:/app/reply_examples:ro
+    # Stats are eventually consistent. Reserve most of the small VM's CPU
+    # for Gunicorn and the webhook worker during a refresh cycle.
+    cpus: "0.35"
+    mem_limit: 256m
+    group_add:
+      - "${HOST_DATA_GID:-1000}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s

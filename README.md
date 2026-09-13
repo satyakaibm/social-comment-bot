@@ -34,6 +34,9 @@ Open http://localhost:9001. The dashboard and Meta webhook receiver run in the
 background; you no longer need to run `scripts/dashboard.sh`. Stop any existing
 manual dashboard before starting the container because they use the same port.
 Keep one dashboard container/process running to own the webhook queue.
+Video statistics are refreshed by the separate `video-stats` container, keeping
+remote API and database work out of Gunicorn's request-serving process. The
+worker is CPU-limited because its cached statistics are not latency-sensitive.
 
 The container restarts automatically when Docker starts, unless you explicitly
 stop it. Enable **Start Docker Desktop when you sign in** in Docker Desktop
@@ -53,14 +56,14 @@ the image. `DASHBOARD_PORT` in `.env` can change the host port (default 9001).
 
 ```bash
 docker compose ps                         # Status and health
-docker compose logs -f --tail=100 dashboard # Follow logs
+docker compose logs -f --tail=100 dashboard video-stats # Follow logs
 docker compose up -d --build              # Apply code or .env changes
 docker compose stop                      # Stop until explicitly started again
 docker compose up -d                      # Start again
 ```
 
 The existing polling cron job still runs on the host and needs the Python setup
-below. Docker runs the dashboard/webhook service only.
+below. Docker runs the dashboard/webhook service and the video-statistics worker.
 
 ### Local Python setup
 

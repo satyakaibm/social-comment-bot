@@ -1,3 +1,4 @@
+import signal
 import threading
 
 from app import config, db, meta_client, youtube_client
@@ -144,7 +145,30 @@ def worker_loop(stop: threading.Event) -> None:
 
 
 def start_worker(app) -> threading.Event:
+    """Start an in-process worker for non-Compose callers."""
     stop = threading.Event()
     threading.Thread(target=worker_loop, args=(stop,), daemon=True, name="video-stats-worker").start()
     app.extensions["video_stats_worker_stop"] = stop
     return stop
+
+
+def run() -> None:
+    """Run the refresh loop as the dedicated Compose worker process."""
+    stop = threading.Event()
+
+    def request_stop(_signum, _frame) -> None:
+        stop.set()
+
+    signal.signal(signal.SIGTERM, request_stop)
+    signal.signal(signal.SIGINT, request_stop)
+    print(
+        "Video stats worker started; refresh interval "
+        f"{config.VIDEO_STATS_REFRESH_MINUTES} minute(s).",
+        flush=True,
+    )
+    worker_loop(stop)
+    print("Video stats worker stopped.", flush=True)
+
+
+if __name__ == "__main__":
+    run()
