@@ -1,5 +1,6 @@
 locals {
   required_apis = [
+    "cloudresourcemanager.googleapis.com",
     "compute.googleapis.com",
     "oslogin.googleapis.com",
     "iam.googleapis.com",
