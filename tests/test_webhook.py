@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app import config, db, webhook
+from tests.helpers import make_page_config
 
 
 class WebhookTests(unittest.TestCase):
@@ -17,6 +18,23 @@ class WebhookTests(unittest.TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
         db.init_db()
+        # Webhook routing depends on how many pages are configured. Pin a
+        # single page so these tests do not fail against a developer .env
+        # (or Jenkins agent env) that already has PAGE_KEY_2.
+        page = make_page_config(
+            key="hindolroad",
+            label="Hindolroad",
+            facebook_page_id="page-1",
+            instagram_user_id="ig-1",
+        )
+        for p in (
+            patch.object(config, "PAGES", {"hindolroad": page}),
+            patch.object(config, "DEFAULT_PAGE_KEY", "hindolroad"),
+            patch.object(config, "PAGES_BY_FACEBOOK_ID", {"page-1": "hindolroad"}),
+            patch.object(config, "PAGES_BY_INSTAGRAM_ID", {"ig-1": "hindolroad"}),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
 
     def test_verification_requires_matching_token(self):
         app = webhook.create_app(start_worker=False)
