@@ -63,3 +63,32 @@ services:
     cap_drop:
       - ALL
     stop_grace_period: 30s
+
+  youtube-comments:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+      - config/polling.env
+    environment:
+      REPLY_EXAMPLES_DIR: /app/reply_examples
+    command: ["nice", "-n", "10", "python", "-m", "app.youtube_worker"]
+    healthcheck:
+      # This is a scheduler process with no HTTP listener. Compose restarts it
+      # if the Python process exits unexpectedly.
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - ./data:/app/data
+      - ./reply_examples:/app/reply_examples:ro
+    group_add:
+      - "${HOST_DATA_GID:-1000}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    stop_grace_period: 30s

@@ -45,10 +45,11 @@ resource "google_compute_firewall" "allow_iap_ssh" {
 }
 
 resource "google_compute_instance" "bot" {
-  name         = var.instance_name
-  machine_type = var.machine_type
-  zone         = var.zone
-  tags         = [var.instance_name]
+  name                      = var.instance_name
+  machine_type              = var.machine_type
+  zone                      = var.zone
+  tags                      = [var.instance_name]
+  allow_stopping_for_update = true
 
   boot_disk {
     initialize_params {

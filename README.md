@@ -56,14 +56,15 @@ the image. `DASHBOARD_PORT` in `.env` can change the host port (default 9001).
 
 ```bash
 docker compose ps                         # Status and health
-docker compose logs -f --tail=100 dashboard video-stats # Follow logs
+docker compose logs -f --tail=100 dashboard video-stats youtube-comments # Follow logs
 docker compose up -d --build              # Apply code or .env changes
 docker compose stop                      # Stop until explicitly started again
 docker compose up -d                      # Start again
 ```
 
-The existing polling cron job still runs on the host and needs the Python setup
-below. Docker runs the dashboard/webhook service and the video-statistics worker.
+The existing Meta fallback polling cron job still runs on the host and needs the
+Python setup below. Docker runs the dashboard/webhook service, video-statistics
+worker, and YouTube comments worker.
 
 ### Local Python setup
 
@@ -201,13 +202,17 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 The avatar menu links to **My Profile**, where each user can maintain a display name and email address, review account dates, and open the password reset form. Email addresses are unique across portal accounts and are matched without regard to letter case.
 
-Run a polling and publishing cycle manually with `./scripts/reply_comments.sh`. Its output is appended to the `POLLING_LOG_FILE` configured in `config/polling.env` (`data/polling.log` by default); follow a running cycle with `tail -f data/polling.log`.
+YouTube polling and publishing run in the dedicated `youtube-comments` container. It runs immediately when started and then every `YOUTUBE_POLL_INTERVAL_SECONDS` (3600 by default). Each configured channel is processed independently, so a token or API failure for one channel does not block the others. Output is available through `docker compose logs youtube-comments` and is also appended to the `POLLING_LOG_FILE` configured in `config/polling.env` (`data/polling.log` by default).
 
-Each cron cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. The three `*_PUBLISH_LIMIT` values control how many replies can be attempted in that cycle. New work is processed first, then failed replies are retried after a remote duplicate check. `PUBLISH_ERROR_LIMIT` stops a platform after repeated consecutive API errors. The script prevents overlapping cron runs, and webhook and cron publishers atomically claim each comment before posting. Interrupted claims become retryable after ten minutes. The cron entry does not need limit variables:
+Trigger an immediate YouTube cycle with `docker compose restart youtube-comments`; the worker runs once on startup. The legacy `./scripts/reply_comments.sh` remains for Facebook and Instagram polling when Meta webhooks are disabled; it no longer handles YouTube.
+
+Each worker cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. The three `*_PUBLISH_LIMIT` values control how many replies can be attempted in that cycle. New work is processed first, then failed replies are retried after a remote duplicate check. `PUBLISH_ERROR_LIMIT` stops a platform after repeated consecutive API errors. Publishers atomically claim each comment before posting, and interrupted claims become retryable after ten minutes.
 
 In addition to the per-cycle `*_PUBLISH_LIMIT`, each platform has an optional daily cap: `YOUTUBE_DAILY_REPLY_LIMIT`, `FACEBOOK_DAILY_REPLY_LIMIT`, `INSTAGRAM_DAILY_REPLY_LIMIT`. Unlike the per-cycle limit, this counts replies actually posted across every cron cycle in the current IST calendar day; once it's reached, remaining comments for that platform are left untouched until the next day. Set one of these in `config/polling.env` (or `.env`) to cap daily reply volume; leave unset or `0` for no daily cap.
 
 Every new comment also costs one Gemini API call to draft its reply, billed on `GEMINI_API_KEY` regardless of platform. Set `GEMINI_DAILY_DRAFT_LIMIT` in `.env` to cap total drafts generated per IST calendar day across YouTube, Facebook, and Instagram combined. Once reached, cron polling leaves further new comments unseen for a later cycle (they're picked up again once the cap resets); a webhook-delivered comment can't be redelivered later, so it's saved with an empty draft and a note instead, for a manual reply from the dashboard. Leave unset or `0` for no cap.
+
+If Meta webhooks are disabled, the host cron entry for Facebook and Instagram does not need limit variables:
 
 ```cron
 0 * * * * /Users/satyakaran/Documents/D/myproject/social-comment-bot/scripts/reply_comments.sh 2>&1
