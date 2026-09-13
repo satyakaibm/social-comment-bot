@@ -570,8 +570,7 @@ class DashboardTests(unittest.TestCase):
         with patch.object(config, "META_APP_SECRET", "secret"), \
              patch.object(config, "META_WEBHOOK_VERIFY_TOKEN", "verify"), \
              patch.object(config, "DASHBOARD_INSECURE_LOCAL", True), \
-             patch.object(dashboard, "start_event_worker") as start, \
-             patch.object(dashboard, "start_video_stats_worker"):
+             patch.object(dashboard, "start_event_worker") as start:
             serving_app = dashboard.create_serving_app()
         start.assert_called_once_with(serving_app)
 

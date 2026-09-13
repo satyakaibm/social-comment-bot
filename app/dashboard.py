@@ -15,7 +15,6 @@ from werkzeug.serving import make_server
 from app import config, db
 from app.password_policy import PASSWORD_HINT, password_meets_policy
 from app.post import post_approved
-from app.video_stats import start_worker as start_video_stats_worker
 from app.webhook import register_meta_routes, start_event_worker
 
 STATUSES = (
@@ -677,7 +676,6 @@ def create_serving_app() -> Flask:
     )
     serving_app = create_app()
     start_event_worker(serving_app)
-    start_video_stats_worker(serving_app)
     return serving_app
 
 
@@ -703,7 +701,6 @@ def run() -> None:
     config.validate_runtime_security()
     config.require("META_APP_SECRET", "META_WEBHOOK_VERIFY_TOKEN")
     start_event_worker(app)
-    start_video_stats_worker(app)
     print(f"Admin dashboard: http://127.0.0.1:{port}/", flush=True)
     if host in ("127.0.0.1", "localhost"):
         print(f"Chrome: http://127.0.0.1:{port}/  or  http://localhost:{port}/", flush=True)
