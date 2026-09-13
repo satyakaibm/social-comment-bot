@@ -120,11 +120,13 @@ gcloud config set project project-e1de8eb7-3b06-4142-9b3 --quiet
 # reset) purely from timing: gunicorn/the app were still finishing their
 # cold start on a freshly recreated container, well after the deploy step
 # itself had already succeeded. Retrying for up to a minute absorbs that
-# startup variance while still failing the build (via the final `[ "$ok" =
-# 1 ]`) if the app genuinely never comes up.
+# startup variance while still failing the build if the app genuinely never
+# comes up. The loop deliberately does not use a shell variable: this command
+# crosses the Jenkins shell, the Cloud SDK container shell, and the VM shell,
+# and an earlier `$ok` flag was expanded by the wrong `set -u` shell.
 gcloud compute ssh social-comment-bot \
   --zone=us-central1-a --project=project-e1de8eb7-3b06-4142-9b3 --tunnel-through-iap --quiet \
-  --command="cd /opt/social-comment-bot && sudo git pull && sudo docker compose up -d --build && ok=0; for i in \$(seq 1 12); do curl -sf http://localhost:9001/api/health >/dev/null 2>&1 && { ok=1; break; }; sleep 5; done; [ \"\$ok\" = 1 ]" \
+  --command="cd /opt/social-comment-bot && sudo git pull && sudo docker compose up -d --build && { for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do curl -sf http://localhost:9001/api/health >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1; }" \
   -- -o StrictHostKeyChecking=no
 DEPLOY
                     '''
