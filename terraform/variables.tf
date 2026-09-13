@@ -4,7 +4,7 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "Region for the VM. us-central1/us-west1/us-east1 are the Always Free e2-micro regions."
+  description = "Region for the VM."
   type        = string
   default     = "us-central1"
 }
@@ -16,9 +16,9 @@ variable "zone" {
 }
 
 variable "machine_type" {
-  description = "e2-micro qualifies for the GCP Always Free tier in the regions above."
+  description = "Compute Engine machine type. e2-standard-2 provides 2 vCPUs and 8 GB RAM for the dashboard, webhooks, and background workers."
   type        = string
-  default     = "e2-micro"
+  default     = "e2-standard-2"
 }
 
 variable "instance_name" {
@@ -70,4 +70,3 @@ variable "jenkins_oidc_audience" {
   type        = string
   default     = "gcp-social-comment-bot-deploy"
 }
-
