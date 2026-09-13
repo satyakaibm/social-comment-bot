@@ -192,22 +192,30 @@ class RefreshAllTests(unittest.TestCase):
                 draft_reply="",
             )
         fake_youtube = MagicMock()
-        with patch.object(youtube_client, "get_client", return_value=fake_youtube), \
+        with patch.object(video_stats.db, "connect", wraps=db.connect) as connections, \
+             patch.object(youtube_client, "get_client", return_value=fake_youtube), \
              patch.object(
                  youtube_client, "get_video_stats",
                  return_value={"vid1": {"like_count": 10, "comment_count": 3}},
-             ), \
+             ) as youtube_stats, \
              patch.object(
                  meta_client, "get_facebook_post_stats",
                  return_value={"like_count": 5, "comment_count": 2, "share_count": 1},
-             ), \
+             ) as facebook_stats, \
              patch.object(
                  meta_client, "get_instagram_media_stats",
                  return_value={"like_count": 8, "comment_count": 4},
-             ):
+             ) as instagram_stats:
             updated = video_stats.refresh_all()
 
         self.assertEqual(updated, 3)
+        self.assertEqual(connections.call_count, 1)
+        quota_connections = {
+            youtube_stats.call_args.kwargs["quota_conn"],
+            facebook_stats.call_args.kwargs["quota_conn"],
+            instagram_stats.call_args.kwargs["quota_conn"],
+        }
+        self.assertEqual(len(quota_connections), 1)
         with db.connect() as conn:
             rows = {row["platform"]: row for row in db.list_video_stats(conn, limit=10)}
         self.assertEqual(rows["youtube"]["like_count"], 10)

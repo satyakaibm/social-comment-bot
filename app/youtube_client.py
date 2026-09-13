@@ -10,13 +10,19 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
-def execute(request, *, units: int = 1):
+def execute(request, *, units: int = 1, quota_conn=None):
     """Execute a YouTube request and record quota consumed by this bot."""
     try:
         return request.execute()
     finally:
         period = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
-        db.add_quota_usage("youtube", period, units, config.YOUTUBE_DAILY_QUOTA_LIMIT)
+        db.add_quota_usage(
+            "youtube",
+            period,
+            units,
+            config.YOUTUBE_DAILY_QUOTA_LIMIT,
+            conn=quota_conn,
+        )
 
 
 def is_quota_exceeded(error: Exception) -> bool:
@@ -89,7 +95,7 @@ def get_video_channel_ids(youtube: Resource, video_ids) -> dict[str, str]:
     return owners
 
 
-def get_video_stats(youtube: Resource, video_ids) -> dict[str, dict]:
+def get_video_stats(youtube: Resource, video_ids, *, quota_conn=None) -> dict[str, dict]:
     """Return each video's like/comment counts, batching lookups to save quota.
 
     YouTube's Data API has no share-count field, so callers only get likes
@@ -99,9 +105,12 @@ def get_video_stats(youtube: Resource, video_ids) -> dict[str, dict]:
     unique_ids = list(dict.fromkeys(video_id for video_id in video_ids if video_id))
     stats: dict[str, dict] = {}
     for start in range(0, len(unique_ids), 50):
-        response = execute(youtube.videos().list(
-            part="statistics", id=",".join(unique_ids[start:start + 50])
-        ))
+        response = execute(
+            youtube.videos().list(
+                part="statistics", id=",".join(unique_ids[start:start + 50])
+            ),
+            quota_conn=quota_conn,
+        )
         for item in response.get("items", []):
             counts = item.get("statistics", {})
             stats[item["id"]] = {
