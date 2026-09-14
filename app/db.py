@@ -585,6 +585,75 @@ def video_stats_growth(
     return [dict(row) for row in conn.execute(sql, params)]
 
 
+def audience_activity(
+    conn: sqlite3.Connection,
+    *,
+    horizon: timedelta,
+    platform: str | None = None,
+    page_key: str | None = None,
+    reference_time: datetime | None = None,
+) -> list[dict]:
+    """Aggregate received comments by weekday/hour in IST per channel."""
+    reference_time = reference_time or datetime.now(timezone.utc)
+    cutoff = (reference_time - horizon).isoformat()
+    platform_expr = "COALESCE(NULLIF(c.platform, ''), s.platform)"
+    page_expr = "COALESCE(NULLIF(c.page_key, ''), NULLIF(s.page_key, ''), '')"
+    timestamp_expr = "COALESCE(c.created_at, s.created_at)"
+    sql = f"""
+        SELECT {platform_expr} AS platform, {page_expr} AS page_key,
+               CAST(strftime('%w', datetime({timestamp_expr}, '+5 hours', '+30 minutes')) AS INTEGER)
+                   AS weekday_ist,
+               CAST(strftime('%H', datetime({timestamp_expr}, '+5 hours', '+30 minutes')) AS INTEGER)
+                   AS hour_ist,
+               COUNT(*) AS comment_count
+        FROM seen_comments s
+        LEFT JOIN comments c ON c.comment_id = s.comment_id
+        WHERE datetime({timestamp_expr}) >= datetime(?)
+    """
+    params: list = [cutoff]
+    if platform:
+        sql += f" AND {platform_expr} = ?"
+        params.append(platform)
+    if page_key:
+        if page_key == DEFAULT_PAGE_KEY:
+            sql += f" AND {page_expr} IN (?, '')"
+        else:
+            sql += f" AND {page_expr} = ?"
+        params.append(page_key)
+    sql += " GROUP BY 1, 2, 3, 4"
+    return [dict(row) for row in conn.execute(sql, params)]
+
+
+def comment_text_sample(
+    conn: sqlite3.Connection,
+    *,
+    horizon: timedelta,
+    platform: str | None = None,
+    page_key: str | None = None,
+    reference_time: datetime | None = None,
+    limit: int = 5000,
+) -> list[dict]:
+    """Return recent retained comment text for local intent classification."""
+    reference_time = reference_time or datetime.now(timezone.utc)
+    cutoff = (reference_time - horizon).isoformat()
+    sql = """SELECT platform, page_key, text, created_at
+             FROM comments
+             WHERE datetime(created_at) >= datetime(?) AND trim(text) <> ''"""
+    params: list = [cutoff]
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if page_key:
+        if page_key == DEFAULT_PAGE_KEY:
+            sql += " AND page_key IN (?, '')"
+        else:
+            sql += " AND page_key = ?"
+        params.append(page_key)
+    sql += " ORDER BY created_at DESC LIMIT ?"
+    params.append(limit)
+    return [dict(row) for row in conn.execute(sql, params)]
+
+
 VIDEO_STATS_SORT_COLUMNS = {
     "recent": "last_comment_at",
     "views": "vs.view_count",

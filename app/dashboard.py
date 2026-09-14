@@ -164,7 +164,7 @@ def _video_stats_row(row: dict) -> dict:
     item = dict(row)
     item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
     item["video_title"] = (item.get("video_title") or "")[:80]
-    page = config.PAGES.get(item.get("page_key") or "")
+    page = config.PAGES.get(item.get("page_key") or config.DEFAULT_PAGE_KEY)
     item["page_label"] = page.label if page else ""
     return item
 
@@ -659,6 +659,16 @@ def create_app() -> Flask:
                     platform=platform or None, page_key=page_key or None,
                 )
             ]
+            activity_rows = db.audience_activity(
+                conn, horizon=timedelta(days=90),
+                platform=platform or None, page_key=page_key or None,
+            )
+            intent_rows = db.comment_text_sample(
+                conn, horizon=timedelta(days=90),
+                platform=platform or None, page_key=page_key or None,
+            )
+            for row in activity_rows + intent_rows:
+                row["page_key"] = row.get("page_key") or config.DEFAULT_PAGE_KEY
         def total_for(field: str):
             values = [row[field] for row in video_stats if row[field] is not None]
             return sum(values) if values else None
@@ -675,6 +685,11 @@ def create_app() -> Flask:
             analytics.momentum_focus(growth_24h, period_label="24-hour")
             + analytics.momentum_focus(growth_7d, period_label="7-day")
         )
+        audience_timing = analytics.audience_timing_focus(activity_rows)
+        audience_intents = analytics.comment_intent_focus(intent_rows)
+        for item in audience_timing + audience_intents:
+            page = config.PAGES.get(item.get("page_key") or "")
+            item["page_label"] = page.label if page else "Default channel"
         if platform == "youtube":
             video_stats_refresh_label = (
                 "YouTube auto-refreshes every "
@@ -697,6 +712,8 @@ def create_app() -> Flask:
             insights_summary=insights_summary,
             creator_recommendations=creator_recommendations,
             momentum_recommendations=momentum_recommendations,
+            audience_timing=audience_timing,
+            audience_intents=audience_intents,
             video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),

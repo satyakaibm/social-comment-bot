@@ -760,6 +760,16 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Growing Aarti", page.data)
         self.assertIn(b"2 snapshots", page.data)
 
+    def test_insights_shows_local_audience_intelligence(self):
+        page = self.client.get("/insights?platform=youtube")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Audience intelligence", page.data)
+        self.assertIn(b"Best audience window", page.data)
+        self.assertIn(b"Leading intent", page.data)
+        self.assertIn(b"local rule-based analysis", page.data)
+        self.assertIn(b"does not send comment text", page.data)
+
     def test_insights_updated_header_is_sortable(self):
         with db.connect() as conn:
             db.upsert_video_stats(

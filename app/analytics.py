@@ -1,4 +1,8 @@
 from collections import defaultdict
+import re
+
+
+WEEKDAYS = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 
 
 def creator_focus(rows: list[dict], *, limit: int = 4) -> list[dict]:
@@ -123,3 +127,94 @@ def momentum_focus(rows: list[dict], *, period_label: str, limit: int = 4) -> li
 def _percentile(value: float, population: list[int | float]) -> float:
     """Inclusive percentile rank; ties receive the same transparent score."""
     return 100.0 * sum(float(item) <= value for item in population) / len(population)
+
+
+def audience_timing_focus(rows: list[dict]) -> list[dict]:
+    """Find each channel/platform's busiest day and rolling three-hour IST window."""
+    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for row in rows:
+        groups[(row.get("page_key") or "", row["platform"])].append(row)
+
+    results = []
+    for (page_key, platform), activity in groups.items():
+        hourly = [0] * 24
+        daily = [0] * 7
+        for row in activity:
+            count = int(row["comment_count"])
+            hourly[int(row["hour_ist"])] += count
+            daily[int(row["weekday_ist"])] += count
+        total = sum(hourly)
+        start_hour = max(range(24), key=lambda hour: sum(hourly[(hour + offset) % 24] for offset in range(3)))
+        end_hour = (start_hour + 3) % 24
+        best_day = max(range(7), key=lambda day: daily[day])
+        confidence = "high" if total >= 100 else "medium" if total >= 25 else "early"
+        results.append(
+            {
+                "page_key": page_key,
+                "platform": platform,
+                "comment_count": total,
+                "confidence": confidence,
+                "best_day": WEEKDAYS[best_day],
+                "window": f"{_hour_label(start_hour)}–{_hour_label(end_hour)} IST",
+                "message": (
+                    f"Audience comments peak on {WEEKDAYS[best_day]}; test publishing or "
+                    f"being available to reply around {_hour_label(start_hour)}–{_hour_label(end_hour)} IST."
+                ),
+            }
+        )
+    return sorted(results, key=lambda item: (item["page_key"], item["platform"]))
+
+
+def comment_intent_focus(rows: list[dict]) -> list[dict]:
+    """Summarize audience intent locally with deterministic, auditable rules."""
+    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for row in rows:
+        groups[(row.get("page_key") or "", row["platform"])].append(row)
+    guidance = {
+        "question": "Create a Q&A or explanatory post addressing recurring audience questions.",
+        "request": "Treat repeated requests as candidates for the next content topic.",
+        "complaint": "Review the concern and address it clearly before promoting related content.",
+        "praise": "Repeat the themes and format that are generating positive audience response.",
+        "other": "Keep collecting comments before choosing an intent-led content direction.",
+    }
+    results = []
+    for (page_key, platform), comments in groups.items():
+        counts = {name: 0 for name in guidance}
+        for row in comments:
+            counts[classify_comment_intent(row.get("text") or "")] += 1
+        meaningful = {key: value for key, value in counts.items() if key != "other"}
+        leading = max(meaningful, key=meaningful.get) if any(meaningful.values()) else "other"
+        total = len(comments)
+        results.append(
+            {
+                "page_key": page_key,
+                "platform": platform,
+                "sample_size": total,
+                "leading_intent": leading,
+                "leading_count": counts[leading],
+                "share": counts[leading] / total if total else 0,
+                "confidence": "high" if total >= 100 else "medium" if total >= 25 else "early",
+                "message": guidance[leading],
+            }
+        )
+    return sorted(results, key=lambda item: (item["page_key"], item["platform"]))
+
+
+def classify_comment_intent(text: str) -> str:
+    normalized = " ".join(text.casefold().split())
+    words = set(re.findall(r"[\w']+", normalized, flags=re.UNICODE))
+    if words & {"problem", "issue", "wrong", "bad", "broken", "complaint", "disappointed"}:
+        return "complaint"
+    if "?" in normalized or words & {"what", "when", "where", "why", "how", "which", "kya", "kab", "kahan", "kaise"}:
+        return "question"
+    if words & {"please", "request", "suggest", "cover", "visit", "show", "make"}:
+        return "request"
+    if words & {"great", "beautiful", "amazing", "love", "nice", "excellent", "wonderful", "thanks", "thank"}:
+        return "praise"
+    return "other"
+
+
+def _hour_label(hour: int) -> str:
+    suffix = "AM" if hour < 12 else "PM"
+    display = hour % 12 or 12
+    return f"{display}:00 {suffix}"
