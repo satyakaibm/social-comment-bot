@@ -710,7 +710,8 @@ class DashboardTests(unittest.TestCase):
         with db.connect() as conn:
             db.upsert_video_stats(
                 conn, platform="youtube", video_id="vid", page_key=config.DEFAULT_PAGE_KEY,
-                video_title="Aarti", like_count=42, share_count=None, comment_count=7,
+                video_title="Aarti", view_count=1234, like_count=42,
+                share_count=None, comment_count=7,
             )
         page = self.client.get("/insights")
         self.assertEqual(page.status_code, 200)
@@ -718,6 +719,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"7", page.data)
         self.assertIn(b"Tracked content", page.data)
         self.assertIn(b"Total likes", page.data)
+        self.assertIn(b"Total views", page.data)
+        self.assertIn(b"1,234", page.data)
         self.assertIn(b"Performance insights", page.data)
 
     def test_insights_updated_header_is_sortable(self):
@@ -725,7 +728,7 @@ class DashboardTests(unittest.TestCase):
             db.upsert_video_stats(
                 conn, platform="youtube", video_id="vid",
                 page_key=config.DEFAULT_PAGE_KEY, video_title="Aarti",
-                like_count=42, share_count=None, comment_count=7,
+                view_count=1234, like_count=42, share_count=None, comment_count=7,
             )
 
         page = self.client.get("/insights?sort_by=updated&sort_dir=desc")
@@ -734,6 +737,19 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"sort_by=updated", page.data)
         self.assertIn(b'aria-label="Sort Updated lowest first"', page.data)
         self.assertIn(b"Updated", page.data)
+
+    def test_insights_views_header_is_sortable(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="vid",
+                page_key=config.DEFAULT_PAGE_KEY, video_title="Aarti",
+                view_count=1234, like_count=42, share_count=None, comment_count=7,
+            )
+
+        page = self.client.get("/insights?sort_by=views&sort_dir=desc")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'aria-label="Sort Views lowest first"', page.data)
 
     def test_video_engagement_section_shows_empty_state_with_no_cached_stats(self):
         page = self.client.get("/insights")

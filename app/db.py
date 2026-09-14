@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS video_stats (
     video_id TEXT NOT NULL,
     page_key TEXT NOT NULL DEFAULT '',
     video_title TEXT,
+    view_count INTEGER,
     like_count INTEGER,
     share_count INTEGER,
     comment_count INTEGER,
@@ -290,6 +291,11 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_platform_page_key ON comments(platform, page_key)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_updated_at ON comments(updated_at)")
+        stats_columns = {
+            row["name"] for row in conn.execute("PRAGMA table_info(video_stats)")
+        }
+        if "view_count" not in stats_columns:
+            conn.execute("ALTER TABLE video_stats ADD COLUMN view_count INTEGER")
         _migrate_seen_comments(conn)
         sync_seen_stats_from_comments(conn)
 
@@ -422,15 +428,17 @@ def upsert_video_stats(
     like_count: int | None,
     share_count: int | None,
     comment_count: int | None,
+    view_count: int | None = None,
 ) -> None:
     conn.execute(
         """INSERT INTO video_stats
-               (platform, video_id, page_key, video_title, like_count,
-                share_count, comment_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+               (platform, video_id, page_key, video_title, view_count,
+                like_count, share_count, comment_count, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(platform, video_id) DO UPDATE SET
                page_key = excluded.page_key,
                video_title = excluded.video_title,
+               view_count = excluded.view_count,
                like_count = excluded.like_count,
                share_count = excluded.share_count,
                comment_count = excluded.comment_count,
@@ -440,6 +448,7 @@ def upsert_video_stats(
             video_id,
             page_key,
             video_title,
+            view_count,
             like_count,
             share_count,
             comment_count,
@@ -450,6 +459,7 @@ def upsert_video_stats(
 
 VIDEO_STATS_SORT_COLUMNS = {
     "recent": "last_comment_at",
+    "views": "vs.view_count",
     "likes": "vs.like_count",
     "comments": "vs.comment_count",
     "shares": "vs.share_count",

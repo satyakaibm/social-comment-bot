@@ -129,14 +129,20 @@ class YouTubeStatsTests(unittest.TestCase):
         youtube = MagicMock()
         youtube.videos.return_value.list.return_value.execute.return_value = {
             "items": [
-                {"id": "vid1", "statistics": {"likeCount": "10", "commentCount": "3"}},
+                {"id": "vid1", "statistics": {
+                    "viewCount": "1200", "likeCount": "10", "commentCount": "3"
+                }},
                 {"id": "vid2", "statistics": {}},
             ]
         }
         with patch.object(youtube_client, "db"):
             stats = youtube_client.get_video_stats(youtube, ["vid1", "vid2"])
-        self.assertEqual(stats["vid1"], {"like_count": 10, "comment_count": 3})
-        self.assertEqual(stats["vid2"], {"like_count": None, "comment_count": None})
+        self.assertEqual(stats["vid1"], {
+            "view_count": 1200, "like_count": 10, "comment_count": 3,
+        })
+        self.assertEqual(stats["vid2"], {
+            "view_count": None, "like_count": None, "comment_count": None,
+        })
         youtube.videos.return_value.list.assert_called_once_with(
             part="statistics", id="vid1,vid2"
         )
@@ -222,7 +228,9 @@ class RefreshAllTests(unittest.TestCase):
              patch.object(youtube_client, "get_client", return_value=fake_youtube), \
              patch.object(
                  youtube_client, "get_video_stats",
-                 return_value={"vid1": {"like_count": 10, "comment_count": 3}},
+                 return_value={"vid1": {
+                     "view_count": 1200, "like_count": 10, "comment_count": 3,
+                 }},
              ) as youtube_stats, \
              patch.object(
                  meta_client, "get_facebook_post_stats",
@@ -245,10 +253,13 @@ class RefreshAllTests(unittest.TestCase):
         with db.connect() as conn:
             rows = {row["platform"]: row for row in db.list_video_stats(conn, limit=10)}
         self.assertEqual(rows["youtube"]["like_count"], 10)
+        self.assertEqual(rows["youtube"]["view_count"], 1200)
         self.assertIsNone(rows["youtube"]["share_count"])
+        self.assertIsNone(rows["facebook"]["view_count"])
         self.assertEqual(rows["facebook"]["share_count"], 1)
         self.assertEqual(rows["instagram"]["like_count"], 8)
         self.assertIsNone(rows["instagram"]["share_count"])
+        self.assertIsNone(rows["instagram"]["view_count"])
 
     def test_refresh_all_continues_after_one_platform_errors(self):
         with db.connect() as conn:

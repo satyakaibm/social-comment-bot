@@ -651,6 +651,7 @@ def create_app() -> Flask:
 
         insights_summary = {
             "content": len(video_stats),
+            "views": total_for("view_count"),
             "likes": total_for("like_count"),
             "comments": total_for("comment_count"),
             "shares": total_for("share_count"),
