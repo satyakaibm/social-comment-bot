@@ -656,12 +656,27 @@ def create_app() -> Flask:
             "comments": total_for("comment_count"),
             "shares": total_for("share_count"),
         }
+        if platform == "youtube":
+            video_stats_refresh_label = (
+                "YouTube auto-refreshes every "
+                f"{config.YOUTUBE_VIDEO_STATS_REFRESH_MINUTES} min"
+            )
+        elif platform in {"facebook", "instagram"}:
+            video_stats_refresh_label = (
+                "Meta auto-refreshes every "
+                f"{config.META_VIDEO_STATS_REFRESH_MINUTES} min"
+            )
+        else:
+            video_stats_refresh_label = (
+                f"YouTube every {config.YOUTUBE_VIDEO_STATS_REFRESH_MINUTES} min"
+                f" · Meta every {config.META_VIDEO_STATS_REFRESH_MINUTES} min"
+            )
         selected_page_label = config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
         return render_template(
             "insights.html",
             video_stats=video_stats,
             insights_summary=insights_summary,
-            video_stats_refresh_minutes=config.VIDEO_STATS_REFRESH_MINUTES,
+            video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
             selected_page_label=selected_page_label,

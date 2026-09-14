@@ -277,5 +277,41 @@ class RefreshAllTests(unittest.TestCase):
         self.assertEqual(updated, 1)
 
 
+class WorkerScheduleTests(unittest.TestCase):
+    def test_worker_refreshes_youtube_more_often_than_meta(self):
+        class StopAfterTwoWaits:
+            def __init__(self):
+                self.stopped = False
+                self.waits = []
+
+            def is_set(self):
+                return self.stopped
+
+            def wait(self, seconds):
+                self.waits.append(seconds)
+                if len(self.waits) == 2:
+                    self.stopped = True
+
+        stop = StopAfterTwoWaits()
+        with patch.object(video_stats.db, "init_db"), \
+             patch.object(config, "YOUTUBE_VIDEO_STATS_REFRESH_MINUTES", 5), \
+             patch.object(config, "META_VIDEO_STATS_REFRESH_MINUTES", 30), \
+             patch.object(
+                 video_stats.time, "monotonic",
+                 side_effect=[0, 1, 1, 301, 302, 302],
+             ), \
+             patch.object(video_stats, "refresh_selected") as refresh:
+            video_stats.worker_loop(stop)
+
+        self.assertEqual(
+            [call.kwargs for call in refresh.call_args_list],
+            [
+                {"youtube": True, "meta": True},
+                {"youtube": True, "meta": False},
+            ],
+        )
+        self.assertEqual(stop.waits, [300, 300])
+
+
 if __name__ == "__main__":
     unittest.main()
