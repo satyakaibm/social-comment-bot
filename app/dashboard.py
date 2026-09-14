@@ -13,7 +13,7 @@ from flask import Flask, flash, g, redirect, render_template, request, session, 
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.serving import make_server
 
-from app import config, db
+from app import analytics, config, db
 from app.password_policy import PASSWORD_HINT, password_meets_policy
 from app.post import post_approved
 from app.webhook import register_meta_routes, start_event_worker
@@ -656,6 +656,7 @@ def create_app() -> Flask:
             "comments": total_for("comment_count"),
             "shares": total_for("share_count"),
         }
+        creator_recommendations = analytics.creator_focus(video_stats)
         if platform == "youtube":
             video_stats_refresh_label = (
                 "YouTube auto-refreshes every "
@@ -676,6 +677,7 @@ def create_app() -> Flask:
             "insights.html",
             video_stats=video_stats,
             insights_summary=insights_summary,
+            creator_recommendations=creator_recommendations,
             video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),

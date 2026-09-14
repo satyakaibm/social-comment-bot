@@ -1,0 +1,54 @@
+import unittest
+
+from app import analytics
+
+
+class CreatorFocusTests(unittest.TestCase):
+    def test_recommendations_are_grouped_by_channel_and_platform(self):
+        rows = [
+            {
+                "platform": "youtube", "page_key": "travel",
+                "page_label": "Travel Explorer", "video_id": "a",
+                "video_title": "Beach", "view_count": 1000,
+                "like_count": 20, "comment_count": 10, "share_count": None,
+            },
+            {
+                "platform": "youtube", "page_key": "travel",
+                "page_label": "Travel Explorer", "video_id": "b",
+                "video_title": "Mountains", "view_count": 1000,
+                "like_count": 10, "comment_count": 2, "share_count": None,
+            },
+            {
+                "platform": "instagram", "page_key": "hindolroad",
+                "page_label": "Hindolroad", "video_id": "c",
+                "video_title": "Aarti", "view_count": None,
+                "like_count": 12, "comment_count": 4, "share_count": None,
+            },
+        ]
+
+        recommendations = analytics.creator_focus(rows)
+
+        self.assertEqual(len(recommendations), 2)
+        travel = next(item for item in recommendations if item["page_key"] == "travel")
+        self.assertEqual(travel["title"], "Beach")
+        self.assertEqual(travel["confidence"], "early")
+        self.assertIn("Beach", travel["message"])
+
+    def test_view_based_score_is_an_engagement_rate(self):
+        high_rate = {
+            "view_count": 100, "like_count": 10,
+            "comment_count": 0, "share_count": 0,
+        }
+        large_but_low_rate = {
+            "view_count": 10000, "like_count": 100,
+            "comment_count": 0, "share_count": 0,
+        }
+
+        self.assertGreater(
+            analytics._engagement_score(high_rate),
+            analytics._engagement_score(large_but_low_rate),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

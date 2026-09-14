@@ -141,6 +141,9 @@ def refresh_selected(*, youtube: bool, meta: bool) -> int:
         updated = _refresh_youtube(conn) if youtube else 0
         if meta:
             updated += _refresh_facebook(conn) + _refresh_instagram(conn)
+        db.prune_video_stats_history(
+            conn, retention_days=config.VIDEO_STATS_HISTORY_RETENTION_DAYS
+        )
         return updated
 
 

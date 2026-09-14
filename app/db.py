@@ -105,6 +105,19 @@ CREATE TABLE IF NOT EXISTS video_stats (
     PRIMARY KEY (platform, video_id)
 );
 
+CREATE TABLE IF NOT EXISTS video_stats_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform TEXT NOT NULL,
+    video_id TEXT NOT NULL,
+    page_key TEXT NOT NULL DEFAULT '',
+    video_title TEXT,
+    view_count INTEGER,
+    like_count INTEGER,
+    share_count INTEGER,
+    comment_count INTEGER,
+    captured_at TEXT NOT NULL
+);
+
 """
 
 PRUNEABLE_COMMENT_STATUSES = ("posted", "already_replied", "rejected")
@@ -296,6 +309,10 @@ def init_db() -> None:
         }
         if "view_count" not in stats_columns:
             conn.execute("ALTER TABLE video_stats ADD COLUMN view_count INTEGER")
+        conn.execute(
+            """CREATE INDEX IF NOT EXISTS idx_video_stats_history_lookup
+               ON video_stats_history(platform, page_key, video_id, captured_at)"""
+        )
         _migrate_seen_comments(conn)
         sync_seen_stats_from_comments(conn)
 
@@ -430,6 +447,7 @@ def upsert_video_stats(
     comment_count: int | None,
     view_count: int | None = None,
 ) -> None:
+    captured_at = now()
     conn.execute(
         """INSERT INTO video_stats
                (platform, video_id, page_key, video_title, view_count,
@@ -452,9 +470,63 @@ def upsert_video_stats(
             like_count,
             share_count,
             comment_count,
-            now(),
+            captured_at,
         ),
     )
+    conn.execute(
+        """INSERT INTO video_stats_history
+               (platform, video_id, page_key, video_title, view_count,
+                like_count, share_count, comment_count, captured_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            platform,
+            video_id,
+            page_key,
+            video_title,
+            view_count,
+            like_count,
+            share_count,
+            comment_count,
+            captured_at,
+        ),
+    )
+
+
+def prune_video_stats_history(
+    conn: sqlite3.Connection, *, retention_days: int
+) -> int:
+    """Delete raw engagement snapshots older than the configured retention."""
+    cursor = conn.execute(
+        """DELETE FROM video_stats_history
+           WHERE datetime(captured_at) < datetime('now', ?)""",
+        (f"-{max(1, retention_days)} days",),
+    )
+    return cursor.rowcount
+
+
+def list_video_stats_history(
+    conn: sqlite3.Connection,
+    *,
+    platform: str | None = None,
+    page_key: str | None = None,
+    video_id: str | None = None,
+    limit: int = 500,
+) -> list[dict]:
+    sql = "SELECT * FROM video_stats_history WHERE 1=1"
+    params: list = []
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if page_key:
+        clause, extra = _page_key_filter(page_key)
+        sql += clause
+        params.extend(extra)
+    if video_id:
+        sql += " AND video_id = ?"
+        params.append(video_id)
+    sql += " ORDER BY captured_at DESC, id DESC LIMIT ?"
+    params.append(limit)
+    return [dict(row) for row in conn.execute(sql, params)]
 
 
 VIDEO_STATS_SORT_COLUMNS = {
