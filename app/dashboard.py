@@ -645,10 +645,22 @@ def create_app() -> Flask:
                     updated_within=db.VIDEO_STATS_WINDOWS[window][1] if window else None,
                 )
             ]
+        def total_for(field: str):
+            values = [row[field] for row in video_stats if row[field] is not None]
+            return sum(values) if values else None
+
+        insights_summary = {
+            "content": len(video_stats),
+            "views": total_for("view_count"),
+            "likes": total_for("like_count"),
+            "comments": total_for("comment_count"),
+            "shares": total_for("share_count"),
+        }
         selected_page_label = config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
         return render_template(
             "insights.html",
             video_stats=video_stats,
+            insights_summary=insights_summary,
             video_stats_refresh_minutes=config.VIDEO_STATS_REFRESH_MINUTES,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),

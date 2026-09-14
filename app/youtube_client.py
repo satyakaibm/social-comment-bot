@@ -96,11 +96,10 @@ def get_video_channel_ids(youtube: Resource, video_ids) -> dict[str, str]:
 
 
 def get_video_stats(youtube: Resource, video_ids, *, quota_conn=None) -> dict[str, dict]:
-    """Return each video's like/comment counts, batching lookups to save quota.
+    """Return each video's view/like/comment counts, batching lookups to save quota.
 
-    YouTube's Data API has no share-count field, so callers only get likes
-    and comments back. A video with likes or comments hidden by its owner
-    omits that field entirely, which comes through here as None.
+    YouTube's Data API has no share-count field. A metric hidden by its owner
+    is omitted by the API and comes through here as None.
     """
     unique_ids = list(dict.fromkeys(video_id for video_id in video_ids if video_id))
     stats: dict[str, dict] = {}
@@ -114,6 +113,7 @@ def get_video_stats(youtube: Resource, video_ids, *, quota_conn=None) -> dict[st
         for item in response.get("items", []):
             counts = item.get("statistics", {})
             stats[item["id"]] = {
+                "view_count": int(counts["viewCount"]) if "viewCount" in counts else None,
                 "like_count": int(counts["likeCount"]) if "likeCount" in counts else None,
                 "comment_count": int(counts["commentCount"]) if "commentCount" in counts else None,
             }

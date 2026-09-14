@@ -39,7 +39,7 @@ COMMENT_MAX_AGE_DAYS = int(os.environ.get("COMMENT_MAX_AGE_DAYS", "90"))
 # active videos/posts (per platform) it refreshes each cycle -- bounded so a
 # channel with a long history cannot spend the whole cycle, or a day's Meta
 # rate limit, re-fetching stats for posts nobody is looking at.
-VIDEO_STATS_REFRESH_MINUTES = int(os.environ.get("VIDEO_STATS_REFRESH_MINUTES", "30"))
+VIDEO_STATS_REFRESH_MINUTES = int(os.environ.get("VIDEO_STATS_REFRESH_MINUTES", "5"))
 VIDEO_STATS_CONTAINER_LIMIT = int(os.environ.get("VIDEO_STATS_CONTAINER_LIMIT", "50"))
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
