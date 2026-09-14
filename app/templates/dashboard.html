@@ -240,6 +240,10 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
           <span>Insights</span>
         </a>
+        <a class="insights-link" href="/momentum{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 17 6-6 4 4 8-9"></path><path d="M15 6h6v6"></path></svg>
+          <span>Momentum</span>
+        </a>
         <button class="auto-refresh" id="auto-refresh" type="button" aria-label="Enable auto refresh" aria-pressed="false" title="Enable auto refresh">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M6.1 9a7 7 0 0 1 11.5-2.6L20 11M4 13l2.4 4.6A7 7 0 0 0 17.9 15"></path></svg>
         </button>

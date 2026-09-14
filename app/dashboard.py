@@ -619,6 +619,8 @@ def create_app() -> Flask:
 
     @app.get("/insights")
     def insights():
+        page = max(1, request.args.get("page", default=1, type=int) or 1)
+        page_size = 50
         platform = request.args.get("platform", "").strip()
         if platform not in PLATFORMS:
             platform = ""
@@ -634,45 +636,52 @@ def create_app() -> Flask:
         window = request.args.get("window", "").strip()
         if window not in db.VIDEO_STATS_WINDOWS:
             window = ""
+        history_warning = ""
         with request_db() as conn:
-            video_stats = [
-                _video_stats_row(row)
-                for row in db.list_video_stats(
-                    conn,
-                    platform=platform or None,
-                    page_key=page_key or None,
-                    sort_by=sort_by,
-                    sort_dir=sort_dir,
-                    updated_within=db.VIDEO_STATS_WINDOWS[window][1] if window else None,
-                )
-            ]
-            growth_24h = [
-                _video_stats_row(row)
-                for row in db.video_stats_growth(
-                    conn, horizon=timedelta(hours=24),
-                    platform=platform or None, page_key=page_key or None,
-                )
-            ]
-            growth_7d = [
-                _video_stats_row(row)
-                for row in db.video_stats_growth(
-                    conn, horizon=timedelta(days=7),
-                    platform=platform or None, page_key=page_key or None,
-                )
-            ]
-            activity_rows = db.audience_activity(
-                conn, horizon=timedelta(days=90),
-                platform=platform or None, page_key=page_key or None,
-            )
-            intent_rows = db.comment_text_sample(
-                conn, horizon=timedelta(days=90),
-                platform=platform or None, page_key=page_key or None,
-            )
-            for row in activity_rows + intent_rows:
-                row["page_key"] = row.get("page_key") or config.DEFAULT_PAGE_KEY
-            experiments = db.list_recommendation_experiments(
-                conn, platform=platform or None, page_key=page_key or None
-            )
+            if window:
+                try:
+                    video_stats = [
+                        _video_stats_row(row)
+                        for row in db.video_stats_growth(
+                            conn,
+                            horizon=db.VIDEO_STATS_WINDOWS[window][1],
+                            platform=platform or None,
+                            page_key=page_key or None,
+                        )
+                    ]
+                except Exception as exc:
+                    video_stats = []
+                    history_warning = (
+                        "Historical statistics are temporarily unavailable for this period."
+                    )
+                    app.logger.exception("Insights history query failed: %s", exc)
+                for row in video_stats:
+                    row["view_count"] = row.get("view_growth")
+                    row["like_count"] = row.get("like_growth")
+                    row["comment_count"] = row.get("comment_growth")
+                    row["share_count"] = row.get("share_growth")
+                    row["updated_at_ist"] = row.get("period_end")
+                growth_sort = {
+                    "recent": "period_end", "updated": "period_end",
+                    "views": "view_count", "likes": "like_count",
+                    "comments": "comment_count", "shares": "share_count",
+                }[sort_by]
+                measured = [row for row in video_stats if row.get(growth_sort) is not None]
+                missing = [row for row in video_stats if row.get(growth_sort) is None]
+                video_stats = sorted(
+                    measured, key=lambda row: row[growth_sort], reverse=sort_dir == "desc"
+                ) + missing
+            else:
+                video_stats = [
+                    _video_stats_row(row)
+                    for row in db.list_video_stats(
+                        conn,
+                        platform=platform or None,
+                        page_key=page_key or None,
+                        sort_by=sort_by,
+                        sort_dir=sort_dir,
+                    )
+                ]
         def total_for(field: str):
             values = [row[field] for row in video_stats if row[field] is not None]
             return sum(values) if values else None
@@ -684,29 +693,11 @@ def create_app() -> Flask:
             "comments": total_for("comment_count"),
             "shares": total_for("share_count"),
         }
-        creator_recommendations = analytics.creator_focus(video_stats)
-        momentum_recommendations = (
-            analytics.momentum_focus(growth_24h, period_label="24-hour")
-            + analytics.momentum_focus(growth_7d, period_label="7-day")
-        )
-        audience_timing = analytics.audience_timing_focus(activity_rows)
-        audience_intents = analytics.comment_intent_focus(intent_rows)
-        for item in audience_timing + audience_intents:
-            page = config.PAGES.get(item.get("page_key") or "")
-            item["page_label"] = page.label if page else "Default channel"
-        recommendation_groups = (
-            ("current", creator_recommendations),
-            ("momentum", momentum_recommendations),
-            ("timing", audience_timing),
-            ("intent", audience_intents),
-        )
-        for kind, recommendations in recommendation_groups:
-            for item in recommendations:
-                item["recommendation_type"] = kind
-                item["recommendation_key"] = analytics.recommendation_key(kind, item)
-        for item in experiments:
-            page = config.PAGES.get(item.get("page_key") or config.DEFAULT_PAGE_KEY)
-            item["page_label"] = page.label if page else "Default channel"
+        total_items = len(video_stats)
+        total_pages = max(1, (total_items + page_size - 1) // page_size)
+        page = min(page, total_pages)
+        page_start = (page - 1) * page_size
+        video_stats = video_stats[page_start:page_start + page_size]
         if platform == "youtube":
             video_stats_refresh_label = (
                 "YouTube auto-refreshes every "
@@ -727,11 +718,6 @@ def create_app() -> Flask:
             "insights.html",
             video_stats=video_stats,
             insights_summary=insights_summary,
-            creator_recommendations=creator_recommendations,
-            momentum_recommendations=momentum_recommendations,
-            audience_timing=audience_timing,
-            audience_intents=audience_intents,
-            experiments=experiments,
             video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
@@ -740,11 +726,111 @@ def create_app() -> Flask:
             sort_dir=sort_dir,
             window=window,
             windows=db.VIDEO_STATS_WINDOWS,
+            report_label=(db.VIDEO_STATS_WINDOWS[window][0] if window else "All time"),
+            page=page,
+            page_size=page_size,
+            total_items=total_items,
+            total_pages=total_pages,
+            page_first=(page_start + 1 if total_items else 0),
+            page_last=min(page_start + page_size, total_items),
+            history_warning=history_warning,
+            platform=platform,
+            page_key=page_key,
+        )
+
+    @app.get("/momentum")
+    def momentum():
+        platform = request.args.get("platform", "").strip()
+        if platform not in PLATFORMS:
+            platform = ""
+        page_key = request.args.get("page_key", "").strip()
+        if page_key not in config.PAGES:
+            page_key = ""
+        analysis_warning = ""
+        with request_db() as conn:
+            video_stats = [
+                _video_stats_row(row)
+                for row in db.list_video_stats(
+                    conn, platform=platform or None, page_key=page_key or None,
+                )
+            ]
+            try:
+                growth_24h = [
+                    _video_stats_row(row)
+                    for row in db.video_stats_growth(
+                        conn, horizon=timedelta(hours=24),
+                        platform=platform or None, page_key=page_key or None,
+                    )
+                ]
+                growth_7d = [
+                    _video_stats_row(row)
+                    for row in db.video_stats_growth(
+                        conn, horizon=timedelta(days=7),
+                        platform=platform or None, page_key=page_key or None,
+                    )
+                ]
+            except Exception as exc:
+                growth_24h = []
+                growth_7d = []
+                analysis_warning = (
+                    "Historical momentum is temporarily unavailable. Current creator "
+                    "and audience analysis is still shown."
+                )
+                app.logger.exception("Historical momentum query failed: %s", exc)
+            activity_rows = db.audience_activity(
+                conn, horizon=timedelta(days=90),
+                platform=platform or None, page_key=page_key or None,
+            )
+            intent_rows = db.comment_text_sample(
+                conn, horizon=timedelta(days=90),
+                platform=platform or None, page_key=page_key or None,
+            )
+            experiments = db.list_recommendation_experiments(
+                conn, platform=platform or None, page_key=page_key or None
+            )
+        for row in activity_rows + intent_rows:
+            row["page_key"] = row.get("page_key") or config.DEFAULT_PAGE_KEY
+        creator_recommendations = analytics.creator_focus(video_stats)
+        momentum_recommendations = (
+            analytics.momentum_focus(growth_24h, period_label="24-hour")
+            + analytics.momentum_focus(growth_7d, period_label="7-day")
+        )
+        audience_timing = analytics.audience_timing_focus(activity_rows)
+        audience_intents = analytics.comment_intent_focus(intent_rows)
+        for item in audience_timing + audience_intents:
+            page = config.PAGES.get(item.get("page_key") or "")
+            item["page_label"] = page.label if page else "Default channel"
+        for kind, recommendations in (
+            ("current", creator_recommendations),
+            ("momentum", momentum_recommendations),
+            ("timing", audience_timing),
+            ("intent", audience_intents),
+        ):
+            for item in recommendations:
+                item["recommendation_type"] = kind
+                item["recommendation_key"] = analytics.recommendation_key(kind, item)
+        for item in experiments:
+            page = config.PAGES.get(item.get("page_key") or config.DEFAULT_PAGE_KEY)
+            item["page_label"] = page.label if page else "Default channel"
+        return render_template(
+            "momentum.html",
+            creator_recommendations=creator_recommendations,
+            momentum_recommendations=momentum_recommendations,
+            audience_timing=audience_timing,
+            audience_intents=audience_intents,
+            experiments=experiments,
+            analysis_warning=analysis_warning,
+            platforms=PLATFORMS,
+            page_choices=_page_choices(platform),
+            selected_page_label=(
+                config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
+            ),
             platform=platform,
             page_key=page_key,
         )
 
     @app.post("/insights/experiments")
+    @app.post("/momentum/experiments")
     def create_insights_experiment():
         if not hmac.compare_digest(
             request.form.get("csrf_token", ""), session.get("csrf_token", "")
@@ -785,9 +871,10 @@ def create_app() -> Flask:
                 notes=request.form.get("notes", "")[:500].strip(),
             )
         flash("Recommendation added to outcome tracking." if created else "Recommendation is already tracked.", "ok")
-        return redirect(url_for("insights"))
+        return redirect(url_for("momentum"))
 
     @app.post("/insights/experiments/<int:experiment_id>/status")
+    @app.post("/momentum/experiments/<int:experiment_id>/status")
     def update_insights_experiment(experiment_id: int):
         if not hmac.compare_digest(
             request.form.get("csrf_token", ""), session.get("csrf_token", "")
@@ -800,7 +887,7 @@ def create_app() -> Flask:
         if not updated:
             return "Invalid experiment or status", 400
         flash("Recommendation outcome updated.", "ok")
-        return redirect(url_for("insights"))
+        return redirect(url_for("momentum"))
 
     @app.get("/settings")
     def settings():

@@ -722,8 +722,9 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Total views", page.data)
         self.assertIn(b"1,234", page.data)
         self.assertIn(b"Performance insights", page.data)
-        self.assertIn(b"Creator focus", page.data)
-        self.assertIn(b"Next content focus", page.data)
+        self.assertNotIn(b"Creator focus", page.data)
+        self.assertNotIn(b"Next content focus", page.data)
+        self.assertIn(b'href="/momentum"', page.data)
         self.assertIn(b"Aarti", page.data)
 
     def test_insights_shows_platform_specific_refresh_cadence(self):
@@ -735,6 +736,57 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Meta every 30 min", all_platforms.data)
         self.assertIn(b"YouTube auto-refreshes every 30 min", youtube.data)
         self.assertIn(b"Meta auto-refreshes every 30 min", instagram.data)
+
+    def test_insights_period_uses_historical_metric_growth(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="period-growth",
+                page_key=config.DEFAULT_PAGE_KEY, video_title="Period growth",
+                view_count=100, like_count=10, share_count=1, comment_count=2,
+            )
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = datetime('now', '-30 minutes') "
+                "WHERE video_id = 'period-growth'"
+            )
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="period-growth",
+                page_key=config.DEFAULT_PAGE_KEY, video_title="Period growth",
+                view_count=250, like_count=25, share_count=4, comment_count=8,
+            )
+
+        page = self.client.get("/insights?window=1h")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b'<p class="section-label">Overview</p><nav class="range-buttons" aria-label="Reporting period">', page.data)
+        self.assertIn(b'class="range-button active" href="/insights?platform=&amp;page_key=&amp;sort_by=recent&amp;sort_dir=desc&amp;window=1h">1 Hour</a>', page.data)
+        self.assertIn(b"Views gained", page.data)
+        self.assertIn(b"Period growth", page.data)
+        self.assertIn(b">150<", page.data)
+        self.assertIn(b"window=365d", page.data)
+
+    def test_insights_content_performance_paginates_fifty_rows(self):
+        with db.connect() as conn:
+            for number in range(1, 56):
+                db.upsert_video_stats(
+                    conn, platform="youtube", video_id=f"page-{number}",
+                    page_key=config.DEFAULT_PAGE_KEY, video_title=f"Content {number}",
+                    view_count=number, like_count=number,
+                    share_count=number, comment_count=number,
+                )
+
+        first = self.client.get("/insights?sort_by=views&sort_dir=desc")
+        second = self.client.get("/insights?sort_by=views&sort_dir=desc&page=2")
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(first.data.count(b'<span class="platform-badge'), 50)
+        self.assertEqual(second.data.count(b'<span class="platform-badge'), 5)
+        self.assertIn(b"Showing 1\xe2\x80\x9350 of 55", first.data)
+        self.assertIn(b"Showing 51\xe2\x80\x9355 of 55", second.data)
+        self.assertIn(b"page=2", first.data)
+        self.assertIn(b"Content 55", first.data)
+        self.assertNotIn(b"Content 55", second.data)
+        self.assertIn(b"Content 1", second.data)
 
     def test_insights_dashboard_button_is_above_overview_and_outside_header(self):
         markup = self.client.get("/insights").data.decode()
@@ -764,7 +816,7 @@ class DashboardTests(unittest.TestCase):
                 share_count=None, comment_count=7,
             )
 
-        page = self.client.get("/insights?platform=youtube")
+        page = self.client.get("/momentum?platform=youtube")
 
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Momentum", page.data)
@@ -773,7 +825,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"2 snapshots", page.data)
 
     def test_insights_shows_local_audience_intelligence(self):
-        page = self.client.get("/insights?platform=youtube")
+        page = self.client.get("/momentum?platform=youtube")
 
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Audience intelligence", page.data)
@@ -798,12 +850,12 @@ class DashboardTests(unittest.TestCase):
             ),
         }
         key = analytics.recommendation_key("current", item)
-        self.client.get("/insights")
+        self.client.get("/momentum")
         with self.client.session_transaction() as auth_session:
             csrf = auth_session["csrf_token"]
 
         created = self.client.post(
-            "/insights/experiments",
+            "/momentum/experiments",
             data={
                 "csrf_token": csrf, "recommendation_type": "current",
                 "recommendation_key": key, "platform": "youtube",
@@ -817,10 +869,10 @@ class DashboardTests(unittest.TestCase):
         with db.connect() as conn:
             experiment = db.list_recommendation_experiments(conn)[0]
         completed = self.client.post(
-            f"/insights/experiments/{experiment['id']}/status",
+            f"/momentum/experiments/{experiment['id']}/status",
             data={"csrf_token": csrf, "status": "completed"},
         )
-        page = self.client.get("/insights")
+        page = self.client.get("/momentum")
 
         self.assertEqual(created.status_code, 302)
         self.assertEqual(completed.status_code, 302)
@@ -831,12 +883,12 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"does not prove", page.data)
 
     def test_recommendation_rejects_invalid_test_dimension(self):
-        self.client.get("/insights")
+        self.client.get("/momentum")
         with self.client.session_transaction() as auth_session:
             csrf = auth_session["csrf_token"]
 
         response = self.client.post(
-            "/insights/experiments",
+            "/momentum/experiments",
             data={
                 "csrf_token": csrf, "recommendation_type": "current",
                 "platform": "youtube", "page_key": config.DEFAULT_PAGE_KEY,
@@ -881,12 +933,42 @@ class DashboardTests(unittest.TestCase):
     def test_dashboard_links_to_insights(self):
         page = self.client.get("/")
         self.assertIn(b'href="/insights"', page.data)
+        self.assertIn(b'href="/momentum"', page.data)
         self.assertNotIn(b'aria-label="Video and post engagement"', page.data)
 
     def test_insights_requires_login(self):
         with self.client.session_transaction() as sess:
             sess.clear()
         self.assertEqual(self.client.get("/insights").status_code, 302)
+        self.assertEqual(self.client.get("/momentum").status_code, 302)
+
+    def test_momentum_analysis_is_separate_from_insights(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="separate",
+                page_key=config.DEFAULT_PAGE_KEY, video_title="Separate analysis",
+                view_count=100, like_count=10, share_count=None, comment_count=2,
+            )
+        insights = self.client.get("/insights")
+        momentum = self.client.get("/momentum")
+
+        self.assertEqual(momentum.status_code, 200)
+        self.assertIn(b"Momentum analysis", momentum.data)
+        self.assertIn(b"Creator focus", momentum.data)
+        self.assertIn(b"Audience intelligence", momentum.data)
+        self.assertNotIn(b"Content performance", momentum.data)
+        self.assertNotIn(b"Creator focus", insights.data)
+        self.assertNotIn(b"Audience intelligence", insights.data)
+
+    def test_momentum_survives_unavailable_history(self):
+        with patch.object(
+            db, "video_stats_growth", side_effect=RuntimeError("history unavailable")
+        ):
+            page = self.client.get("/momentum")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Historical momentum is temporarily unavailable", page.data)
+        self.assertIn(b"Audience intelligence", page.data)
 
 
 if __name__ == "__main__":

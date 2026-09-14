@@ -47,7 +47,7 @@ META_VIDEO_STATS_REFRESH_MINUTES = int(
 # consuming an entire cycle or a day's API allowance.
 VIDEO_STATS_CONTAINER_LIMIT = int(os.environ.get("VIDEO_STATS_CONTAINER_LIMIT", "50"))
 VIDEO_STATS_HISTORY_RETENTION_DAYS = int(
-    os.environ.get("VIDEO_STATS_HISTORY_RETENTION_DAYS", "90")
+    os.environ.get("VIDEO_STATS_HISTORY_RETENTION_DAYS", "366")
 )
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
