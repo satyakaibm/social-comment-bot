@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 from werkzeug.security import generate_password_hash
 
-from app import config, db, dashboard
+from app import analytics, config, db, dashboard
 
 
 class DashboardTests(unittest.TestCase):
@@ -769,6 +769,70 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Leading intent", page.data)
         self.assertIn(b"local rule-based analysis", page.data)
         self.assertIn(b"does not send comment text", page.data)
+
+    def test_creator_can_track_and_complete_recommendation(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="tracked", page_key="",
+                video_title="Tracked Aarti", view_count=100, like_count=10,
+                share_count=None, comment_count=2,
+            )
+        item = {
+            "platform": "youtube", "page_key": config.DEFAULT_PAGE_KEY,
+            "video_id": "tracked", "period_label": "",
+            "message": (
+                "Build on “Tracked Aarti”; it has the strongest current "
+                "engagement signal in this group."
+            ),
+        }
+        key = analytics.recommendation_key("current", item)
+        self.client.get("/insights")
+        with self.client.session_transaction() as auth_session:
+            csrf = auth_session["csrf_token"]
+
+        created = self.client.post(
+            "/insights/experiments",
+            data={
+                "csrf_token": csrf, "recommendation_type": "current",
+                "recommendation_key": key, "platform": "youtube",
+                "page_key": config.DEFAULT_PAGE_KEY, "video_id": "tracked",
+                "period_label": "", "title": "Tracked Aarti",
+                "recommendation": item["message"],
+                "test_dimension": "topic", "variant_label": "Morning ritual",
+                "notes": "Test whether ritual topics increase discussion",
+            },
+        )
+        with db.connect() as conn:
+            experiment = db.list_recommendation_experiments(conn)[0]
+        completed = self.client.post(
+            f"/insights/experiments/{experiment['id']}/status",
+            data={"csrf_token": csrf, "status": "completed"},
+        )
+        page = self.client.get("/insights")
+
+        self.assertEqual(created.status_code, 302)
+        self.assertEqual(completed.status_code, 302)
+        self.assertIn(b"Tracked recommendations", page.data)
+        self.assertIn(b"completed", page.data)
+        self.assertIn(b"Variant: Morning ritual", page.data)
+        self.assertIn(b"Hypothesis: Test whether ritual topics", page.data)
+        self.assertIn(b"does not prove", page.data)
+
+    def test_recommendation_rejects_invalid_test_dimension(self):
+        self.client.get("/insights")
+        with self.client.session_transaction() as auth_session:
+            csrf = auth_session["csrf_token"]
+
+        response = self.client.post(
+            "/insights/experiments",
+            data={
+                "csrf_token": csrf, "recommendation_type": "current",
+                "platform": "youtube", "page_key": config.DEFAULT_PAGE_KEY,
+                "test_dimension": "subscriber_identity",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
 
     def test_insights_updated_header_is_sortable(self):
         with db.connect() as conn:

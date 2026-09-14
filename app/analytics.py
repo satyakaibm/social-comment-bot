@@ -1,4 +1,5 @@
 from collections import defaultdict
+import hashlib
 import re
 
 
@@ -36,6 +37,7 @@ def creator_focus(rows: list[dict], *, limit: int = 4) -> list[dict]:
                 "page_key": page_key,
                 "page_label": leader.get("page_label") or "Default channel",
                 "platform": platform,
+                "video_id": leader["video_id"],
                 "title": leader.get("video_title") or leader["video_id"],
                 "content_count": sample_size,
                 "confidence": confidence,
@@ -218,3 +220,17 @@ def _hour_label(hour: int) -> str:
     suffix = "AM" if hour < 12 else "PM"
     display = hour % 12 or 12
     return f"{display}:00 {suffix}"
+
+
+def recommendation_key(kind: str, item: dict) -> str:
+    identity = "|".join(
+        (
+            kind,
+            item.get("platform") or "",
+            item.get("page_key") or "",
+            item.get("video_id") or "",
+            item.get("period_label") or "",
+            item.get("message") or "",
+        )
+    )
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()

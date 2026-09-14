@@ -118,6 +118,27 @@ CREATE TABLE IF NOT EXISTS video_stats_history (
     captured_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS recommendation_experiments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    recommendation_key TEXT NOT NULL UNIQUE,
+    recommendation_type TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    page_key TEXT NOT NULL DEFAULT '',
+    video_id TEXT,
+    title TEXT,
+    recommendation TEXT NOT NULL,
+    test_dimension TEXT,
+    variant_label TEXT,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'accepted',
+    baseline_views INTEGER,
+    baseline_likes INTEGER,
+    baseline_comments INTEGER,
+    baseline_shares INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 """
 
 PRUNEABLE_COMMENT_STATUSES = ("posted", "already_replied", "rejected")
@@ -289,6 +310,13 @@ def init_db() -> None:
             """,
             (now(),),
         )
+        experiment_columns = {
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(recommendation_experiments)")
+        }
+        for column in ("test_dimension", "variant_label", "notes"):
+            if column not in experiment_columns:
+                conn.execute(f"ALTER TABLE recommendation_experiments ADD COLUMN {column} TEXT")
         conn.execute(
             "UPDATE dashboard_users SET email = trim(email) WHERE email IS NOT NULL"
         )
@@ -652,6 +680,110 @@ def comment_text_sample(
     sql += " ORDER BY created_at DESC LIMIT ?"
     params.append(limit)
     return [dict(row) for row in conn.execute(sql, params)]
+
+
+def engagement_totals(
+    conn: sqlite3.Connection, *, platform: str, page_key: str, video_id: str | None = None
+) -> dict:
+    sql = """SELECT SUM(view_count) AS views, SUM(like_count) AS likes,
+                    SUM(comment_count) AS comments, SUM(share_count) AS shares
+             FROM video_stats WHERE platform = ?"""
+    params: list = [platform]
+    if page_key == DEFAULT_PAGE_KEY:
+        sql += " AND page_key IN (?, '')"
+    else:
+        sql += " AND page_key = ?"
+    params.append(page_key)
+    if video_id:
+        sql += " AND video_id = ?"
+        params.append(video_id)
+    row = conn.execute(sql, params).fetchone()
+    return {name: row[name] for name in ("views", "likes", "comments", "shares")}
+
+
+def create_recommendation_experiment(
+    conn: sqlite3.Connection,
+    *,
+    recommendation_key: str,
+    recommendation_type: str,
+    platform: str,
+    page_key: str,
+    video_id: str | None,
+    title: str,
+    recommendation: str,
+    test_dimension: str = "",
+    variant_label: str = "",
+    notes: str = "",
+) -> bool:
+    baseline = engagement_totals(
+        conn, platform=platform, page_key=page_key, video_id=video_id
+    )
+    timestamp = now()
+    cursor = conn.execute(
+        """INSERT OR IGNORE INTO recommendation_experiments
+               (recommendation_key, recommendation_type, platform, page_key,
+                video_id, title, recommendation, test_dimension, variant_label,
+                notes, status, baseline_views,
+                baseline_likes, baseline_comments, baseline_shares, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?, ?, ?, ?, ?)""",
+        (
+            recommendation_key, recommendation_type, platform, page_key,
+            video_id, title, recommendation, test_dimension or None,
+            variant_label or None, notes or None, baseline["views"], baseline["likes"],
+            baseline["comments"], baseline["shares"], timestamp, timestamp,
+        ),
+    )
+    return cursor.rowcount == 1
+
+
+def update_recommendation_experiment_status(
+    conn: sqlite3.Connection, experiment_id: int, status: str
+) -> bool:
+    if status not in {"accepted", "ignored", "completed"}:
+        return False
+    cursor = conn.execute(
+        "UPDATE recommendation_experiments SET status = ?, updated_at = ? WHERE id = ?",
+        (status, now(), experiment_id),
+    )
+    return cursor.rowcount == 1
+
+
+def list_recommendation_experiments(
+    conn: sqlite3.Connection,
+    *,
+    platform: str | None = None,
+    page_key: str | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    sql = "SELECT * FROM recommendation_experiments WHERE 1=1"
+    params: list = []
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if page_key:
+        if page_key == DEFAULT_PAGE_KEY:
+            sql += " AND page_key IN (?, '')"
+        else:
+            sql += " AND page_key = ?"
+        params.append(page_key)
+    sql += " ORDER BY updated_at DESC LIMIT ?"
+    params.append(limit)
+    experiments = []
+    for row in conn.execute(sql, params):
+        item = dict(row)
+        current = engagement_totals(
+            conn, platform=item["platform"], page_key=item["page_key"],
+            video_id=item["video_id"],
+        )
+        for metric in ("views", "likes", "comments", "shares"):
+            baseline = item[f"baseline_{metric}"]
+            value = current[metric]
+            item[f"current_{metric}"] = value
+            item[f"delta_{metric}"] = (
+                max(0, value - baseline) if value is not None and baseline is not None else None
+            )
+        experiments.append(item)
+    return experiments
 
 
 VIDEO_STATS_SORT_COLUMNS = {

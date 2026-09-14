@@ -50,6 +50,11 @@ auditable source sample and controlled AI cost.
 
 ## Phase 4 — Experiments and outcomes
 
+Status: implemented. Creators can track a recommendation, label title, topic,
+format, or publishing-time variants, record a hypothesis, mark it accepted,
+completed, or ignored, and see metric changes from the captured baseline.
+Results are explicitly labelled observational rather than causal.
+
 - Let creators record a recommendation as accepted, ignored, or completed.
 - Compare subsequent content against the pre-recommendation channel baseline.
 - Add lightweight A/B tracking for title, topic, format, and publishing window.

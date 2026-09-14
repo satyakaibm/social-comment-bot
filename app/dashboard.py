@@ -164,7 +164,8 @@ def _video_stats_row(row: dict) -> dict:
     item = dict(row)
     item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
     item["video_title"] = (item.get("video_title") or "")[:80]
-    page = config.PAGES.get(item.get("page_key") or config.DEFAULT_PAGE_KEY)
+    item["page_key"] = item.get("page_key") or config.DEFAULT_PAGE_KEY
+    page = config.PAGES.get(item["page_key"])
     item["page_label"] = page.label if page else ""
     return item
 
@@ -669,6 +670,9 @@ def create_app() -> Flask:
             )
             for row in activity_rows + intent_rows:
                 row["page_key"] = row.get("page_key") or config.DEFAULT_PAGE_KEY
+            experiments = db.list_recommendation_experiments(
+                conn, platform=platform or None, page_key=page_key or None
+            )
         def total_for(field: str):
             values = [row[field] for row in video_stats if row[field] is not None]
             return sum(values) if values else None
@@ -689,6 +693,19 @@ def create_app() -> Flask:
         audience_intents = analytics.comment_intent_focus(intent_rows)
         for item in audience_timing + audience_intents:
             page = config.PAGES.get(item.get("page_key") or "")
+            item["page_label"] = page.label if page else "Default channel"
+        recommendation_groups = (
+            ("current", creator_recommendations),
+            ("momentum", momentum_recommendations),
+            ("timing", audience_timing),
+            ("intent", audience_intents),
+        )
+        for kind, recommendations in recommendation_groups:
+            for item in recommendations:
+                item["recommendation_type"] = kind
+                item["recommendation_key"] = analytics.recommendation_key(kind, item)
+        for item in experiments:
+            page = config.PAGES.get(item.get("page_key") or config.DEFAULT_PAGE_KEY)
             item["page_label"] = page.label if page else "Default channel"
         if platform == "youtube":
             video_stats_refresh_label = (
@@ -714,6 +731,7 @@ def create_app() -> Flask:
             momentum_recommendations=momentum_recommendations,
             audience_timing=audience_timing,
             audience_intents=audience_intents,
+            experiments=experiments,
             video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
@@ -725,6 +743,64 @@ def create_app() -> Flask:
             platform=platform,
             page_key=page_key,
         )
+
+    @app.post("/insights/experiments")
+    def create_insights_experiment():
+        if not hmac.compare_digest(
+            request.form.get("csrf_token", ""), session.get("csrf_token", "")
+        ):
+            return "Invalid request", 400
+        kind = request.form.get("recommendation_type", "")
+        platform = request.form.get("platform", "")
+        page_key = request.form.get("page_key", "") or config.DEFAULT_PAGE_KEY
+        test_dimension = request.form.get("test_dimension", "")
+        if kind not in {"current", "momentum", "timing", "intent"}:
+            return "Invalid recommendation type", 400
+        if platform not in PLATFORMS or page_key not in config.PAGES:
+            return "Invalid recommendation scope", 400
+        if test_dimension not in {"", "title", "topic", "format", "publish_time"}:
+            return "Invalid test dimension", 400
+        item = {
+            "platform": platform,
+            "page_key": page_key,
+            "video_id": request.form.get("video_id", "")[:200],
+            "period_label": request.form.get("period_label", "")[:50],
+            "message": request.form.get("recommendation", "")[:1000],
+        }
+        expected_key = analytics.recommendation_key(kind, item)
+        if not hmac.compare_digest(request.form.get("recommendation_key", ""), expected_key):
+            return "Invalid recommendation", 400
+        with request_db() as conn:
+            created = db.create_recommendation_experiment(
+                conn,
+                recommendation_key=expected_key,
+                recommendation_type=kind,
+                platform=platform,
+                page_key=page_key,
+                video_id=item["video_id"] or None,
+                title=request.form.get("title", "")[:200],
+                recommendation=item["message"],
+                test_dimension=test_dimension,
+                variant_label=request.form.get("variant_label", "")[:100].strip(),
+                notes=request.form.get("notes", "")[:500].strip(),
+            )
+        flash("Recommendation added to outcome tracking." if created else "Recommendation is already tracked.", "ok")
+        return redirect(url_for("insights"))
+
+    @app.post("/insights/experiments/<int:experiment_id>/status")
+    def update_insights_experiment(experiment_id: int):
+        if not hmac.compare_digest(
+            request.form.get("csrf_token", ""), session.get("csrf_token", "")
+        ):
+            return "Invalid request", 400
+        with request_db() as conn:
+            updated = db.update_recommendation_experiment_status(
+                conn, experiment_id, request.form.get("status", "")
+            )
+        if not updated:
+            return "Invalid experiment or status", 400
+        flash("Recommendation outcome updated.", "ok")
+        return redirect(url_for("insights"))
 
     @app.get("/settings")
     def settings():
