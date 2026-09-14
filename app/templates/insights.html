@@ -48,6 +48,15 @@
       {% endfor %}
     </section>
 
+    <p class="section-label">Momentum</p>
+    {% if momentum_recommendations %}
+    <section class="focus-grid" aria-label="Historical momentum recommendations">
+      {% for item in momentum_recommendations %}<article class="focus-card"><div class="focus-meta"><span class="platform-badge platform-{{ item.platform }}">{{ item.page_label }} · {{ item.platform }}</span><span class="confidence">{{ item.confidence }} confidence</span></div><h3>{{ item.period_label }} leader · {{ '%.0f'|format(item.momentum_score) }}th percentile</h3><p>{{ item.message }}</p><p class="focus-note">{{ item.sample_count }} snapshots · {{ item.group_size }} comparable content item{{ '' if item.group_size == 1 else 's' }}</p></article>{% endfor %}
+    </section>
+    {% else %}
+    <div class="focus-card"><div class="focus-meta"><span class="confidence">Collecting history</span></div><h3>Momentum analysis is warming up</h3><p>At least two successful snapshots are required before growth is calculated. Confidence improves after 12 observed hours and several comparable content items.</p></div>
+    {% endif %}
+
     {% if creator_recommendations %}
     <p class="section-label">Creator focus</p>
     <section class="focus-grid" aria-label="Channel recommendations">

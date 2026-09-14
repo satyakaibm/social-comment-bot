@@ -21,6 +21,9 @@ Insights displays a useful recommendation without another paid API.
 
 ## Phase 2 — Momentum and channel baselines
 
+Status: in progress. Snapshot deltas, within-group percentile momentum,
+sample-size reporting, and confidence thresholds are implemented.
+
 - Calculate 24-hour and 7-day metric deltas from historical snapshots.
 - Normalize each content item against its own channel/platform median using
   robust percentiles rather than comparing raw totals across platforms.

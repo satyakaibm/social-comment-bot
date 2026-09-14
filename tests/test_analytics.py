@@ -49,6 +49,39 @@ class CreatorFocusTests(unittest.TestCase):
             analytics._engagement_score(large_but_low_rate),
         )
 
+    def test_momentum_is_ranked_within_channel_platform(self):
+        rows = [
+            {
+                "platform": "youtube", "page_key": "travel",
+                "page_label": "Travel Explorer", "video_id": "fast",
+                "video_title": "Fast", "view_growth": 100,
+                "like_growth": 20, "comment_growth": 8, "share_growth": None,
+                "elapsed_hours": 20, "sample_count": 3,
+            },
+            {
+                "platform": "youtube", "page_key": "travel",
+                "page_label": "Travel Explorer", "video_id": "slow",
+                "video_title": "Slow", "view_growth": 10,
+                "like_growth": 2, "comment_growth": 1, "share_growth": None,
+                "elapsed_hours": 20, "sample_count": 3,
+            },
+            {
+                "platform": "youtube", "page_key": "travel",
+                "page_label": "Travel Explorer", "video_id": "middle",
+                "video_title": "Middle", "view_growth": 50,
+                "like_growth": 5, "comment_growth": 3, "share_growth": None,
+                "elapsed_hours": 20, "sample_count": 3,
+            },
+        ]
+
+        recommendations = analytics.momentum_focus(rows, period_label="24-hour")
+
+        self.assertEqual(len(recommendations), 1)
+        self.assertEqual(recommendations[0]["video_id"], "fast")
+        self.assertEqual(recommendations[0]["momentum_score"], 100)
+        self.assertEqual(recommendations[0]["confidence"], "medium")
+        self.assertIn("100 new views", recommendations[0]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

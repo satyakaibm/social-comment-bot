@@ -736,6 +736,30 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"YouTube auto-refreshes every 30 min", youtube.data)
         self.assertIn(b"Meta auto-refreshes every 30 min", instagram.data)
 
+    def test_insights_shows_history_based_momentum(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="momentum", page_key=config.DEFAULT_PAGE_KEY,
+                video_title="Growing Aarti", view_count=100, like_count=10,
+                share_count=None, comment_count=2,
+            )
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = datetime('now', '-13 hours')"
+            )
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="momentum", page_key=config.DEFAULT_PAGE_KEY,
+                video_title="Growing Aarti", view_count=250, like_count=24,
+                share_count=None, comment_count=7,
+            )
+
+        page = self.client.get("/insights?platform=youtube")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Momentum", page.data)
+        self.assertIn(b"24-hour leader", page.data)
+        self.assertIn(b"Growing Aarti", page.data)
+        self.assertIn(b"2 snapshots", page.data)
+
     def test_insights_updated_header_is_sortable(self):
         with db.connect() as conn:
             db.upsert_video_stats(

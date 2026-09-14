@@ -529,6 +529,62 @@ def list_video_stats_history(
     return [dict(row) for row in conn.execute(sql, params)]
 
 
+def video_stats_growth(
+    conn: sqlite3.Connection,
+    *,
+    horizon: timedelta,
+    platform: str | None = None,
+    page_key: str | None = None,
+    reference_time: datetime | None = None,
+) -> list[dict]:
+    """Return first-to-last metric deltas inside a real historical window."""
+    reference_time = reference_time or datetime.now(timezone.utc)
+    cutoff = (reference_time - horizon).isoformat()
+    sql = """
+        WITH eligible AS (
+            SELECT * FROM video_stats_history
+            WHERE datetime(captured_at) >= datetime(?)
+    """
+    params: list = [cutoff]
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if page_key:
+        if page_key == DEFAULT_PAGE_KEY:
+            sql += " AND page_key IN (?, '')"
+        else:
+            sql += " AND page_key = ?"
+        params.append(page_key)
+    sql += """
+        ), bounds AS (
+            SELECT platform, video_id, MIN(id) AS first_id, MAX(id) AS last_id,
+                   COUNT(*) AS sample_count
+            FROM eligible
+            GROUP BY platform, video_id
+            HAVING COUNT(*) >= 2
+        )
+        SELECT newest.platform, newest.video_id, newest.page_key,
+               newest.video_title, bounds.sample_count,
+               oldest.captured_at AS period_start,
+               newest.captured_at AS period_end,
+               (julianday(newest.captured_at) - julianday(oldest.captured_at)) * 24
+                   AS elapsed_hours,
+               CASE WHEN oldest.view_count IS NOT NULL AND newest.view_count IS NOT NULL
+                    THEN MAX(0, newest.view_count - oldest.view_count) END AS view_growth,
+               CASE WHEN oldest.like_count IS NOT NULL AND newest.like_count IS NOT NULL
+                    THEN MAX(0, newest.like_count - oldest.like_count) END AS like_growth,
+               CASE WHEN oldest.comment_count IS NOT NULL AND newest.comment_count IS NOT NULL
+                    THEN MAX(0, newest.comment_count - oldest.comment_count) END AS comment_growth,
+               CASE WHEN oldest.share_count IS NOT NULL AND newest.share_count IS NOT NULL
+                    THEN MAX(0, newest.share_count - oldest.share_count) END AS share_growth
+        FROM bounds
+        JOIN eligible oldest ON oldest.id = bounds.first_id
+        JOIN eligible newest ON newest.id = bounds.last_id
+        ORDER BY newest.platform, newest.page_key, newest.video_id
+    """
+    return [dict(row) for row in conn.execute(sql, params)]
+
+
 VIDEO_STATS_SORT_COLUMNS = {
     "recent": "last_comment_at",
     "views": "vs.view_count",
