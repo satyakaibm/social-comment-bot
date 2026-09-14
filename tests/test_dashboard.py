@@ -722,15 +722,18 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Total views", page.data)
         self.assertIn(b"1,234", page.data)
         self.assertIn(b"Performance insights", page.data)
+        self.assertIn(b"Creator focus", page.data)
+        self.assertIn(b"Next content focus", page.data)
+        self.assertIn(b"Aarti", page.data)
 
     def test_insights_shows_platform_specific_refresh_cadence(self):
         all_platforms = self.client.get("/insights")
         youtube = self.client.get("/insights?platform=youtube")
         instagram = self.client.get("/insights?platform=instagram")
 
-        self.assertIn(b"YouTube every 5 min", all_platforms.data)
+        self.assertIn(b"YouTube every 30 min", all_platforms.data)
         self.assertIn(b"Meta every 30 min", all_platforms.data)
-        self.assertIn(b"YouTube auto-refreshes every 5 min", youtube.data)
+        self.assertIn(b"YouTube auto-refreshes every 30 min", youtube.data)
         self.assertIn(b"Meta auto-refreshes every 30 min", instagram.data)
 
     def test_insights_updated_header_is_sortable(self):

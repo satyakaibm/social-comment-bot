@@ -77,9 +77,28 @@ class VideoStatsDbTests(unittest.TestCase):
                 comment_count=5,
             )
             rows = db.list_video_stats(conn)
+            history = db.list_video_stats_history(conn, video_id="vid1")
         self.assertEqual(len(rows), 1)
+        self.assertEqual(len(history), 2)
         self.assertEqual(rows[0]["like_count"], 20)
         self.assertEqual(rows[0]["comment_count"], 5)
+        self.assertEqual([row["like_count"] for row in history], [20, 10])
+
+    def test_prune_video_stats_history_removes_expired_snapshots(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="vid1", page_key="",
+                video_title="Aarti", like_count=10, share_count=None,
+                comment_count=3,
+            )
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = '2020-01-01T00:00:00+00:00'"
+            )
+            removed = db.prune_video_stats_history(conn, retention_days=90)
+            history = db.list_video_stats_history(conn)
+
+        self.assertEqual(removed, 1)
+        self.assertEqual(history, [])
 
     def test_list_video_stats_filters_by_platform(self):
         with db.connect() as conn:
@@ -278,7 +297,7 @@ class RefreshAllTests(unittest.TestCase):
 
 
 class WorkerScheduleTests(unittest.TestCase):
-    def test_worker_refreshes_youtube_more_often_than_meta(self):
+    def test_worker_refreshes_youtube_and_meta_every_thirty_minutes(self):
         class StopAfterTwoWaits:
             def __init__(self):
                 self.stopped = False
@@ -294,11 +313,11 @@ class WorkerScheduleTests(unittest.TestCase):
 
         stop = StopAfterTwoWaits()
         with patch.object(video_stats.db, "init_db"), \
-             patch.object(config, "YOUTUBE_VIDEO_STATS_REFRESH_MINUTES", 5), \
+             patch.object(config, "YOUTUBE_VIDEO_STATS_REFRESH_MINUTES", 30), \
              patch.object(config, "META_VIDEO_STATS_REFRESH_MINUTES", 30), \
              patch.object(
                  video_stats.time, "monotonic",
-                 side_effect=[0, 1, 1, 301, 302, 302],
+                 side_effect=[0, 1, 1, 1801, 1802, 1802],
              ), \
              patch.object(video_stats, "refresh_selected") as refresh:
             video_stats.worker_loop(stop)
@@ -307,10 +326,10 @@ class WorkerScheduleTests(unittest.TestCase):
             [call.kwargs for call in refresh.call_args_list],
             [
                 {"youtube": True, "meta": True},
-                {"youtube": True, "meta": False},
+                {"youtube": True, "meta": True},
             ],
         )
-        self.assertEqual(stop.waits, [300, 300])
+        self.assertEqual(stop.waits, [1800, 1800])
 
 
 if __name__ == "__main__":

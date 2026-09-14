@@ -34,11 +34,10 @@ YOUTUBE_DAILY_REPLY_LIMIT = int(os.environ.get("YOUTUBE_DAILY_REPLY_LIMIT", "0")
 PUBLISH_ERROR_LIMIT = int(os.environ.get("PUBLISH_ERROR_LIMIT", "3"))
 COMMENT_MAX_AGE_DAYS = int(os.environ.get("COMMENT_MAX_AGE_DAYS", "90"))
 
-# YouTube statistics are batched and cost one quota unit per channel request,
-# so they can be kept fresher without multiplying the much larger number of
-# per-post Meta Graph API requests.
+# Keep platform statistics on a conservative cadence to preserve API quota
+# for comment polling and replies, which are the application's primary work.
 YOUTUBE_VIDEO_STATS_REFRESH_MINUTES = int(
-    os.environ.get("YOUTUBE_VIDEO_STATS_REFRESH_MINUTES", "5")
+    os.environ.get("YOUTUBE_VIDEO_STATS_REFRESH_MINUTES", "30")
 )
 META_VIDEO_STATS_REFRESH_MINUTES = int(
     os.environ.get("META_VIDEO_STATS_REFRESH_MINUTES", "30")
@@ -47,6 +46,9 @@ META_VIDEO_STATS_REFRESH_MINUTES = int(
 # refreshed each cycle. The bound prevents an old channel history from
 # consuming an entire cycle or a day's API allowance.
 VIDEO_STATS_CONTAINER_LIMIT = int(os.environ.get("VIDEO_STATS_CONTAINER_LIMIT", "50"))
+VIDEO_STATS_HISTORY_RETENTION_DAYS = int(
+    os.environ.get("VIDEO_STATS_HISTORY_RETENTION_DAYS", "90")
+)
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")
