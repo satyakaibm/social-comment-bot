@@ -723,6 +723,16 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"1,234", page.data)
         self.assertIn(b"Performance insights", page.data)
 
+    def test_insights_shows_platform_specific_refresh_cadence(self):
+        all_platforms = self.client.get("/insights")
+        youtube = self.client.get("/insights?platform=youtube")
+        instagram = self.client.get("/insights?platform=instagram")
+
+        self.assertIn(b"YouTube every 5 min", all_platforms.data)
+        self.assertIn(b"Meta every 30 min", all_platforms.data)
+        self.assertIn(b"YouTube auto-refreshes every 5 min", youtube.data)
+        self.assertIn(b"Meta auto-refreshes every 30 min", instagram.data)
+
     def test_insights_updated_header_is_sortable(self):
         with db.connect() as conn:
             db.upsert_video_stats(

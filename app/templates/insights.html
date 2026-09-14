@@ -28,7 +28,7 @@
 <body>
   <header class="topbar"><a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a><a class="back-link" href="/" id="back-link" aria-label="Back to dashboard">&larr; <span>Dashboard</span></a></header>
   <main class="page">
-    <section class="hero"><div class="hero-content"><div><p class="eyebrow">Analytics overview</p><h1>Performance insights</h1><p class="hero-copy">Understand how your content is performing across every connected social channel.</p></div><div class="sync-badge"><span class="sync-dot"></span>Auto-refreshes every {{ video_stats_refresh_minutes }} min</div></div></section>
+    <section class="hero"><div class="hero-content"><div><p class="eyebrow">Analytics overview</p><h1>Performance insights</h1><p class="hero-copy">Understand how your content is performing across every connected social channel.</p></div><div class="sync-badge"><span class="sync-dot"></span>{{ video_stats_refresh_label }}</div></div></section>
     <section class="toolbar" aria-label="Insights filters">
       <nav class="platform-tabs" aria-label="Platform">
         <a class="platform-tab {% if not platform %}active{% endif %}" href="/insights{% if page_key or window %}?page_key={{ page_key }}{% if window %}&amp;window={{ window }}{% endif %}{% endif %}"><span class="tab-dot"></span>All platforms</a>

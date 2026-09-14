@@ -1,5 +1,6 @@
 import signal
 import threading
+import time
 
 from app import config, db, meta_client, youtube_client
 
@@ -134,17 +135,37 @@ def refresh_all() -> int:
         )
 
 
+def refresh_selected(*, youtube: bool, meta: bool) -> int:
+    """Refresh only the platform groups that are due in this worker tick."""
+    with db.connect() as conn:
+        updated = _refresh_youtube(conn) if youtube else 0
+        if meta:
+            updated += _refresh_facebook(conn) + _refresh_instagram(conn)
+        return updated
+
+
 def worker_loop(stop: threading.Event) -> None:
     db.init_db()
+    youtube_interval = config.YOUTUBE_VIDEO_STATS_REFRESH_MINUTES * 60
+    meta_interval = config.META_VIDEO_STATS_REFRESH_MINUTES * 60
+    next_youtube = next_meta = 0.0
     while not stop.is_set():
+        now = time.monotonic()
+        youtube_due = now >= next_youtube
+        meta_due = now >= next_meta
         try:
-            refresh_all()
+            refresh_selected(youtube=youtube_due, meta=meta_due)
         except Exception as exc:
             # Mirrors app/webhook.py's worker_loop: an uncaught exception here
             # would silently stop all future stats refreshes for the rest of
             # the process's uptime, with no supervisor to restart it.
             print(f"Video stats worker error: {exc}", flush=True)
-        stop.wait(config.VIDEO_STATS_REFRESH_MINUTES * 60)
+        completed_at = time.monotonic()
+        if youtube_due:
+            next_youtube = completed_at + youtube_interval
+        if meta_due:
+            next_meta = completed_at + meta_interval
+        stop.wait(max(0.0, min(next_youtube, next_meta) - time.monotonic()))
 
 
 def start_worker(app) -> threading.Event:
@@ -165,8 +186,9 @@ def run() -> None:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
     print(
-        "Video stats worker started; refresh interval "
-        f"{config.VIDEO_STATS_REFRESH_MINUTES} minute(s).",
+        "Video stats worker started; YouTube refresh interval "
+        f"{config.YOUTUBE_VIDEO_STATS_REFRESH_MINUTES} minute(s), Meta "
+        f"{config.META_VIDEO_STATS_REFRESH_MINUTES} minute(s).",
         flush=True,
     )
     worker_loop(stop)
