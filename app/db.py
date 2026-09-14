@@ -453,6 +453,7 @@ VIDEO_STATS_SORT_COLUMNS = {
     "likes": "vs.like_count",
     "comments": "vs.comment_count",
     "shares": "vs.share_count",
+    "updated": "vs.updated_at",
 }
 
 

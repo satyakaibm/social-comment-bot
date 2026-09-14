@@ -97,6 +97,32 @@ class VideoStatsDbTests(unittest.TestCase):
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["platform"], "facebook")
 
+    def test_list_video_stats_sorts_by_updated_time(self):
+        with db.connect() as conn:
+            for video_id in ("older", "newer"):
+                db.upsert_video_stats(
+                    conn, platform="youtube", video_id=video_id, page_key="",
+                    video_title=video_id.title(), like_count=1,
+                    share_count=None, comment_count=1,
+                )
+            conn.execute(
+                "UPDATE video_stats SET updated_at = ? WHERE video_id = ?",
+                ("2026-01-01T00:00:00+00:00", "older"),
+            )
+            conn.execute(
+                "UPDATE video_stats SET updated_at = ? WHERE video_id = ?",
+                ("2026-06-01T00:00:00+00:00", "newer"),
+            )
+            descending = db.list_video_stats(
+                conn, sort_by="updated", sort_dir="desc"
+            )
+            ascending = db.list_video_stats(
+                conn, sort_by="updated", sort_dir="asc"
+            )
+
+        self.assertEqual([row["video_id"] for row in descending], ["newer", "older"])
+        self.assertEqual([row["video_id"] for row in ascending], ["older", "newer"])
+
 
 class YouTubeStatsTests(unittest.TestCase):
     def test_get_video_stats_batches_and_parses_counts(self):
