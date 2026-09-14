@@ -34,12 +34,18 @@ YOUTUBE_DAILY_REPLY_LIMIT = int(os.environ.get("YOUTUBE_DAILY_REPLY_LIMIT", "0")
 PUBLISH_ERROR_LIMIT = int(os.environ.get("PUBLISH_ERROR_LIMIT", "3"))
 COMMENT_MAX_AGE_DAYS = int(os.environ.get("COMMENT_MAX_AGE_DAYS", "90"))
 
-# How often the dashboard's background worker refreshes cached like/share/
-# comment counts for videos and posts, and how many of the most recently
-# active videos/posts (per platform) it refreshes each cycle -- bounded so a
-# channel with a long history cannot spend the whole cycle, or a day's Meta
-# rate limit, re-fetching stats for posts nobody is looking at.
-VIDEO_STATS_REFRESH_MINUTES = int(os.environ.get("VIDEO_STATS_REFRESH_MINUTES", "5"))
+# YouTube statistics are batched and cost one quota unit per channel request,
+# so they can be kept fresher without multiplying the much larger number of
+# per-post Meta Graph API requests.
+YOUTUBE_VIDEO_STATS_REFRESH_MINUTES = int(
+    os.environ.get("YOUTUBE_VIDEO_STATS_REFRESH_MINUTES", "5")
+)
+META_VIDEO_STATS_REFRESH_MINUTES = int(
+    os.environ.get("META_VIDEO_STATS_REFRESH_MINUTES", "30")
+)
+# How many of the most recently active videos/posts (per platform) are
+# refreshed each cycle. The bound prevents an old channel history from
+# consuming an entire cycle or a day's API allowance.
 VIDEO_STATS_CONTAINER_LIMIT = int(os.environ.get("VIDEO_STATS_CONTAINER_LIMIT", "50"))
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
