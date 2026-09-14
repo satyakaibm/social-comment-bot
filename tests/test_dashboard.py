@@ -736,6 +736,18 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"YouTube auto-refreshes every 30 min", youtube.data)
         self.assertIn(b"Meta auto-refreshes every 30 min", instagram.data)
 
+    def test_insights_dashboard_button_is_above_overview_and_outside_header(self):
+        markup = self.client.get("/insights").data.decode()
+        header_end = markup.index("</header>")
+        overview = markup.index('class="overview-head"')
+        dashboard_button = markup.index('class="back-link"')
+        kpis = markup.index('class="kpi-grid"')
+
+        self.assertLess(header_end, dashboard_button)
+        self.assertLess(overview, dashboard_button)
+        self.assertLess(dashboard_button, kpis)
+        self.assertIn(">Dashboard</a>", markup)
+
     def test_insights_shows_history_based_momentum(self):
         with db.connect() as conn:
             db.upsert_video_stats(
