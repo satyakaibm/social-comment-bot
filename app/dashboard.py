@@ -645,6 +645,20 @@ def create_app() -> Flask:
                     updated_within=db.VIDEO_STATS_WINDOWS[window][1] if window else None,
                 )
             ]
+            growth_24h = [
+                _video_stats_row(row)
+                for row in db.video_stats_growth(
+                    conn, horizon=timedelta(hours=24),
+                    platform=platform or None, page_key=page_key or None,
+                )
+            ]
+            growth_7d = [
+                _video_stats_row(row)
+                for row in db.video_stats_growth(
+                    conn, horizon=timedelta(days=7),
+                    platform=platform or None, page_key=page_key or None,
+                )
+            ]
         def total_for(field: str):
             values = [row[field] for row in video_stats if row[field] is not None]
             return sum(values) if values else None
@@ -657,6 +671,10 @@ def create_app() -> Flask:
             "shares": total_for("share_count"),
         }
         creator_recommendations = analytics.creator_focus(video_stats)
+        momentum_recommendations = (
+            analytics.momentum_focus(growth_24h, period_label="24-hour")
+            + analytics.momentum_focus(growth_7d, period_label="7-day")
+        )
         if platform == "youtube":
             video_stats_refresh_label = (
                 "YouTube auto-refreshes every "
@@ -678,6 +696,7 @@ def create_app() -> Flask:
             video_stats=video_stats,
             insights_summary=insights_summary,
             creator_recommendations=creator_recommendations,
+            momentum_recommendations=momentum_recommendations,
             video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),

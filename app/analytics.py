@@ -63,3 +63,63 @@ def _engagement_score(row: dict) -> float:
     if views and views > 0:
         return (interactions / views) * 100
     return float(interactions)
+
+
+def momentum_focus(rows: list[dict], *, period_label: str, limit: int = 4) -> list[dict]:
+    """Rank growth within each channel/platform using percentile components."""
+    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for row in rows:
+        groups[(row.get("page_key") or "", row["platform"])].append(row)
+
+    results = []
+    for (_page_key, _platform), content in groups.items():
+        for row in content:
+            components = []
+            for field in ("view_growth", "like_growth", "comment_growth", "share_growth"):
+                value = row.get(field)
+                population = [item[field] for item in content if item.get(field) is not None]
+                if value is not None and population:
+                    components.append(_percentile(float(value), population))
+            row["momentum_score"] = sum(components) / len(components) if components else 0.0
+
+        leader = max(content, key=lambda item: item["momentum_score"])
+        elapsed_hours = max(0.0, float(leader.get("elapsed_hours") or 0))
+        sample_count = int(leader.get("sample_count") or 0)
+        group_size = len(content)
+        if elapsed_hours >= 120 and sample_count >= 5 and group_size >= 5:
+            confidence = "high"
+        elif elapsed_hours >= 12 and sample_count >= 2 and group_size >= 3:
+            confidence = "medium"
+        else:
+            confidence = "early"
+        interactions = sum(
+            leader.get(field) or 0
+            for field in ("like_growth", "comment_growth", "share_growth")
+        )
+        growth_parts = []
+        if leader.get("view_growth") is not None:
+            growth_parts.append(f"{leader['view_growth']:,} new views")
+        growth_parts.append(f"{interactions:,} new interactions")
+        results.append(
+            {
+                **leader,
+                "period_label": period_label,
+                "confidence": confidence,
+                "group_size": group_size,
+                "message": (
+                    f"“{leader.get('video_title') or leader['video_id']}” led {period_label} "
+                    f"momentum with {' and '.join(growth_parts)} over "
+                    f"{elapsed_hours:.0f} observed hours."
+                ),
+            }
+        )
+
+    return sorted(
+        results,
+        key=lambda item: (item.get("page_label", "").casefold(), item["platform"]),
+    )[:limit]
+
+
+def _percentile(value: float, population: list[int | float]) -> float:
+    """Inclusive percentile rank; ties receive the same transparent score."""
+    return 100.0 * sum(float(item) <= value for item in population) / len(population)

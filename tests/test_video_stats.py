@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -99,6 +100,39 @@ class VideoStatsDbTests(unittest.TestCase):
 
         self.assertEqual(removed, 1)
         self.assertEqual(history, [])
+
+    def test_video_stats_growth_returns_real_deltas(self):
+        reference_time = datetime(2026, 9, 14, 12, tzinfo=timezone.utc)
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="vid1", page_key="travel",
+                video_title="Beach", view_count=100, like_count=10,
+                share_count=None, comment_count=2,
+            )
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = ?",
+                ((reference_time - timedelta(hours=20)).isoformat(),),
+            )
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="vid1", page_key="travel",
+                video_title="Beach", view_count=180, like_count=16,
+                share_count=None, comment_count=5,
+            )
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = ? WHERE id = 2",
+                ((reference_time - timedelta(hours=1)).isoformat(),),
+            )
+            growth = db.video_stats_growth(
+                conn, horizon=timedelta(hours=24), page_key="travel",
+                reference_time=reference_time,
+            )
+
+        self.assertEqual(len(growth), 1)
+        self.assertEqual(growth[0]["view_growth"], 80)
+        self.assertEqual(growth[0]["like_growth"], 6)
+        self.assertEqual(growth[0]["comment_growth"], 3)
+        self.assertIsNone(growth[0]["share_growth"])
+        self.assertAlmostEqual(growth[0]["elapsed_hours"], 19, places=3)
 
     def test_list_video_stats_filters_by_platform(self):
         with db.connect() as conn:
