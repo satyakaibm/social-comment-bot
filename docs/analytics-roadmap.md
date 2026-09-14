@@ -36,6 +36,9 @@ and factors that caused the ranking.
 
 ## Phase 3 — Audience and publishing intelligence
 
+Status: in progress. Channel/platform audience timing and deterministic local
+intent classification are implemented without an external AI service.
+
 - Measure comment arrival patterns by weekday and hour in IST.
 - Categorize comments into praise, question, request, complaint, and spam using
   deterministic rules first, with cached Gemini classification as an opt-in.

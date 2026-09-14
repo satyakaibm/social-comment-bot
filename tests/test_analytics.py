@@ -82,6 +82,39 @@ class CreatorFocusTests(unittest.TestCase):
         self.assertEqual(recommendations[0]["confidence"], "medium")
         self.assertIn("100 new views", recommendations[0]["message"])
 
+    def test_audience_timing_finds_rolling_three_hour_window(self):
+        rows = [
+            {"platform": "youtube", "page_key": "travel", "weekday_ist": 5, "hour_ist": 18, "comment_count": 8},
+            {"platform": "youtube", "page_key": "travel", "weekday_ist": 5, "hour_ist": 19, "comment_count": 10},
+            {"platform": "youtube", "page_key": "travel", "weekday_ist": 6, "hour_ist": 20, "comment_count": 7},
+            {"platform": "youtube", "page_key": "travel", "weekday_ist": 1, "hour_ist": 9, "comment_count": 2},
+        ]
+
+        result = analytics.audience_timing_focus(rows)[0]
+
+        self.assertEqual(result["best_day"], "Friday")
+        self.assertEqual(result["window"], "6:00 PM–9:00 PM IST")
+        self.assertEqual(result["confidence"], "medium")
+
+    def test_comment_intent_rules_are_local_and_auditable(self):
+        self.assertEqual(analytics.classify_comment_intent("When is the next trip?"), "question")
+        self.assertEqual(analytics.classify_comment_intent("Please visit Odisha"), "request")
+        self.assertEqual(analytics.classify_comment_intent("The link is broken"), "complaint")
+        self.assertEqual(analytics.classify_comment_intent("Beautiful video, thanks"), "praise")
+
+    def test_comment_intent_focus_recommends_from_leading_intent(self):
+        rows = [
+            {"platform": "instagram", "page_key": "travel", "text": "Where is this?"},
+            {"platform": "instagram", "page_key": "travel", "text": "How can I go?"},
+            {"platform": "instagram", "page_key": "travel", "text": "Beautiful"},
+        ]
+
+        result = analytics.comment_intent_focus(rows)[0]
+
+        self.assertEqual(result["leading_intent"], "question")
+        self.assertEqual(result["leading_count"], 2)
+        self.assertIn("Q&amp;A", result["message"].replace("&", "&amp;"))
+
 
 if __name__ == "__main__":
     unittest.main()
