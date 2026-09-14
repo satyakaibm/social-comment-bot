@@ -49,10 +49,11 @@
     .refresh-note { margin:14px 0 18px; color:var(--muted); font-size:12px; font-weight:700; }
     .table-wrap { max-width:100%; overflow-x:auto; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 5px 18px rgba(15,42,56,.035); }
     table.video-stats { width:100%; min-width:640px; border-collapse:separate; border-spacing:0; font-size:13px; }
-    table.video-stats th { padding:12px 14px; color:#61737c; background:#f1f5f6; border-bottom:1px solid var(--line); text-align:left; font-size:10.5px; font-weight:800; letter-spacing:.065em; text-transform:uppercase; }
-    .sort-button { min-height:26px; padding:0 8px; display:inline-flex; align-items:center; gap:5px; color:#61737c; background:#fff; border:1px solid var(--line); border-radius:7px; box-shadow:none; font-size:10px; font-weight:800; letter-spacing:.065em; text-transform:uppercase; text-decoration:none; white-space:nowrap; }
-    .sort-button:hover { color:var(--navy); border-color:var(--coral); }
-    .sort-arrow { font-size:12px; line-height:1; }
+    table.video-stats th { padding:10px 12px; background:#f6f8f9; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+    .col-tab { min-height:30px; padding:0 12px; display:inline-flex; align-items:center; gap:6px; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:999px; font-size:11px; font-weight:800; letter-spacing:.04em; text-decoration:none; white-space:nowrap; }
+    a.col-tab:hover { color:var(--navy); border-color:var(--coral); background:#fff4ef; }
+    a.col-tab.is-sorted { color:#fff; background:var(--navy); border-color:var(--navy); }
+    .sort-arrow { font-size:11px; line-height:1; }
     table.video-stats td { padding:12px 14px; border-bottom:1px solid #e9eef0; vertical-align:top; }
     table.video-stats tbody tr:last-child td { border-bottom:0; }
     table.video-stats tbody tr:hover { background:#fbfcfc; }
@@ -93,7 +94,7 @@
           </div>
         </details>
         {% endif %}
-        <a class="back-link" href="/" id="back-link">&larr; <span>Back to dashboard</span><kbd>Backspace</kbd></a>
+        <a class="back-link" href="/" id="back-link">&larr; <span>Back</span></a>
       </div>
     </section>
     <section class="activity" aria-label="Freshness window">
@@ -118,14 +119,14 @@
       <table class="video-stats">
         <thead>
           <tr>
-            <th>Platform</th>
-            {% if page_choices|length > 1 %}<th>Channel</th>{% endif %}
-            <th>Title</th>
+            <th><span class="col-tab">Platform</span></th>
+            {% if page_choices|length > 1 %}<th><span class="col-tab">Channel</span></th>{% endif %}
+            <th><span class="col-tab">Title</span></th>
             {% for column, label in (('likes', 'Likes'), ('comments', 'Comments'), ('shares', 'Shares')) %}
             {% set next_dir = 'asc' if sort_by == column and sort_dir == 'desc' else 'desc' %}
-            <th><a class="sort-button" href="/insights?platform={{ platform }}&amp;page_key={{ page_key }}&amp;sort_by={{ column }}&amp;sort_dir={{ next_dir }}{% if window %}&amp;window={{ window }}{% endif %}" title="Sort {{ label }} {{ 'lowest first' if next_dir == 'asc' else 'highest first' }}" aria-label="Sort {{ label }} {{ 'lowest first' if next_dir == 'asc' else 'highest first' }}">{{ label }}{% if sort_by == column %} <span class="sort-arrow" aria-hidden="true">{{ '↓' if sort_dir == 'desc' else '↑' }}</span>{% endif %}</a></th>
+            <th><a class="col-tab{% if sort_by == column %} is-sorted{% endif %}" href="/insights?platform={{ platform }}&amp;page_key={{ page_key }}&amp;sort_by={{ column }}&amp;sort_dir={{ next_dir }}{% if window %}&amp;window={{ window }}{% endif %}" title="Sort {{ label }} {{ 'lowest first' if next_dir == 'asc' else 'highest first' }}" aria-label="Sort {{ label }} {{ 'lowest first' if next_dir == 'asc' else 'highest first' }}">{{ label }}{% if sort_by == column %} <span class="sort-arrow" aria-hidden="true">{{ '↓' if sort_dir == 'desc' else '↑' }}</span>{% endif %}</a></th>
             {% endfor %}
-            <th>Updated</th>
+            <th><span class="col-tab">Updated</span></th>
           </tr>
         </thead>
         <tbody>
