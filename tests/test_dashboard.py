@@ -792,13 +792,23 @@ class DashboardTests(unittest.TestCase):
         markup = self.client.get("/insights").data.decode()
         header_end = markup.index("</header>")
         overview = markup.index('class="overview-head"')
-        dashboard_button = markup.index('class="back-link"')
+        dashboard_button = markup.index('>Dashboard</a>')
         kpis = markup.index('class="kpi-grid"')
 
         self.assertLess(header_end, dashboard_button)
         self.assertLess(overview, dashboard_button)
         self.assertLess(dashboard_button, kpis)
         self.assertIn(">Dashboard</a>", markup)
+
+    def test_workspace_navigation_highlights_the_current_page(self):
+        dashboard = self.client.get("/").data
+        insights = self.client.get("/insights").data
+        momentum = self.client.get("/momentum").data
+
+        self.assertIn(b'class="insights-link active" href="/" aria-current="page"', dashboard)
+        self.assertLess(dashboard.index(b">Dashboard</span>"), dashboard.index(b">Insights</span>"))
+        self.assertIn(b'class="workspace-tab active" href="/insights?platform=&amp;page_key=" aria-current="page">Insights</a>', insights)
+        self.assertIn(b'class="workspace-tab active" href="/momentum?platform=&amp;page_key=" aria-current="page">Momentum</a>', momentum)
 
     def test_insights_shows_history_based_momentum(self):
         with db.connect() as conn:
