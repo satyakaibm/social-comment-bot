@@ -22,7 +22,7 @@ def _refresh_youtube(conn) -> int:
             youtube = youtube_client.get_client(page_key)
             titles = {row["video_id"]: row["video_title"] for row in rows}
             stats = youtube_client.get_video_stats(
-                youtube, titles.keys(), quota_conn=conn
+                youtube, titles.keys(), quota_conn=conn, page_key=page_key
             )
         except Exception as exc:
             print(
