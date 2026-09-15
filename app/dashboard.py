@@ -177,18 +177,28 @@ def _quota_cards(conn, platform: str) -> list[dict]:
     for name in selected:
         if name == "youtube":
             period = youtube_period
-            row = db.get_quota_usage(conn, name, period)
-            used = int(row["used"]) if row else 0
-            limit_value = int(row["limit_value"]) if row else config.YOUTUBE_DAILY_QUOTA_LIMIT
-            cards.append({
-                "platform": name,
-                "page_label": "",
-                "used": used if row else None,
-                "remaining": max(0, limit_value - used) if row else None,
-                "limit": limit_value,
-                "unit": "units",
-                "description": "Tracked today by this bot; YouTube resets at midnight Pacific Time.",
-            })
+            page_keys = config.youtube_page_keys()
+            multi = len(page_keys) > 1
+            # Each YouTube channel has its own separate Google Cloud project
+            # and its own separate 10,000-unit daily quota -- show one card
+            # per channel instead of one combined (and misleadingly shared)
+            # total, matching how Facebook/Instagram already do this below.
+            for page_key in page_keys or [config.DEFAULT_PAGE_KEY]:
+                quota_name = (
+                    name if page_key == config.DEFAULT_PAGE_KEY else f"{name}:{page_key}"
+                )
+                row = db.get_quota_usage(conn, quota_name, period)
+                used = int(row["used"]) if row else 0
+                limit_value = int(row["limit_value"]) if row else config.YOUTUBE_DAILY_QUOTA_LIMIT
+                cards.append({
+                    "platform": name,
+                    "page_label": config.PAGES[page_key].label if multi else "",
+                    "used": used if row else None,
+                    "remaining": max(0, limit_value - used) if row else None,
+                    "limit": limit_value,
+                    "unit": "units",
+                    "description": "Tracked today by this bot; YouTube resets at midnight Pacific Time.",
+                })
             continue
         page_keys = (
             config.facebook_page_keys() if name == "facebook" else config.instagram_page_keys()

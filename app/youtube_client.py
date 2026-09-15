@@ -10,14 +10,25 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 TOKEN_URI = "https://oauth2.googleapis.com/token"
 
 
-def execute(request, *, units: int = 1, quota_conn=None):
+def _quota_name(page_key: str) -> str:
+    """Each YouTube channel has its own separate Google Cloud project and
+    its own separate 10,000-unit daily quota -- track them under distinct
+    names (matching the existing "platform:page_key" convention already
+    used for multi-page Facebook/Instagram) instead of lumping every
+    channel's usage into one shared "youtube" counter."""
+    return "youtube" if page_key == config.DEFAULT_PAGE_KEY else f"youtube:{page_key}"
+
+
+def execute(
+    request, *, units: int = 1, quota_conn=None, page_key: str = config.DEFAULT_PAGE_KEY
+):
     """Execute a YouTube request and record quota consumed by this bot."""
     try:
         return request.execute()
     finally:
         period = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
         db.add_quota_usage(
-            "youtube",
+            _quota_name(page_key),
             period,
             units,
             config.YOUTUBE_DAILY_QUOTA_LIMIT,
@@ -74,28 +85,51 @@ def get_client(page_key: str = config.DEFAULT_PAGE_KEY) -> Resource:
     return build("youtube", "v3", credentials=creds, cache_discovery=False)
 
 
-def get_my_channel_id(youtube: Resource) -> str:
-    resp = execute(youtube.channels().list(part="id", mine=True))
+_channel_id_cache: dict[str, str] = {}
+_uploads_playlist_id_cache: dict[str, str] = {}
+
+
+def get_my_channel_id(
+    youtube: Resource, *, page_key: str = config.DEFAULT_PAGE_KEY
+) -> str:
+    """Return this channel's ID, cached for the process lifetime.
+
+    A channel's own ID never changes for the life of its OAuth credential,
+    so re-fetching it via the API every poll cycle forever (24x/day,
+    indefinitely) was pure recurring quota waste.
+    """
+    if page_key in _channel_id_cache:
+        return _channel_id_cache[page_key]
+    resp = execute(youtube.channels().list(part="id", mine=True), page_key=page_key)
     items = resp.get("items", [])
     if not items:
         raise RuntimeError("No channel found for the authenticated account.")
-    return items[0]["id"]
+    channel_id = items[0]["id"]
+    _channel_id_cache[page_key] = channel_id
+    return channel_id
 
 
-def get_video_channel_ids(youtube: Resource, video_ids) -> dict[str, str]:
+def get_video_channel_ids(
+    youtube: Resource, video_ids, *, page_key: str = config.DEFAULT_PAGE_KEY
+) -> dict[str, str]:
     """Return each video's owner channel ID, batching lookups to save quota."""
     unique_ids = list(dict.fromkeys(video_id for video_id in video_ids if video_id))
     owners = {}
     for start in range(0, len(unique_ids), 50):
-        response = execute(youtube.videos().list(
-            part="snippet", id=",".join(unique_ids[start:start + 50])
-        ))
+        response = execute(
+            youtube.videos().list(
+                part="snippet", id=",".join(unique_ids[start:start + 50])
+            ),
+            page_key=page_key,
+        )
         for item in response.get("items", []):
             owners[item["id"]] = item.get("snippet", {}).get("channelId", "")
     return owners
 
 
-def get_video_stats(youtube: Resource, video_ids, *, quota_conn=None) -> dict[str, dict]:
+def get_video_stats(
+    youtube: Resource, video_ids, *, quota_conn=None, page_key: str = config.DEFAULT_PAGE_KEY
+) -> dict[str, dict]:
     """Return each video's view/like/comment counts, batching lookups to save quota.
 
     YouTube's Data API has no share-count field. A metric hidden by its owner
@@ -109,6 +143,7 @@ def get_video_stats(youtube: Resource, video_ids, *, quota_conn=None) -> dict[st
                 part="statistics", id=",".join(unique_ids[start:start + 50])
             ),
             quota_conn=quota_conn,
+            page_key=page_key,
         )
         for item in response.get("items", []):
             counts = item.get("statistics", {})
@@ -124,6 +159,8 @@ def find_own_reply(
     youtube: Resource,
     comment_id: str,
     channel_ids: str | set[str],
+    *,
+    page_key: str = config.DEFAULT_PAGE_KEY,
 ) -> str | None:
     """Search every reply page for a reply from any known channel identity."""
     own_ids = {channel_ids} if isinstance(channel_ids, str) else set(channel_ids)
@@ -132,7 +169,7 @@ def find_own_reply(
         part="snippet", parentId=comment_id, maxResults=100, textFormat="plainText"
     )
     while request is not None:
-        response = execute(request)
+        response = execute(request, page_key=page_key)
         for reply in response["items"]:
             author_channel = reply.get("snippet", {}).get("authorChannelId", {})
             author_channel_id = (
@@ -146,20 +183,33 @@ def find_own_reply(
     return None
 
 
-def get_uploads_playlist_id(youtube: Resource) -> str:
-    resp = execute(youtube.channels().list(part="contentDetails", mine=True))
+def get_uploads_playlist_id(
+    youtube: Resource, *, page_key: str = config.DEFAULT_PAGE_KEY
+) -> str:
+    """Return this channel's uploads playlist ID, cached for the process
+    lifetime -- like the channel ID, it never changes for the life of the
+    OAuth credential, so re-fetching it every poll cycle forever is waste."""
+    if page_key in _uploads_playlist_id_cache:
+        return _uploads_playlist_id_cache[page_key]
+    resp = execute(
+        youtube.channels().list(part="contentDetails", mine=True), page_key=page_key
+    )
     items = resp.get("items", [])
     if not items:
         raise RuntimeError("No channel found for the authenticated account.")
-    return items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    playlist_id = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    _uploads_playlist_id_cache[page_key] = playlist_id
+    return playlist_id
 
 
-def iter_uploaded_video_ids(youtube: Resource, playlist_id: str):
+def iter_uploaded_video_ids(
+    youtube: Resource, playlist_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY
+):
     request = youtube.playlistItems().list(
         part="contentDetails", playlistId=playlist_id, maxResults=50
     )
     while request is not None:
-        response = execute(request)
+        response = execute(request, page_key=page_key)
         for item in response.get("items", []):
             yield item["contentDetails"]["videoId"]
         request = youtube.playlistItems().list_next(request, response)

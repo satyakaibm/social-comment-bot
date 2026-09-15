@@ -88,7 +88,8 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='youtube'), 0)
 
         find.assert_called_once_with(
-            youtube, 'youtube', {'oauth-channel', 'hindolroad'}
+            youtube, 'youtube', {'oauth-channel', 'hindolroad'},
+            page_key=post.config.DEFAULT_PAGE_KEY,
         )
         youtube.comments.return_value.insert.assert_not_called()
 
@@ -96,7 +97,7 @@ class ExistingReplyTests(unittest.TestCase):
         self.seed('youtube')
         youtube = MagicMock()
 
-        def identity_with_quota(_):
+        def identity_with_quota(_, **_kwargs):
             db.add_quota_usage('youtube', 'test', 1, 10000)
             return 'owner'
 
@@ -148,13 +149,13 @@ class ExistingReplyTests(unittest.TestCase):
         def fake_get_client(page_key=post.config.DEFAULT_PAGE_KEY):
             return clients[page_key]
 
-        def fake_get_my_channel_id(client):
+        def fake_get_my_channel_id(client, **_kwargs):
             for key, candidate in clients.items():
                 if candidate is client:
                     return channel_ids[key]
             raise AssertionError('unexpected client instance')
 
-        def fake_get_video_channel_ids(client, video_ids):
+        def fake_get_video_channel_ids(client, video_ids, **_kwargs):
             return {video_id: video_owners[video_id] for video_id in video_ids}
 
         with patch.object(post.config, 'PAGES', {**post.config.PAGES, 'second': second_page}), \

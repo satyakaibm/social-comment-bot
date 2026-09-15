@@ -178,9 +178,14 @@ def post_approved(
                 try:
                     client = get_client(page_key=yt_page_key)
                     youtube_clients[yt_page_key] = client
-                    youtube_channel_ids[yt_page_key] = get_my_channel_id(client)
+                    youtube_channel_ids[yt_page_key] = get_my_channel_id(
+                        client, page_key=yt_page_key
+                    )
                     video_channel_ids.update(
-                        get_video_channel_ids(client, (row["video_id"] for row in page_rows))
+                        get_video_channel_ids(
+                            client, (row["video_id"] for row in page_rows),
+                            page_key=yt_page_key,
+                        )
                     )
                     youtube_page_ready[yt_page_key] = True
                 except Exception as exc:
@@ -258,7 +263,8 @@ def post_approved(
                         video_owner_id,
                     }
                     existing_reply = find_own_reply(
-                        youtube, row["comment_id"], own_channel_ids
+                        youtube, row["comment_id"], own_channel_ids,
+                        page_key=meta_page_key,
                     )
                 elif platform in ("facebook", "instagram"):
                     check_started = monotonic()
@@ -322,6 +328,7 @@ def post_approved(
                             },
                         ),
                         units=50,
+                        page_key=meta_page_key,
                     )
                     reply_id = resp["id"]
                 elif platform in ("facebook", "instagram"):

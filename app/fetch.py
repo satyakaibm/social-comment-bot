@@ -16,7 +16,10 @@ from app.youtube_client import (
 )
 
 
-def _iter_top_level_threads(youtube, *, video_id: str, limit: int | None = None):
+def _iter_top_level_threads(
+    youtube, *, video_id: str, limit: int | None = None,
+    page_key: str = config.DEFAULT_PAGE_KEY,
+):
     request = youtube.commentThreads().list(
         part="snippet",
         videoId=video_id,
@@ -26,7 +29,7 @@ def _iter_top_level_threads(youtube, *, video_id: str, limit: int | None = None)
     )
     count = 0
     while request is not None:
-        response = execute(request)
+        response = execute(request, page_key=page_key)
         for item in response.get("items", []):
             if limit is not None and count >= limit:
                 return
@@ -37,15 +40,25 @@ def _iter_top_level_threads(youtube, *, video_id: str, limit: int | None = None)
         request = youtube.commentThreads().list_next(request, response)
 
 
-def _video_title_cache(youtube):
+def _video_title_cache(youtube, conn, page_key: str = config.DEFAULT_PAGE_KEY):
     cache: dict[str, str] = {}
 
     def get(video_id: str) -> str:
-        if video_id not in cache:
-            resp = execute(youtube.videos().list(part="snippet", id=video_id))
+        if video_id in cache:
+            return cache[video_id]
+        # A video's title never changes once published, so check our own
+        # storage before spending API quota re-fetching it every cycle --
+        # each cycle used to pay 1 unit per video, forever, for a value
+        # that's almost always already sitting in our database.
+        title = db.get_cached_video_title(conn, platform="youtube", video_id=video_id)
+        if title is None:
+            resp = execute(
+                youtube.videos().list(part="snippet", id=video_id), page_key=page_key
+            )
             items = resp.get("items", [])
-            cache[video_id] = items[0]["snippet"]["title"] if items else video_id
-        return cache[video_id]
+            title = items[0]["snippet"]["title"] if items else video_id
+        cache[video_id] = title
+        return title
 
     return get
 
@@ -57,14 +70,13 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
     """
     db.init_db()
     youtube = get_client(page_key=page_key)
-    channel_id = get_my_channel_id(youtube)
-    video_title = _video_title_cache(youtube)
+    channel_id = get_my_channel_id(youtube, page_key=page_key)
 
     # Configured IDs are additive. Always include the latest uploads so an old
     # fixed ID can never silently disable discovery of new video comments.
-    uploads_playlist_id = get_uploads_playlist_id(youtube)
+    uploads_playlist_id = get_uploads_playlist_id(youtube, page_key=page_key)
     latest_video_ids = list(islice(
-        iter_uploaded_video_ids(youtube, uploads_playlist_id),
+        iter_uploaded_video_ids(youtube, uploads_playlist_id, page_key=page_key),
         max(0, config.YOUTUBE_VIDEO_LIMIT),
     ))
     configured_video_ids = (
@@ -79,6 +91,7 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
     daily_draft_limit_reached = False
 
     with db.connect() as conn:
+        video_title = _video_title_cache(youtube, conn, page_key)
         drafted_today = db.count_drafted_today(conn)
         for index, video_id in enumerate(video_ids):
             if remaining <= 0:
@@ -89,7 +102,7 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
             video_limit = max(1, remaining // videos_left)
             try:
                 threads = _iter_top_level_threads(
-                    youtube, video_id=video_id, limit=video_limit
+                    youtube, video_id=video_id, limit=video_limit, page_key=page_key
                 )
                 for thread in threads:
                     remaining -= 1
@@ -132,7 +145,7 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
                             thread.get("snippet", {}).get("channelId", ""),
                         }
                         existing_reply = find_own_reply(
-                            youtube, comment_id, own_channel_ids
+                            youtube, comment_id, own_channel_ids, page_key=page_key
                         )
                     except Exception:
                         print(f"Could not verify existing replies for YouTube comment {comment_id}; skipping this run.")

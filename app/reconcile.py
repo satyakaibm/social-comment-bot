@@ -34,9 +34,9 @@ def reconcile_youtube_pending(page_key: str = config.DEFAULT_PAGE_KEY) -> dict[s
 
     try:
         youtube = get_client(page_key=page_key)
-        oauth_channel_id = get_my_channel_id(youtube)
+        oauth_channel_id = get_my_channel_id(youtube, page_key=page_key)
         video_owners = get_video_channel_ids(
-            youtube, (row["video_id"] for row in rows)
+            youtube, (row["video_id"] for row in rows), page_key=page_key
         )
     except HttpError as exc:
         if is_quota_exceeded(exc):
@@ -66,6 +66,7 @@ def reconcile_youtube_pending(page_key: str = config.DEFAULT_PAGE_KEY) -> dict[s
                     youtube,
                     row["comment_id"],
                     {oauth_channel_id, video_owner_id},
+                    page_key=page_key,
                 )
             except HttpError as exc:
                 if is_quota_exceeded(exc):

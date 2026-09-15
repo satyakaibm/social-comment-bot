@@ -819,6 +819,27 @@ VIDEO_STATS_WINDOWS = {
 }
 
 
+def get_cached_video_title(
+    conn: sqlite3.Connection, *, platform: str, video_id: str
+) -> str | None:
+    """Look up a video's title from our own storage before spending YouTube
+    API quota on it -- a video's title essentially never changes once
+    published, so re-fetching it every poll cycle forever is pure waste."""
+    row = conn.execute(
+        "SELECT video_title FROM video_stats WHERE platform = ? AND video_id = ? "
+        "AND video_title IS NOT NULL AND video_title <> ''",
+        (platform, video_id),
+    ).fetchone()
+    if row:
+        return row["video_title"]
+    row = conn.execute(
+        "SELECT video_title FROM comments WHERE platform = ? AND video_id = ? "
+        "AND video_title IS NOT NULL AND video_title <> '' LIMIT 1",
+        (platform, video_id),
+    ).fetchone()
+    return row["video_title"] if row else None
+
+
 def list_video_stats(
     conn: sqlite3.Connection,
     *,
