@@ -170,29 +170,39 @@ def _video_stats_row(row: dict) -> dict:
     return item
 
 
-def _quota_cards(conn, platform: str) -> list[dict]:
+def _quota_cards(conn, platform: str, page_key: str = "") -> list[dict]:
+    """Quota cards for the selected platform(s), scoped to the selected
+    channel when one is picked -- consistent with every other section of
+    the dashboard, which already filters by the page_key switcher."""
     selected = (platform,) if platform else ()
     cards = []
     youtube_period = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+
+    def _scoped_keys(all_keys: list[str]) -> list[str]:
+        if page_key:
+            return [k for k in all_keys if k == page_key]
+        # No channel filter and no pages configured for this platform at all
+        # (fresh checkout / test env) -- still show one unlabeled card,
+        # matching pre-multi-page behavior, instead of rendering nothing.
+        return all_keys or [config.DEFAULT_PAGE_KEY]
+
     for name in selected:
         if name == "youtube":
             period = youtube_period
-            page_keys = config.youtube_page_keys()
-            multi = len(page_keys) > 1
+            all_keys = config.youtube_page_keys()
+            multi = len(all_keys) > 1
             # Each YouTube channel has its own separate Google Cloud project
             # and its own separate 10,000-unit daily quota -- show one card
             # per channel instead of one combined (and misleadingly shared)
             # total, matching how Facebook/Instagram already do this below.
-            for page_key in page_keys or [config.DEFAULT_PAGE_KEY]:
-                quota_name = (
-                    name if page_key == config.DEFAULT_PAGE_KEY else f"{name}:{page_key}"
-                )
+            for key in _scoped_keys(all_keys):
+                quota_name = name if key == config.DEFAULT_PAGE_KEY else f"{name}:{key}"
                 row = db.get_quota_usage(conn, quota_name, period)
                 used = int(row["used"]) if row else 0
                 limit_value = int(row["limit_value"]) if row else config.YOUTUBE_DAILY_QUOTA_LIMIT
                 cards.append({
                     "platform": name,
-                    "page_label": config.PAGES[page_key].label if multi else "",
+                    "page_label": config.PAGES[key].label if multi else "",
                     "used": used if row else None,
                     "remaining": max(0, limit_value - used) if row else None,
                     "limit": limit_value,
@@ -200,21 +210,18 @@ def _quota_cards(conn, platform: str) -> list[dict]:
                     "description": "Tracked today by this bot; YouTube resets at midnight Pacific Time.",
                 })
             continue
-        page_keys = (
+        all_keys = (
             config.facebook_page_keys() if name == "facebook" else config.instagram_page_keys()
         )
-        multi = len(page_keys) > 1
-        # No page configured for this platform at all (fresh checkout / test
-        # env) -- still show one unlabeled card, matching pre-multi-page
-        # behavior, instead of silently rendering nothing.
-        for page_key in page_keys or [config.DEFAULT_PAGE_KEY]:
-            quota_name = name if page_key == config.DEFAULT_PAGE_KEY else f"{name}:{page_key}"
+        multi = len(all_keys) > 1
+        for key in _scoped_keys(all_keys):
+            quota_name = name if key == config.DEFAULT_PAGE_KEY else f"{name}:{key}"
             row = db.get_quota_usage(conn, quota_name, "rolling")
             used = int(row["used"]) if row else 0
             limit_value = int(row["limit_value"]) if row else 100
             cards.append({
                 "platform": name,
-                "page_label": config.PAGES[page_key].label if multi else "",
+                "page_label": config.PAGES[key].label if multi else "",
                 "used": used if row else None,
                 "remaining": max(0, limit_value - used) if row else None,
                 "limit": limit_value,
@@ -502,7 +509,7 @@ def create_app() -> Flask:
             activity = db.activity_summary(
                 conn, platform=platform or None, page_key=page_key or None
             )
-            quota_cards = _quota_cards(conn, platform)
+            quota_cards = _quota_cards(conn, platform, page_key)
             total = db.count_comments(
                 conn,
                 status=status,
