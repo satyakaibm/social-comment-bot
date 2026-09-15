@@ -812,6 +812,66 @@ def create_app() -> Flask:
         for item in experiments:
             page = config.PAGES.get(item.get("page_key") or config.DEFAULT_PAGE_KEY)
             item["page_label"] = page.label if page else "Default channel"
+        trend_index: dict[tuple[str, str, str], dict] = {}
+        for period, rows in (("24h", growth_24h), ("7d", growth_7d)):
+            for row in rows:
+                identity = (
+                    row.get("page_key") or "",
+                    row["platform"],
+                    row["video_id"],
+                )
+                trend = trend_index.setdefault(
+                    identity,
+                    {
+                        "page_label": row.get("page_label") or "Default channel",
+                        "platform": row["platform"],
+                        "video_id": row["video_id"],
+                        "video_title": row.get("video_title") or row["video_id"],
+                        **{
+                            f"{window}_{metric}_growth": None
+                            for window in ("24h", "7d")
+                            for metric in ("view", "like", "comment", "share")
+                        },
+                        "24h_sample_count": 0,
+                        "24h_elapsed_hours": 0,
+                        "7d_sample_count": 0,
+                        "7d_elapsed_hours": 0,
+                    },
+                )
+                for metric in ("view", "like", "comment", "share"):
+                    trend[f"{period}_{metric}_growth"] = row.get(f"{metric}_growth")
+                trend[f"{period}_sample_count"] = row.get("sample_count") or 0
+                trend[f"{period}_elapsed_hours"] = row.get("elapsed_hours") or 0
+        trend_rows = sorted(
+            trend_index.values(),
+            key=lambda row: (
+                row.get("24h_view_growth") is not None,
+                row.get("24h_view_growth") or 0,
+                row.get("7d_view_growth") is not None,
+                row.get("7d_view_growth") or 0,
+            ),
+            reverse=True,
+        )[:12]
+        confidence_items = (
+            momentum_recommendations + audience_timing + audience_intents
+        )
+        confidence_summary = {
+            level: sum(item.get("confidence") == level for item in confidence_items)
+            for level in ("high", "medium", "early")
+        }
+        analysis_summary = {
+            "content": len(video_stats),
+            "channels": len({
+                (row.get("page_key") or "", row["platform"]) for row in video_stats
+            }),
+            "history_samples": sum(int(row.get("sample_count") or 0) for row in growth_7d),
+            "audience_comments": sum(
+                int(item.get("comment_count") or 0) for item in audience_timing
+            ),
+            "active_experiments": sum(
+                item.get("status") not in {"completed", "ignored"} for item in experiments
+            ),
+        }
         return render_template(
             "momentum.html",
             creator_recommendations=creator_recommendations,
@@ -819,6 +879,9 @@ def create_app() -> Flask:
             audience_timing=audience_timing,
             audience_intents=audience_intents,
             experiments=experiments,
+            trend_rows=trend_rows,
+            confidence_summary=confidence_summary,
+            analysis_summary=analysis_summary,
             analysis_warning=analysis_warning,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
