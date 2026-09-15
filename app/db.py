@@ -226,12 +226,14 @@ def open_connection(path: Path | str | None = None, *, migrate_plaintext: bool =
             )
         conn = sqlite3.connect(db_path, timeout=30)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
         _restrict_db_file(db_path)
         return conn
 
     if not migrate_plaintext and db_path.exists() and is_plaintext_sqlite(db_path):
         conn = sqlite3.connect(db_path, timeout=30)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
     _ensure_encrypted(db_path, key)
@@ -245,6 +247,10 @@ def open_connection(path: Path | str | None = None, *, migrate_plaintext: bool =
         raise RuntimeError(
             f"Could not open encrypted database {db_path}. Check DB_ENCRYPTION_KEY."
         ) from exc
+    # Rollback-journal mode takes an exclusive lock for the whole commit,
+    # blocking every reader (dashboard queries included) until it releases.
+    # WAL lets readers proceed concurrently with a writer.
+    conn.execute("PRAGMA journal_mode=WAL")
     _restrict_db_file(db_path)
     return conn
 
