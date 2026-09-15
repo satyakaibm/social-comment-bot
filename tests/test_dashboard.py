@@ -700,6 +700,41 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Travel Explorer", switcher.data)
         self.assertIn(b"Hindolroad", switcher.data)
 
+    def test_youtube_quota_cards_are_scoped_to_the_selected_channel(self):
+        from zoneinfo import ZoneInfo
+        from tests.helpers import make_page_config
+
+        pages = {
+            config.DEFAULT_PAGE_KEY: make_page_config(
+                key=config.DEFAULT_PAGE_KEY, label="Hindolroad",
+                youtube_refresh_token="yt-default",
+            ),
+            "travel": make_page_config(
+                key="travel", label="Travel Explorer", youtube_refresh_token="yt-travel",
+            ),
+        }
+        period = datetime.now(ZoneInfo("America/Los_Angeles")).date().isoformat()
+        db.add_quota_usage("youtube", period, 1234, 10000)
+        db.add_quota_usage("youtube:travel", period, 56, 10000)
+
+        with patch.object(config, "PAGES", pages):
+            all_channels = self.client.get("/?platform=youtube")
+            default_only = self.client.get("/?platform=youtube&page_key=" + config.DEFAULT_PAGE_KEY)
+            travel_only = self.client.get("/?platform=youtube&page_key=travel")
+
+        self.assertIn(b"Hindolroad API quota", all_channels.data)
+        self.assertIn(b"Travel Explorer API quota", all_channels.data)
+        self.assertIn(b"1234", all_channels.data)
+        self.assertIn(b"56", all_channels.data)
+
+        self.assertIn(b"Hindolroad API quota", default_only.data)
+        self.assertIn(b"1234", default_only.data)
+        self.assertNotIn(b"Travel Explorer API quota", default_only.data)
+
+        self.assertIn(b"Travel Explorer API quota", travel_only.data)
+        self.assertIn(b"56", travel_only.data)
+        self.assertNotIn(b"Hindolroad API quota", travel_only.data)
+
     def test_page_filter_pills_shown_on_all_platforms_too(self):
         with self._with_second_page():
             page = self.client.get("/")
