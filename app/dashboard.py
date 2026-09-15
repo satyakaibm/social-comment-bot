@@ -736,6 +736,8 @@ def create_app() -> Flask:
             history_warning=history_warning,
             platform=platform,
             page_key=page_key,
+            dashboard_username=session["dashboard_username"],
+            profile_initial=session["dashboard_username"][:1].upper(),
         )
 
     @app.get("/momentum")
@@ -890,6 +892,8 @@ def create_app() -> Flask:
             ),
             platform=platform,
             page_key=page_key,
+            dashboard_username=session["dashboard_username"],
+            profile_initial=session["dashboard_username"][:1].upper(),
         )
 
     @app.post("/insights/experiments")

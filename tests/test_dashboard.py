@@ -788,7 +788,7 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn(b"Content 55", second.data)
         self.assertIn(b"Content 1", second.data)
 
-    def test_insights_dashboard_button_is_above_overview_and_outside_header(self):
+    def test_insights_workspace_tabs_are_in_banner_below_header(self):
         markup = self.client.get("/insights").data.decode()
         header_end = markup.index("</header>")
         overview = markup.index('class="overview-head"')
@@ -796,8 +796,8 @@ class DashboardTests(unittest.TestCase):
         kpis = markup.index('class="kpi-grid"')
 
         self.assertLess(header_end, dashboard_button)
-        self.assertLess(overview, dashboard_button)
-        self.assertLess(dashboard_button, kpis)
+        self.assertLess(dashboard_button, overview)
+        self.assertLess(overview, kpis)
         self.assertIn(">Dashboard</a>", markup)
 
     def test_workspace_navigation_highlights_the_current_page(self):
@@ -805,6 +805,11 @@ class DashboardTests(unittest.TestCase):
         insights = self.client.get("/insights").data
         momentum = self.client.get("/momentum").data
 
+        for page in (dashboard, insights, momentum):
+            self.assertIn(b'class="site-header"', page)
+            self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page)
+            self.assertIn(b'aria-label="Open My Profile menu"', page)
+            self.assertIn(b'content-my-trip-logo.svg', page)
         self.assertIn(b'class="insights-link active" href="/" aria-current="page"', dashboard)
         self.assertLess(dashboard.index(b">Dashboard</span>"), dashboard.index(b">Insights</span>"))
         self.assertIn(b'class="workspace-tab active" href="/insights?platform=&amp;page_key=" aria-current="page">Insights</a>', insights)
