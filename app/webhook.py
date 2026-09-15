@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import sqlite3
 import threading
 
 from flask import Flask, Response, request
@@ -237,41 +238,48 @@ def process_event(event: dict) -> None:
             )
 
 
-def process_one_pending_event() -> bool:
-    db.init_db()
-    with db.connect() as conn:
-        row = db.claim_webhook_event(conn)
+def process_one_pending_event(conn: sqlite3.Connection) -> bool:
+    row = db.claim_webhook_event(conn)
     if row is None:
         return False
     try:
         process_event(json.loads(row["payload"]))
     except Exception as exc:
-        with db.connect() as conn:
-            db.finish_webhook_event(conn, row["event_key"], error=str(exc)[:1000])
+        db.finish_webhook_event(conn, row["event_key"], error=str(exc)[:1000])
+        conn.commit()
         print(f'Webhook event {row["event_key"]} failed: {exc}', flush=True)
     else:
-        with db.connect() as conn:
-            db.finish_webhook_event(conn, row["event_key"])
+        db.finish_webhook_event(conn, row["event_key"])
+        conn.commit()
     return True
 
 
 def worker_loop(stop: threading.Event) -> None:
     db.init_db()
-    with db.connect() as conn:
+    # A single long-lived connection for this thread's whole lifetime --
+    # opening a fresh (SQLCipher-keyed) connection on every poll tick, even
+    # when idle, was burning CPU on key derivation twice a second forever
+    # and colliding with the dashboard/other containers over the DB lock.
+    conn = db.open_connection()
+    try:
         db.reset_interrupted_webhook_events(conn)
-    while not stop.is_set():
-        try:
-            processed = process_one_pending_event()
-        except Exception as exc:
-            # A transient DB error here (e.g. sqlite disk I/O error from
-            # concurrent host+container access) must not kill this thread --
-            # there is no supervisor to restart it, so an uncaught exception
-            # would silently stop all webhook processing for the rest of the
-            # container's uptime.
-            print(f"Webhook worker loop error: {exc}", flush=True)
-            processed = False
-        if not processed:
-            stop.wait(0.5)
+        conn.commit()
+        while not stop.is_set():
+            try:
+                processed = process_one_pending_event(conn)
+            except Exception as exc:
+                # A transient DB error here (e.g. sqlite disk I/O error from
+                # concurrent host+container access) must not kill this thread --
+                # there is no supervisor to restart it, so an uncaught exception
+                # would silently stop all webhook processing for the rest of the
+                # container's uptime.
+                conn.rollback()
+                print(f"Webhook worker loop error: {exc}", flush=True)
+                processed = False
+            if not processed:
+                stop.wait(0.5)
+    finally:
+        conn.close()
 
 
 def start_event_worker(app: Flask) -> threading.Event:
