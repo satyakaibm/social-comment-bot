@@ -748,6 +748,11 @@ def create_app() -> Flask:
         page_key = request.args.get("page_key", "").strip()
         if page_key not in config.PAGES:
             page_key = ""
+        # Momentum is deactivated for now -- its heaviest queries hung all
+        # four gunicorn threads under real concurrent load (a SQLite/WAL
+        # locking issue, not yet root-caused). Route, template, and analytics
+        # code below are left in place to resume from once that's fixed.
+        return redirect(url_for("index", platform=platform, page_key=page_key))
         analysis_warning = ""
         with request_db() as conn:
             video_stats = [
