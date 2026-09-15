@@ -74,9 +74,10 @@
     .channel-indicator { display:inline-flex; align-items:center; gap:8px; margin:0 0 10px; padding:6px 13px; color:#fff; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.24); border-radius:999px; font-size:12px; font-weight:800; }
     .channel-indicator-dot { width:7px; height:7px; border-radius:50%; background:var(--teal); }
     h1 { margin:0; color:var(--navy); font-size:clamp(28px,4vw,42px); line-height:1.08; letter-spacing:-.035em; }
-    .intro-actions { display:flex; align-items:center; gap:12px; }
+    .intro-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     .insights-link { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
     .insights-link:hover { color:#fff; background:rgba(255,255,255,.16); }
+    .insights-link.active { min-height:42px; padding:0 17px; color:#fff; background:#1769e0; border-color:#1769e0; box-shadow:0 8px 20px rgba(8,44,105,.28); font-size:14px; }
     .channels-select { position:relative; }
     .channels-select summary { min-height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:8px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:750; cursor:pointer; list-style:none; }
     .channels-select summary::-webkit-details-marker { display:none; }
@@ -187,7 +188,7 @@
     @media (max-width:1280px) { .grid-wrap{height:55vh} }
     @media (max-width:980px) { .topbar{padding:0 22px}.toolbar{align-items:stretch;flex-direction:column}form.search{width:100%}.grid-wrap{height:58vh}.footer-main{grid-template-columns:1.4fr 1fr 1fr;gap:28px} }
     @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column}.activity-platforms,.range-scroll{width:100%}.activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px}.footer-main{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 17px}.intro-actions{align-self:stretch;justify-content:flex-end}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 17px}.intro-actions{align-self:stretch;justify-content:flex-start}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
     @media (max-width:390px) { .activity-platform{padding:8px 10px}.range-button{padding:0 10px}.stat-label{font-size:9px}.search{flex-direction:column}.search button{width:100%}.grid-wrap{height:56vh} }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important} }
   </style>
@@ -237,6 +238,10 @@
           </div>
         </details>
         {% endif %}
+        <a class="insights-link active" href="/" aria-current="page">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
+          <span>Dashboard</span>
+        </a>
         <a class="insights-link" href="/insights{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
           <span>Insights</span>
