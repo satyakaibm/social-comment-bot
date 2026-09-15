@@ -338,6 +338,12 @@ def init_db() -> None:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_status ON comments(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_platform_page_key ON comments(platform, page_key)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_updated_at ON comments(updated_at)")
+        # Momentum's audience_activity/comment_text_sample filter on a 90-day
+        # created_at cutoff on every page load; without this, created_at was
+        # only ever compared through datetime(), which can't use an index and
+        # forced a full table scan (83k+ rows in seen_comments) each time.
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_seen_comments_created_at ON seen_comments(created_at)")
         stats_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(video_stats)")
         }
@@ -642,9 +648,12 @@ def audience_activity(
                COUNT(*) AS comment_count
         FROM seen_comments s
         LEFT JOIN comments c ON c.comment_id = s.comment_id
-        WHERE datetime({timestamp_expr}) >= datetime(?)
+        WHERE (
+            (c.created_at IS NOT NULL AND c.created_at >= ?)
+            OR (c.created_at IS NULL AND s.created_at >= ?)
+        )
     """
-    params: list = [cutoff]
+    params: list = [cutoff, cutoff]
     if platform:
         sql += f" AND {platform_expr} = ?"
         params.append(platform)
@@ -672,7 +681,7 @@ def comment_text_sample(
     cutoff = (reference_time - horizon).isoformat()
     sql = """SELECT platform, page_key, text, created_at
              FROM comments
-             WHERE datetime(created_at) >= datetime(?) AND trim(text) <> ''"""
+             WHERE created_at >= ? AND trim(text) <> ''"""
     params: list = [cutoff]
     if platform:
         sql += " AND platform = ?"
