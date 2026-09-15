@@ -823,6 +823,13 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"24-hour leader", page.data)
         self.assertIn(b"Growing Aarti", page.data)
         self.assertIn(b"2 snapshots", page.data)
+        self.assertIn(b"Data science workspace", page.data)
+        self.assertIn(b"Growth across comparable windows", page.data)
+        self.assertIn(b"Future suggestions", page.data)
+        self.assertIn(b"Audience intelligence", page.data)
+        self.assertIn(b"Experiment lab", page.data)
+        self.assertIn(b"Content analyzed", page.data)
+        self.assertIn(b"24h views", page.data)
 
     def test_insights_shows_local_audience_intelligence(self):
         page = self.client.get("/momentum?platform=youtube")
