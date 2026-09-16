@@ -210,6 +210,11 @@ class YouTubeStatsTests(unittest.TestCase):
 
 
 class MetaStatsTests(unittest.TestCase):
+    FB_FIELDS = (
+        "likes.summary(true).limit(0),comments.summary(true).limit(0),"
+        "shares,attachments{media_type,target}"
+    )
+
     def test_get_facebook_post_stats_parses_summaries(self):
         with patch.object(
             meta_client, "graph_get",
@@ -220,11 +225,12 @@ class MetaStatsTests(unittest.TestCase):
             },
         ) as graph_get:
             stats = meta_client.get_facebook_post_stats("post1", page_key="p")
-        self.assertEqual(stats, {"like_count": 5, "comment_count": 2, "share_count": 7})
+        self.assertEqual(
+            stats,
+            {"like_count": 5, "comment_count": 2, "share_count": 7, "view_count": None},
+        )
         graph_get.assert_called_once_with(
-            "post1",
-            fields="likes.summary(true).limit(0),comments.summary(true).limit(0),shares",
-            page_key="p",
+            "post1", fields=self.FB_FIELDS, page_key="p",
         )
 
     def test_get_facebook_post_stats_defaults_shares_to_zero_when_absent(self):
@@ -238,16 +244,75 @@ class MetaStatsTests(unittest.TestCase):
             stats = meta_client.get_facebook_post_stats("post1")
         self.assertEqual(stats["share_count"], 0)
 
+    def test_get_facebook_post_stats_fetches_views_for_video_posts(self):
+        responses = [
+            {
+                "likes": {"summary": {"total_count": 5}},
+                "comments": {"summary": {"total_count": 2}},
+                "shares": {"count": 7},
+                "attachments": {"data": [
+                    {"media_type": "video", "target": {"id": "vid42"}}
+                ]},
+            },
+            {"views": 663},
+        ]
+        with patch.object(
+            meta_client, "graph_get", side_effect=responses,
+        ) as graph_get:
+            stats = meta_client.get_facebook_post_stats("post1", page_key="p")
+        self.assertEqual(stats["view_count"], 663)
+        graph_get.assert_any_call("vid42", fields="views", page_key="p")
+
+    def test_get_facebook_post_stats_skips_views_when_video_lookup_fails(self):
+        responses = [
+            {
+                "likes": {"summary": {"total_count": 5}},
+                "comments": {"summary": {"total_count": 2}},
+                "attachments": {"data": [
+                    {"media_type": "video", "target": {"id": "vid42"}}
+                ]},
+            },
+            meta_client.GraphAPIError("boom"),
+        ]
+        with patch.object(meta_client, "graph_get", side_effect=responses):
+            stats = meta_client.get_facebook_post_stats("post1")
+        self.assertIsNone(stats["view_count"])
+
     def test_get_instagram_media_stats_parses_counts(self):
         with patch.object(
             meta_client, "graph_get",
-            return_value={"like_count": 4, "comments_count": 1},
+            return_value={"like_count": 4, "comments_count": 1, "media_type": "IMAGE"},
         ) as graph_get:
             stats = meta_client.get_instagram_media_stats("media1", page_key="p")
-        self.assertEqual(stats, {"like_count": 4, "comment_count": 1})
-        graph_get.assert_called_once_with(
-            "media1", fields="like_count,comments_count", page_key="p"
+        self.assertEqual(
+            stats, {"like_count": 4, "comment_count": 1, "view_count": None}
         )
+        graph_get.assert_called_once_with(
+            "media1", fields="like_count,comments_count,media_type", page_key="p"
+        )
+
+    def test_get_instagram_media_stats_fetches_views_for_video_media(self):
+        responses = [
+            {"like_count": 4, "comments_count": 1, "media_type": "VIDEO"},
+            {"data": [{"values": [{"value": 21296}]}]},
+        ]
+        with patch.object(
+            meta_client, "graph_get", side_effect=responses,
+        ) as graph_get:
+            stats = meta_client.get_instagram_media_stats("media1", page_key="p")
+        self.assertEqual(stats["view_count"], 21296)
+        graph_get.assert_any_call(
+            "media1/insights", metric="views", page_key="p"
+        )
+
+    def test_get_instagram_media_stats_skips_views_when_insights_unsupported(self):
+        responses = [
+            {"like_count": 4, "comments_count": 1, "media_type": "VIDEO"},
+            meta_client.GraphAPIError("unsupported metric for this media type"),
+        ]
+        with patch.object(meta_client, "graph_get", side_effect=responses):
+            stats = meta_client.get_instagram_media_stats("media1")
+        self.assertIsNone(stats["view_count"])
 
 
 class RefreshAllTests(unittest.TestCase):
