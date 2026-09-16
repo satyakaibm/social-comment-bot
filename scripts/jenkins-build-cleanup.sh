@@ -13,14 +13,19 @@
 #
 # Safe by design: defaults to report-only. Nothing is deleted unless you
 # pass --delete, and even then it asks for confirmation before touching
-# anything. nextBuildNumber is left untouched so numbering keeps
-# incrementing normally.
+# anything -- unless stdin isn't an interactive terminal (e.g. run via a
+# tool that doesn't attach a real TTY for input), in which case it says so
+# explicitly and does nothing, rather than silently no-op'ing as if you'd
+# answered "no". Pass --yes to confirm without a prompt either way.
+# nextBuildNumber is left untouched so numbering keeps incrementing
+# normally.
 #
 # Usage:
 #   ./scripts/jenkins-build-cleanup.sh                    # report only, no changes
 #   ./scripts/jenkins-build-cleanup.sh --delete            # delete what's found, but
 #                                                           # only offered if disk is tight
 #   ./scripts/jenkins-build-cleanup.sh --delete --force    # clean up regardless of free space
+#   ./scripts/jenkins-build-cleanup.sh --delete --yes      # skip the y/N prompt (e.g. no TTY)
 #   KEEP_JENKINS_BUILDS=3 ./scripts/jenkins-build-cleanup.sh --delete
 #
 # Env vars:
@@ -35,10 +40,12 @@ set -euo pipefail
 
 DELETE=false
 FORCE=false
+YES=false
 for arg in "$@"; do
   case "$arg" in
     --delete) DELETE=true ;;
     --force) FORCE=true ;;
+    --yes|-y) YES=true ;;
   esac
 done
 
@@ -52,6 +59,13 @@ echo
 
 confirm() {
   local msg="$1"
+  if $YES; then
+    return 0
+  fi
+  if [[ ! -t 0 ]]; then
+    echo "No interactive terminal to confirm '$msg' -- re-run with --yes to skip the prompt, or run this directly in a real terminal." >&2
+    return 1
+  fi
   read -rp "$msg [y/N] " reply
   [[ "$reply" =~ ^[Yy]$ ]]
 }
