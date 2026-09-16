@@ -963,6 +963,54 @@ class ExistingReplyTests(unittest.TestCase):
             ['configured', 'latest-1', 'latest-2'],
         )
 
+    def test_recently_active_video_is_rescanned_after_aging_out_of_latest_uploads(self):
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id='old-comment', platform='youtube', video_id='viral-old-video',
+                video_title='Viral', author='viewer', text='hi', published_at='',
+                draft_reply='🙏',
+            )
+        with patch.object(fetch, 'get_client'), \
+             patch.object(fetch, 'get_my_channel_id', return_value='owner'), \
+             patch.object(fetch, 'get_uploads_playlist_id', return_value='uploads'), \
+             patch.object(
+                 fetch, 'iter_uploaded_video_ids', return_value=iter(['latest-1', 'latest-2']),
+             ), \
+             patch.object(fetch.config, 'YOUTUBE_VIDEO_IDS', []), \
+             patch.object(fetch.config, 'YOUTUBE_VIDEO_LIMIT', 2), \
+             patch.object(fetch.config, 'YOUTUBE_COMMENT_LIMIT', 3), \
+             patch.object(fetch, '_iter_top_level_threads', return_value=[]) as threads:
+            self.assertEqual(fetch.poll_and_draft(), 0)
+
+        self.assertEqual(
+            [call.kwargs['video_id'] for call in threads.call_args_list],
+            ['viral-old-video', 'latest-1', 'latest-2'],
+        )
+
+    def test_dormant_video_is_not_rescanned_once_the_active_window_expires(self):
+        from datetime import datetime, timedelta, timezone
+
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id='old-comment', platform='youtube', video_id='dormant-video',
+                video_title='Dormant', author='viewer', text='hi', published_at='',
+                draft_reply='🙏',
+            )
+            stale = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()
+            conn.execute(
+                "UPDATE comments SET created_at = ? WHERE comment_id = 'old-comment'", (stale,)
+            )
+        with patch.object(fetch, 'get_client'), \
+             patch.object(fetch, 'get_my_channel_id', return_value='owner'), \
+             patch.object(fetch, 'get_uploads_playlist_id', return_value='uploads'), \
+             patch.object(fetch, 'iter_uploaded_video_ids', return_value=iter([])), \
+             patch.object(fetch.config, 'YOUTUBE_VIDEO_IDS', []), \
+             patch.object(fetch.config, 'YOUTUBE_ACTIVE_VIDEO_DAYS', 30), \
+             patch.object(fetch, '_iter_top_level_threads', return_value=[]) as threads:
+            self.assertEqual(fetch.poll_and_draft(), 0)
+
+        threads.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()
