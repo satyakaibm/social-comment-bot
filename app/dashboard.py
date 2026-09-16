@@ -800,6 +800,14 @@ def create_app() -> Flask:
                 conn, horizon=timedelta(days=90),
                 platform=platform or None, page_key=page_key or None,
             )
+            try:
+                engagement_rows = db.engagement_activity(
+                    conn, horizon=timedelta(days=90),
+                    platform=platform or None, page_key=page_key or None,
+                )
+            except Exception as exc:
+                engagement_rows = []
+                app.logger.exception("Engagement timing query failed: %s", exc)
             intent_rows = db.comment_text_sample(
                 conn, horizon=timedelta(days=90),
                 platform=platform or None, page_key=page_key or None,
@@ -807,14 +815,18 @@ def create_app() -> Flask:
             experiments = db.list_recommendation_experiments(
                 conn, platform=platform or None, page_key=page_key or None
             )
-        for row in activity_rows + intent_rows:
+        for row in activity_rows + intent_rows + engagement_rows:
             row["page_key"] = row.get("page_key") or config.DEFAULT_PAGE_KEY
         creator_recommendations = analytics.creator_focus(video_stats)
         momentum_recommendations = (
             analytics.momentum_focus(growth_24h, period_label="24-hour")
             + analytics.momentum_focus(growth_7d, period_label="7-day")
         )
-        audience_timing = analytics.audience_timing_focus(activity_rows)
+        audience_timing = analytics.audience_timing_focus(
+            activity_rows,
+            engagement_rows=engagement_rows,
+            quality_rows=intent_rows,
+        )
         audience_intents = analytics.comment_intent_focus(intent_rows)
         for item in audience_timing + audience_intents:
             page = config.PAGES.get(item.get("page_key") or "")

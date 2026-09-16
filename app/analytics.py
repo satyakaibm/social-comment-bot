@@ -4,6 +4,18 @@ import re
 
 
 WEEKDAYS = ("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+INTENT_WEIGHTS = {
+    "question": 1.6,
+    "request": 1.4,
+    "praise": 1.2,
+    "complaint": 0.7,
+    "other": 0.3,
+}
+TIMING_SIGNAL_WEIGHTS = {
+    "demand": 0.30,
+    "quality": 0.25,
+    "engagement": 0.45,
+}
 
 
 def creator_focus(rows: list[dict], *, limit: int = 4) -> list[dict]:
@@ -131,40 +143,265 @@ def _percentile(value: float, population: list[int | float]) -> float:
     return 100.0 * sum(float(item) <= value for item in population) / len(population)
 
 
-def audience_timing_focus(rows: list[dict]) -> list[dict]:
-    """Find each channel/platform's busiest day and rolling three-hour IST window."""
-    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
-    for row in rows:
-        groups[(row.get("page_key") or "", row["platform"])].append(row)
+def audience_timing_focus(
+    rows: list[dict],
+    engagement_rows: list[dict] | None = None,
+    quality_rows: list[dict] | None = None,
+) -> list[dict]:
+    """Find each channel/platform's strongest publishing window in IST.
+
+    The score blends unique audience demand, comment intent quality, and
+    observed view/like/share/comment growth so raw comment volume cannot
+    dominate. Missing signals are dropped and the rest are reweighted.
+    """
+    comment_groups = _group_timing_rows(rows)
+    engagement_groups = _group_timing_rows(engagement_rows or [])
+    quality_groups = _group_timing_rows(quality_rows or [])
+    keys = sorted(set(comment_groups) | set(engagement_groups) | set(quality_groups))
 
     results = []
-    for (page_key, platform), activity in groups.items():
-        hourly = [0] * 24
-        daily = [0] * 7
-        for row in activity:
-            count = int(row["comment_count"])
-            hourly[int(row["hour_ist"])] += count
-            daily[int(row["weekday_ist"])] += count
-        total = sum(hourly)
-        start_hour = max(range(24), key=lambda hour: sum(hourly[(hour + offset) % 24] for offset in range(3)))
-        end_hour = (start_hour + 3) % 24
-        best_day = max(range(7), key=lambda day: daily[day])
-        confidence = "high" if total >= 100 else "medium" if total >= 25 else "early"
+    for page_key, platform in keys:
+        comments = _timing_grid()
+        demand = _timing_grid()
+        quality = _timing_grid()
+        engagement = _timing_grid()
+        for row in comment_groups.get((page_key, platform), []):
+            weekday, hour = _timing_slot(row)
+            comment_count = float(row.get("comment_count") or 0)
+            comments[weekday][hour] += comment_count
+            demand[weekday][hour] += float(row.get("unique_authors") or comment_count)
+        for row in quality_groups.get((page_key, platform), []):
+            weekday, hour = _timing_slot(row)
+            intent = classify_comment_intent(row.get("text") or "")
+            quality[weekday][hour] += INTENT_WEIGHTS.get(intent, INTENT_WEIGHTS["other"])
+        for row in engagement_groups.get((page_key, platform), []):
+            weekday, hour = _timing_slot(row)
+            engagement[weekday][hour] += _timing_engagement_score(row)
+        score, used_signals = _blend_timing_grids(
+            {
+                "demand": demand,
+                "quality": quality,
+                "engagement": engagement,
+            }
+        )
+        total_comments = _grid_total(comments)
+        total_demand = _grid_total(demand)
+        total_engagement = _grid_total(engagement)
+        peak = max(
+            (
+                (
+                    sum(score[day][(hour + offset) % 24] for offset in range(3)),
+                    day,
+                    hour,
+                )
+                for day in range(7)
+                for hour in range(24)
+            )
+        )
+        window_score, best_day, start_hour = peak
+        if _grid_total(score) <= 0:
+            window_score, best_day, start_hour = 0.0, 0, 0
+            window_label = "Insufficient data"
+        else:
+            window_label = (
+                f"{_hour_label(start_hour)}–{_hour_label((start_hour + 3) % 24)} IST"
+            )
+        peak_cell = max((score[day][hour], day, hour) for day in range(7) for hour in range(24))
+        window_comments = sum(comments[best_day][(start_hour + offset) % 24] for offset in range(3))
+        confidence = _timing_confidence(
+            total_comments=total_comments,
+            total_demand=total_demand,
+            total_engagement=total_engagement,
+            signal_count=len(used_signals),
+        )
+        weekday_windows = [
+            _weekday_publish_window(
+                score[day],
+                day,
+                comments=comments[day],
+                demand=demand[day],
+                engagement=engagement[day],
+            )
+            for day in range(7)
+        ]
+        signal_label = ", ".join(used_signals) if used_signals else "comment volume"
         results.append(
             {
                 "page_key": page_key,
                 "platform": platform,
-                "comment_count": total,
+                "comment_count": int(total_comments),
+                "unique_authors": int(round(total_demand)),
+                "engagement_score": total_engagement,
+                "window_count": int(window_comments),
+                "window_score": window_score,
+                "window_share": window_score / _grid_total(score) if _grid_total(score) else 0,
                 "confidence": confidence,
+                "signals": used_signals,
                 "best_day": WEEKDAYS[best_day],
-                "window": f"{_hour_label(start_hour)}–{_hour_label(end_hour)} IST",
+                "best_day_index": best_day,
+                "window_start_hour": start_hour,
+                "window": window_label,
+                "heatmap": comments,
+                "score_heatmap": score,
+                "hour_labels": [_compact_hour(hour) for hour in range(24)],
+                "weekday_labels": list(WEEKDAYS),
+                "weekday_windows": weekday_windows,
+                "peak_count": peak_cell[0],
                 "message": (
-                    f"Audience comments peak on {WEEKDAYS[best_day]}; test publishing or "
-                    f"being available to reply around {_hour_label(start_hour)}–{_hour_label(end_hour)} IST."
+                    f"Keep collecting comments and engagement snapshots before choosing a publish window."
+                    if window_score <= 0
+                    else (
+                        f"The strongest audience window is {WEEKDAYS[best_day]} between "
+                        f"{_hour_label(start_hour)} and {_hour_label(start_hour + 3)} IST, "
+                        f"using {signal_label}. Test publishing or being available to "
+                        "reply then, and use the weekday schedule for same-day times."
+                    )
                 ),
             }
         )
-    return sorted(results, key=lambda item: (item["page_key"], item["platform"]))
+    return results
+
+
+def _group_timing_rows(rows: list[dict]) -> dict[tuple[str, str], list[dict]]:
+    groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for row in rows:
+        if row.get("platform") is None:
+            continue
+        groups[(row.get("page_key") or "", row["platform"])].append(row)
+    return groups
+
+
+def _timing_slot(row: dict) -> tuple[int, int]:
+    return int(row["weekday_ist"]) % 7, int(row["hour_ist"]) % 24
+
+
+def _timing_grid() -> list[list[float]]:
+    return [[0.0] * 24 for _ in range(7)]
+
+
+def _grid_total(grid: list[list[float]]) -> float:
+    return float(sum(sum(day) for day in grid))
+
+
+def _timing_engagement_score(row: dict) -> float:
+    likes = float(row.get("like_growth") or 0)
+    comments = float(row.get("comment_growth") or 0)
+    shares = float(row.get("share_growth") or 0)
+    views = float(row.get("view_growth") or 0)
+    return likes + (2 * comments) + (3 * shares) + (0.02 * views)
+
+
+def _blend_timing_grids(grids: dict[str, list[list[float]]]) -> tuple[list[list[float]], list[str]]:
+    """Normalize each available signal to its own peak, then weight them."""
+    available = []
+    for name, grid in grids.items():
+        total = _grid_total(grid)
+        if total <= 0:
+            continue
+        peak = max(value for day in grid for value in day) or 1.0
+        available.append((name, TIMING_SIGNAL_WEIGHTS[name], peak, grid))
+    blended = _timing_grid()
+    if not available:
+        return blended, []
+    weight_total = sum(weight for _name, weight, _peak, _grid in available)
+    labels = {
+        "demand": "audience demand",
+        "quality": "comment intent",
+        "engagement": "engagement growth",
+    }
+    for name, weight, peak, grid in available:
+        share = weight / weight_total
+        for day in range(7):
+            for hour in range(24):
+                blended[day][hour] += share * (grid[day][hour] / peak)
+    return blended, [labels[name] for name, _weight, _peak, _grid in available]
+
+
+def _timing_confidence(
+    *,
+    total_comments: float,
+    total_demand: float,
+    total_engagement: float,
+    signal_count: int,
+) -> str:
+    if signal_count >= 2 and total_demand >= 40 and total_engagement >= 80:
+        return "high"
+    if total_comments >= 100 and signal_count >= 2:
+        return "high"
+    if total_demand >= 12 or total_engagement >= 20 or total_comments >= 25:
+        return "medium"
+    return "early"
+
+
+def _weekday_publish_window(
+    score_hours: list[float],
+    day: int,
+    *,
+    comments: list[float],
+    demand: list[float],
+    engagement: list[float],
+) -> dict:
+    """Best contiguous three-hour window that stays on one weekday."""
+    day_score = sum(score_hours)
+    start_hour, window_score = _best_same_day_window(score_hours)
+    window_comments = sum(comments[start_hour + offset] for offset in range(3))
+    window_demand = sum(demand[start_hour + offset] for offset in range(3))
+    window_engagement = sum(engagement[start_hour + offset] for offset in range(3))
+    has_signal = day_score > 0
+    day_comments = sum(comments)
+    if not has_signal:
+        confidence = "none"
+    elif day_comments >= 25 or window_engagement >= 40:
+        confidence = "high"
+    elif day_comments >= 8 or window_engagement >= 10 or window_demand >= 5:
+        confidence = "medium"
+    else:
+        confidence = "early"
+    return {
+        "day": WEEKDAYS[day],
+        "day_index": day,
+        "day_count": int(round(day_comments)),
+        "day_score": day_score,
+        "unique_authors": int(round(sum(demand))),
+        "engagement_score": window_engagement,
+        "window_count": int(round(window_comments)),
+        "window_score": window_score,
+        "audience_score": int(round((window_score / 3.0) * 100)) if has_signal else 0,
+        "window_share": window_score / day_score if day_score else 0,
+        "window_start_hour": start_hour if has_signal else None,
+        "window": (
+            f"{_hour_label(start_hour)}–{_hour_label(start_hour + 3)} IST"
+            if has_signal
+            else "Insufficient data"
+        ),
+        "confidence": confidence,
+        "has_signal": has_signal,
+    }
+
+
+def _best_same_day_window(day_hours: list[float] | list[int]) -> tuple[int, float]:
+    """Return (start_hour, score) for the strongest 3-hour block in 00:00–24:00.
+
+    Tied windows prefer the block whose middle hour is closest to the day's
+    peak hour, so the recommendation sits on the audience spike rather than
+    starting two hours early.
+    """
+    peak_hour = max(range(24), key=lambda hour: (day_hours[hour], -hour))
+    peak = max(
+        (
+            sum(day_hours[start + offset] for offset in range(3)),
+            -abs(start + 1 - peak_hour),
+            -start,
+        )
+        for start in range(22)
+    )
+    window_score, _distance, neg_start = peak
+    return -neg_start, window_score
+
+
+def _compact_hour(hour: int) -> str:
+    suffix = "a" if hour < 12 else "p"
+    return f"{hour % 12 or 12}{suffix}"
 
 
 def comment_intent_focus(rows: list[dict]) -> list[dict]:
@@ -217,6 +454,7 @@ def classify_comment_intent(text: str) -> str:
 
 
 def _hour_label(hour: int) -> str:
+    hour = hour % 24
     suffix = "AM" if hour < 12 else "PM"
     display = hour % 12 or 12
     return f"{display}:00 {suffix}"
