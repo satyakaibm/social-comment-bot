@@ -92,6 +92,12 @@ CREATE TABLE IF NOT EXISTS api_quota_usage (
     PRIMARY KEY (platform, period_key)
 );
 
+CREATE TABLE IF NOT EXISTS worker_heartbeats (
+    worker TEXT PRIMARY KEY,
+    last_run_at TEXT NOT NULL,
+    detail TEXT
+);
+
 CREATE TABLE IF NOT EXISTS video_stats (
     platform TEXT NOT NULL,
     video_id TEXT NOT NULL,
@@ -437,6 +443,40 @@ def get_quota_usage(conn: sqlite3.Connection, platform: str, period_key: str):
            WHERE platform = ? AND period_key = ?""",
         (platform, period_key),
     ).fetchone()
+
+
+def record_heartbeat(conn: sqlite3.Connection, worker: str, *, detail: str = "") -> None:
+    """Record that a background worker completed a cycle just now.
+
+    Purely observational -- nothing reads this to make decisions, it just
+    lets the status page show whether each worker is actually still
+    running, since none of them have an HTTP endpoint of their own to ask.
+    """
+    conn.execute(
+        """INSERT INTO worker_heartbeats (worker, last_run_at, detail)
+               VALUES (?, ?, ?)
+           ON CONFLICT(worker) DO UPDATE SET
+               last_run_at = excluded.last_run_at, detail = excluded.detail""",
+        (worker, now(), detail),
+    )
+    conn.commit()
+
+
+def list_heartbeats(conn: sqlite3.Connection) -> list[dict]:
+    return [
+        dict(row) for row in conn.execute(
+            "SELECT worker, last_run_at, detail FROM worker_heartbeats ORDER BY worker"
+        )
+    ]
+
+
+def webhook_event_counts(conn: sqlite3.Connection) -> dict[str, int]:
+    counts = {status: 0 for status in ("pending", "processing", "processed", "failed")}
+    for row in conn.execute(
+        "SELECT status, COUNT(*) AS n FROM webhook_events GROUP BY status"
+    ):
+        counts[row["status"]] = row["n"]
+    return counts
 
 
 def distinct_containers(

@@ -1,13 +1,24 @@
 import io
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import call, patch
 
-from app import youtube_worker
+from app import db, youtube_worker
 from tests.helpers import make_page_config
 
 
 class YouTubeWorkerTests(unittest.TestCase):
     def setUp(self):
+        # run_cycle() records a heartbeat via db.connect() -- isolate it
+        # from the real local comments.db like every other test does,
+        # rather than writing test artifacts into real data.
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        patcher = patch.object(db, "DB_PATH", Path(self.temp.name) / "comments.db")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        db.init_db()
         self.pages = {
             "hindolroad": make_page_config(key="hindolroad", label="Hindolroad"),
             "travel": make_page_config(key="travel", label="Travel Explorer Satya"),

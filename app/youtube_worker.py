@@ -12,7 +12,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app import config
+from app import config, db
 from app.fetch import poll_and_draft
 from app.post import post_approved
 
@@ -44,6 +44,8 @@ def run_cycle() -> int:
     print(f"\n==== YouTube worker cycle started: {started} ====")
     if not page_keys:
         print("No YouTube channels are configured; cycle skipped.")
+        with db.connect() as conn:
+            db.record_heartbeat(conn, "youtube_poller", detail="no channels configured")
         return 0
 
     failures = 0
@@ -77,6 +79,11 @@ def run_cycle() -> int:
 
     finished = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     print(f"==== YouTube worker cycle finished: {finished}; failed steps: {failures} ====")
+    with db.connect() as conn:
+        db.record_heartbeat(
+            conn, "youtube_poller",
+            detail=f"{len(page_keys)} channel(s), {failures} failure(s)",
+        )
     return failures
 
 

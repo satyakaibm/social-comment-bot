@@ -1,11 +1,12 @@
 import socket
 import hmac
+import os
 import re
 import secrets
 import threading
 import time
 from contextlib import contextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
@@ -990,6 +991,34 @@ def create_app() -> Flask:
         return render_template(
             "settings.html",
             user_created=request.args.get("user_created") == "1",
+        )
+
+    @app.get("/status")
+    def status():
+        with request_db() as conn:
+            heartbeats = db.list_heartbeats(conn)
+            webhook_counts = db.webhook_event_counts(conn)
+            quota_cards = (
+                _quota_cards(conn, "youtube")
+                + _quota_cards(conn, "facebook")
+                + _quota_cards(conn, "instagram")
+            )
+        now = datetime.now(timezone.utc)
+        for beat in heartbeats:
+            last_run = datetime.fromisoformat(beat["last_run_at"])
+            beat["seconds_ago"] = max(0, int((now - last_run).total_seconds()))
+        try:
+            db_size_mb = round(os.path.getsize(db.DB_PATH) / (1024 * 1024), 1)
+        except OSError:
+            db_size_mb = None
+        return render_template(
+            "status.html",
+            heartbeats=heartbeats,
+            webhook_counts=webhook_counts,
+            quota_cards=quota_cards,
+            db_size_mb=db_size_mb,
+            dashboard_username=session["dashboard_username"],
+            profile_initial=session["dashboard_username"][:1].upper(),
         )
 
     @app.get("/health")
