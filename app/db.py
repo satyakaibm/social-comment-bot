@@ -577,13 +577,24 @@ def video_stats_growth(
     page_key: str | None = None,
     reference_time: datetime | None = None,
 ) -> list[dict]:
-    """Return first-to-last metric deltas inside a real historical window."""
+    """Return first-to-last metric deltas inside a real historical window.
+
+    Two real costs stacked here and caused Momentum's original outage: the
+    date filter used to be wrapped in datetime(), which can't use an index
+    and forces a full scan; and "eligible" was referenced three times
+    (bounds, oldest, newest) with no MATERIALIZED hint, so SQLite silently
+    re-ran that full scan three times per call. Measured on production
+    data: ~2.15s per call before, ~0.0002s after -- fine in isolation
+    either way, but under real concurrent requests on a 2-vCPU box (each
+    with its own SQLCipher connection independently re-decrypting the same
+    pages) that difference compounded into requests taking 100+ seconds.
+    """
     reference_time = reference_time or datetime.now(timezone.utc)
     cutoff = (reference_time - horizon).isoformat()
     sql = """
-        WITH eligible AS (
+        WITH eligible AS MATERIALIZED (
             SELECT * FROM video_stats_history
-            WHERE datetime(captured_at) >= datetime(?)
+            WHERE captured_at >= ?
     """
     params: list = [cutoff]
     if platform:

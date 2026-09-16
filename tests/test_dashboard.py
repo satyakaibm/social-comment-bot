@@ -1,7 +1,7 @@
 import socket
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 from werkzeug.security import generate_password_hash
@@ -761,6 +761,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Performance insights", page.data)
         self.assertNotIn(b"Creator focus", page.data)
         self.assertNotIn(b"Next content focus", page.data)
+        self.assertIn(b'href="/momentum"', page.data)
         self.assertIn(b"Aarti", page.data)
 
     def test_insights_shows_platform_specific_refresh_cadence(self):
@@ -780,9 +781,16 @@ class DashboardTests(unittest.TestCase):
                 page_key=config.DEFAULT_PAGE_KEY, video_title="Period growth",
                 view_count=100, like_count=10, share_count=1, comment_count=2,
             )
+            # Match production's actual timestamp format (db.now(), i.e.
+            # datetime.isoformat()) rather than SQLite's own datetime()
+            # output -- they differ (space vs "T" separator), and
+            # video_stats_growth compares captured_at as a plain string for
+            # index use, so a row written in the wrong format would sort
+            # incorrectly relative to a real cutoff.
+            backdated = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
             conn.execute(
-                "UPDATE video_stats_history SET captured_at = datetime('now', '-30 minutes') "
-                "WHERE video_id = 'period-growth'"
+                "UPDATE video_stats_history SET captured_at = ? WHERE video_id = 'period-growth'",
+                (backdated,),
             )
             db.upsert_video_stats(
                 conn, platform="youtube", video_id="period-growth",
@@ -839,8 +847,9 @@ class DashboardTests(unittest.TestCase):
     def test_workspace_navigation_highlights_the_current_page(self):
         dashboard = self.client.get("/").data
         insights = self.client.get("/insights").data
+        momentum = self.client.get("/momentum").data
 
-        for page in (dashboard, insights):
+        for page in (dashboard, insights, momentum):
             self.assertIn(b'class="site-header"', page)
             self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page)
             self.assertIn(b'aria-label="Open My Profile menu"', page)
@@ -848,27 +857,103 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'class="insights-link active" href="/" aria-current="page"', dashboard)
         self.assertLess(dashboard.index(b">Dashboard</span>"), dashboard.index(b">Insights</span>"))
         self.assertIn(b'class="workspace-tab active" href="/insights?platform=&amp;page_key=" aria-current="page">Insights</a>', insights)
+        self.assertIn(b'class="workspace-tab active" href="/momentum?platform=&amp;page_key=" aria-current="page">Momentum</a>', momentum)
 
-    def test_momentum_route_is_deactivated(self):
-        # Momentum is parked (its heaviest queries hung all four gunicorn
-        # threads under real concurrent load -- a SQLite/WAL locking issue,
-        # not yet root-caused). The route, template, and analytics code are
-        # left in place to resume from once that's fixed; it just isn't
-        # linked or reachable in the meantime.
-        response = self.client.get("/momentum?platform=youtube&page_key=hindolroad")
+    def test_insights_shows_history_based_momentum(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="momentum", page_key=config.DEFAULT_PAGE_KEY,
+                video_title="Growing Aarti", view_count=100, like_count=10,
+                share_count=None, comment_count=2,
+            )
+            # Match production's actual timestamp format (db.now(), i.e.
+            # datetime.isoformat()) rather than SQLite's own datetime()
+            # output -- see test_insights_period_uses_historical_metric_growth.
+            backdated = (datetime.now(timezone.utc) - timedelta(hours=13)).isoformat()
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = ?", (backdated,)
+            )
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="momentum", page_key=config.DEFAULT_PAGE_KEY,
+                video_title="Growing Aarti", view_count=250, like_count=24,
+                share_count=None, comment_count=7,
+            )
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(
-            response.headers["Location"],
-            "/?platform=youtube&page_key=hindolroad",
+        page = self.client.get("/momentum?platform=youtube")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Momentum", page.data)
+        self.assertIn(b"24-hour leader", page.data)
+        self.assertIn(b"Growing Aarti", page.data)
+        self.assertIn(b"2 snapshots", page.data)
+        self.assertIn(b"Data science workspace", page.data)
+        self.assertIn(b"Growth across comparable windows", page.data)
+        self.assertIn(b"Future suggestions", page.data)
+        self.assertIn(b"Audience intelligence", page.data)
+        self.assertIn(b"Experiment lab", page.data)
+        self.assertIn(b"Content analyzed", page.data)
+        self.assertIn(b"24h views", page.data)
+
+    def test_insights_shows_local_audience_intelligence(self):
+        page = self.client.get("/momentum?platform=youtube")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Audience intelligence", page.data)
+        self.assertIn(b"Best audience window", page.data)
+        self.assertIn(b"Leading intent", page.data)
+        self.assertIn(b"local rule-based analysis", page.data)
+        self.assertIn(b"does not send comment text", page.data)
+
+    def test_creator_can_track_and_complete_recommendation(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="tracked", page_key="",
+                video_title="Tracked Aarti", view_count=100, like_count=10,
+                share_count=None, comment_count=2,
+            )
+        item = {
+            "platform": "youtube", "page_key": config.DEFAULT_PAGE_KEY,
+            "video_id": "tracked", "period_label": "",
+            "message": (
+                "Build on “Tracked Aarti”; it has the strongest current "
+                "engagement signal in this group."
+            ),
+        }
+        key = analytics.recommendation_key("current", item)
+        self.client.get("/momentum")
+        with self.client.session_transaction() as auth_session:
+            csrf = auth_session["csrf_token"]
+
+        created = self.client.post(
+            "/momentum/experiments",
+            data={
+                "csrf_token": csrf, "recommendation_type": "current",
+                "recommendation_key": key, "platform": "youtube",
+                "page_key": config.DEFAULT_PAGE_KEY, "video_id": "tracked",
+                "period_label": "", "title": "Tracked Aarti",
+                "recommendation": item["message"],
+                "test_dimension": "topic", "variant_label": "Morning ritual",
+                "notes": "Test whether ritual topics increase discussion",
+            },
         )
-        dashboard = self.client.get("/").data
-        insights = self.client.get("/insights").data
-        self.assertNotIn(b"/momentum", dashboard)
-        self.assertNotIn(b"/momentum", insights)
+        with db.connect() as conn:
+            experiment = db.list_recommendation_experiments(conn)[0]
+        completed = self.client.post(
+            f"/momentum/experiments/{experiment['id']}/status",
+            data={"csrf_token": csrf, "status": "completed"},
+        )
+        page = self.client.get("/momentum")
+
+        self.assertEqual(created.status_code, 302)
+        self.assertEqual(completed.status_code, 302)
+        self.assertIn(b"Tracked recommendations", page.data)
+        self.assertIn(b"completed", page.data)
+        self.assertIn(b"Variant: Morning ritual", page.data)
+        self.assertIn(b"Hypothesis: Test whether ritual topics", page.data)
+        self.assertIn(b"does not prove", page.data)
 
     def test_recommendation_rejects_invalid_test_dimension(self):
-        self.client.get("/")
+        self.client.get("/momentum")
         with self.client.session_transaction() as auth_session:
             csrf = auth_session["csrf_token"]
 
@@ -918,6 +1003,7 @@ class DashboardTests(unittest.TestCase):
     def test_dashboard_links_to_insights(self):
         page = self.client.get("/")
         self.assertIn(b'href="/insights"', page.data)
+        self.assertIn(b'href="/momentum"', page.data)
         self.assertNotIn(b'aria-label="Video and post engagement"', page.data)
 
     def test_insights_requires_login(self):
@@ -934,9 +1020,25 @@ class DashboardTests(unittest.TestCase):
                 view_count=100, like_count=10, share_count=None, comment_count=2,
             )
         insights = self.client.get("/insights")
+        momentum = self.client.get("/momentum")
 
+        self.assertEqual(momentum.status_code, 200)
+        self.assertIn(b"Momentum analysis", momentum.data)
+        self.assertIn(b"Creator focus", momentum.data)
+        self.assertIn(b"Audience intelligence", momentum.data)
+        self.assertNotIn(b"Content performance", momentum.data)
         self.assertNotIn(b"Creator focus", insights.data)
         self.assertNotIn(b"Audience intelligence", insights.data)
+
+    def test_momentum_survives_unavailable_history(self):
+        with patch.object(
+            db, "video_stats_growth", side_effect=RuntimeError("history unavailable")
+        ):
+            page = self.client.get("/momentum")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"Historical momentum is temporarily unavailable", page.data)
+        self.assertIn(b"Audience intelligence", page.data)
 
 
 if __name__ == "__main__":
