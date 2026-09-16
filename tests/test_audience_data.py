@@ -43,7 +43,45 @@ class AudienceDataTests(unittest.TestCase):
 
         self.assertEqual(sum(row["comment_count"] for row in activity), 1)
         self.assertEqual(activity[0]["page_key"], "travel")
+        self.assertEqual(activity[0]["unique_authors"], 1)
         self.assertEqual([row["text"] for row in texts], ["Where is this?"])
+        self.assertIn("weekday_ist", texts[0])
+        self.assertIn("hour_ist", texts[0])
+
+    def test_engagement_activity_attributes_growth_to_later_capture_hour(self):
+        reference = datetime(2026, 9, 11, 13, tzinfo=timezone.utc)
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="peak", page_key="travel",
+                video_title="Aarti", view_count=100, like_count=10,
+                share_count=1, comment_count=4,
+            )
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="peak", page_key="travel",
+                video_title="Aarti", view_count=180, like_count=22,
+                share_count=3, comment_count=9,
+            )
+            rows = list(conn.execute(
+                "SELECT id FROM video_stats_history WHERE video_id = 'peak' ORDER BY id"
+            ))
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = ? WHERE id = ?",
+                ((reference - timedelta(minutes=40)).isoformat(), rows[0]["id"]),
+            )
+            conn.execute(
+                "UPDATE video_stats_history SET captured_at = ? WHERE id = ?",
+                ((reference - timedelta(minutes=10)).isoformat(), rows[1]["id"]),
+            )
+            activity = db.engagement_activity(
+                conn, horizon=timedelta(days=1), page_key="travel",
+                reference_time=reference,
+            )
+
+        self.assertEqual(len(activity), 1)
+        self.assertEqual(activity[0]["view_growth"], 80)
+        self.assertEqual(activity[0]["like_growth"], 12)
+        self.assertEqual(activity[0]["weekday_ist"], 5)
+        self.assertEqual(activity[0]["hour_ist"], 18)
 
     def test_recently_active_video_ids_filters_by_horizon_platform_and_page(self):
         reference = datetime(2026, 9, 14, 12, tzinfo=timezone.utc)

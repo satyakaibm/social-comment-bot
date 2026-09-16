@@ -644,27 +644,41 @@ def audience_activity(
     page_key: str | None = None,
     reference_time: datetime | None = None,
 ) -> list[dict]:
-    """Aggregate received comments by weekday/hour in IST per channel."""
+    """Aggregate audience comments by weekday/hour in IST per channel.
+
+    Prefer the platform `published_at` so the window reflects when viewers
+    actually commented, not when the bot ingested the row. Invalid or missing
+    publish timestamps fall back to `created_at`.
+    """
     reference_time = reference_time or datetime.now(timezone.utc)
     cutoff = (reference_time - horizon).isoformat()
     platform_expr = "COALESCE(NULLIF(c.platform, ''), s.platform)"
     page_expr = "COALESCE(NULLIF(c.page_key, ''), NULLIF(s.page_key, ''), '')"
-    timestamp_expr = "COALESCE(c.created_at, s.created_at)"
+    published_utc = (
+        "datetime(replace(replace(replace(trim(c.published_at), 'T', ' '), "
+        "'Z', ''), '+0000', ''))"
+    )
+    timestamp_expr = (
+        f"COALESCE(CASE WHEN trim(COALESCE(c.published_at, '')) <> '' "
+        f"AND {published_utc} IS NOT NULL THEN {published_utc} END, "
+        "c.created_at, s.created_at)"
+    )
     sql = f"""
         SELECT {platform_expr} AS platform, {page_expr} AS page_key,
                CAST(strftime('%w', datetime({timestamp_expr}, '+5 hours', '+30 minutes')) AS INTEGER)
                    AS weekday_ist,
                CAST(strftime('%H', datetime({timestamp_expr}, '+5 hours', '+30 minutes')) AS INTEGER)
                    AS hour_ist,
-               COUNT(*) AS comment_count
+               COUNT(*) AS comment_count,
+               COUNT(DISTINCT CASE
+                   WHEN trim(COALESCE(c.author, '')) = '' THEN c.comment_id
+                   ELSE c.author
+               END) AS unique_authors
         FROM seen_comments s
         LEFT JOIN comments c ON c.comment_id = s.comment_id
-        WHERE (
-            (c.created_at IS NOT NULL AND c.created_at >= ?)
-            OR (c.created_at IS NULL AND s.created_at >= ?)
-        )
+        WHERE {timestamp_expr} >= ?
     """
-    params: list = [cutoff, cutoff]
+    params: list = [cutoff]
     if platform:
         sql += f" AND {platform_expr} = ?"
         params.append(platform)
@@ -675,6 +689,84 @@ def audience_activity(
             sql += f" AND {page_expr} = ?"
         params.append(page_key)
     sql += " GROUP BY 1, 2, 3, 4"
+    return [dict(row) for row in conn.execute(sql, params)]
+
+
+def engagement_activity(
+    conn: sqlite3.Connection,
+    *,
+    horizon: timedelta,
+    platform: str | None = None,
+    page_key: str | None = None,
+    reference_time: datetime | None = None,
+) -> list[dict]:
+    """Attribute snapshot-to-snapshot growth to the later capture hour in IST.
+
+    Consecutive stats fetches (typically ~30 minutes) show when views, likes,
+    comments, and shares actually moved. Gaps longer than 4 hours are ignored
+    so an outage does not dump a multi-day total into one hour.
+    """
+    reference_time = reference_time or datetime.now(timezone.utc)
+    cutoff = (reference_time - horizon).isoformat()
+    sql = """
+        WITH eligible AS MATERIALIZED (
+            SELECT id, platform, page_key, video_id, view_count, like_count,
+                   share_count, comment_count, captured_at
+            FROM video_stats_history
+            WHERE captured_at >= ?
+    """
+    params: list = [cutoff]
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if page_key:
+        if page_key == DEFAULT_PAGE_KEY:
+            sql += " AND page_key IN (?, '')"
+        else:
+            sql += " AND page_key = ?"
+        params.append(page_key)
+    sql += """
+        ), deltas AS (
+            SELECT platform,
+                   COALESCE(NULLIF(page_key, ''), '') AS page_key,
+                   captured_at,
+                   CASE WHEN view_count IS NOT NULL
+                             AND LAG(view_count) OVER w IS NOT NULL
+                        THEN MAX(0, view_count - LAG(view_count) OVER w)
+                        ELSE 0 END AS view_growth,
+                   CASE WHEN like_count IS NOT NULL
+                             AND LAG(like_count) OVER w IS NOT NULL
+                        THEN MAX(0, like_count - LAG(like_count) OVER w)
+                        ELSE 0 END AS like_growth,
+                   CASE WHEN comment_count IS NOT NULL
+                             AND LAG(comment_count) OVER w IS NOT NULL
+                        THEN MAX(0, comment_count - LAG(comment_count) OVER w)
+                        ELSE 0 END AS comment_growth,
+                   CASE WHEN share_count IS NOT NULL
+                             AND LAG(share_count) OVER w IS NOT NULL
+                        THEN MAX(0, share_count - LAG(share_count) OVER w)
+                        ELSE 0 END AS share_growth,
+                   (julianday(captured_at) - julianday(LAG(captured_at) OVER w)) * 24
+                       AS elapsed_hours
+            FROM eligible
+            WINDOW w AS (PARTITION BY platform, video_id ORDER BY captured_at, id)
+        )
+        SELECT platform, page_key,
+               CAST(strftime('%w', datetime(captured_at, '+5 hours', '+30 minutes'))
+                    AS INTEGER) AS weekday_ist,
+               CAST(strftime('%H', datetime(captured_at, '+5 hours', '+30 minutes'))
+                    AS INTEGER) AS hour_ist,
+               SUM(view_growth) AS view_growth,
+               SUM(like_growth) AS like_growth,
+               SUM(comment_growth) AS comment_growth,
+               SUM(share_growth) AS share_growth,
+               COUNT(*) AS snapshot_deltas
+        FROM deltas
+        WHERE elapsed_hours IS NOT NULL
+          AND elapsed_hours >= 0.15
+          AND elapsed_hours <= 4.0
+        GROUP BY 1, 2, 3, 4
+    """
     return [dict(row) for row in conn.execute(sql, params)]
 
 
@@ -690,7 +782,19 @@ def comment_text_sample(
     """Return recent retained comment text for local intent classification."""
     reference_time = reference_time or datetime.now(timezone.utc)
     cutoff = (reference_time - horizon).isoformat()
-    sql = """SELECT platform, page_key, text, created_at
+    published_utc = (
+        "datetime(replace(replace(replace(trim(published_at), 'T', ' '), "
+        "'Z', ''), '+0000', ''))"
+    )
+    timestamp_expr = (
+        f"COALESCE(CASE WHEN trim(COALESCE(published_at, '')) <> '' "
+        f"AND {published_utc} IS NOT NULL THEN {published_utc} END, created_at)"
+    )
+    sql = f"""SELECT platform, page_key, text, author, created_at,
+               CAST(strftime('%w', datetime({timestamp_expr}, '+5 hours', '+30 minutes'))
+                    AS INTEGER) AS weekday_ist,
+               CAST(strftime('%H', datetime({timestamp_expr}, '+5 hours', '+30 minutes'))
+                    AS INTEGER) AS hour_ist
              FROM comments
              WHERE created_at >= ? AND trim(text) <> ''"""
     params: list = [cutoff]

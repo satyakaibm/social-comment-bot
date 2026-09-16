@@ -95,6 +95,94 @@ class CreatorFocusTests(unittest.TestCase):
         self.assertEqual(result["best_day"], "Friday")
         self.assertEqual(result["window"], "6:00 PM–9:00 PM IST")
         self.assertEqual(result["confidence"], "medium")
+        friday = result["weekday_windows"][5]
+        monday = result["weekday_windows"][1]
+        sunday = result["weekday_windows"][0]
+        self.assertEqual(friday["window"], "6:00 PM–9:00 PM IST")
+        self.assertEqual(friday["window_count"], 18)
+        self.assertEqual(monday["window"], "8:00 AM–11:00 AM IST")
+        self.assertEqual(sunday["window"], "Insufficient data")
+        self.assertFalse(sunday["has_signal"])
+
+    def test_audience_timing_keeps_platforms_and_weekdays_separate(self):
+        rows = [
+            {"platform": "youtube", "page_key": "travel", "weekday_ist": 1, "hour_ist": 9, "comment_count": 6},
+            {"platform": "youtube", "page_key": "travel", "weekday_ist": 1, "hour_ist": 10, "comment_count": 8},
+            {"platform": "instagram", "page_key": "travel", "weekday_ist": 6, "hour_ist": 20, "comment_count": 9},
+            {"platform": "instagram", "page_key": "travel", "weekday_ist": 6, "hour_ist": 21, "comment_count": 11},
+        ]
+
+        results = {item["platform"]: item for item in analytics.audience_timing_focus(rows)}
+
+        self.assertEqual(results["youtube"]["weekday_windows"][1]["window"], "9:00 AM–12:00 PM IST")
+        self.assertEqual(results["instagram"]["weekday_windows"][6]["window"], "8:00 PM–11:00 PM IST")
+        self.assertEqual(results["youtube"]["best_day"], "Monday")
+        self.assertEqual(results["instagram"]["best_day"], "Saturday")
+
+    def test_same_day_window_covers_late_evening_without_wrapping(self):
+        hours = [0] * 24
+        hours[22] = 4
+        hours[23] = 5
+
+        start_hour, window_count = analytics._best_same_day_window(hours)
+
+        self.assertEqual(start_hour, 21)
+        self.assertEqual(window_count, 9)
+
+    def test_unique_commenters_outrank_repeat_comment_spam(self):
+        rows = [
+            {
+                "platform": "youtube", "page_key": "travel", "weekday_ist": 1,
+                "hour_ist": 9, "comment_count": 20, "unique_authors": 2,
+            },
+            {
+                "platform": "youtube", "page_key": "travel", "weekday_ist": 5,
+                "hour_ist": 18, "comment_count": 8, "unique_authors": 8,
+            },
+        ]
+
+        result = analytics.audience_timing_focus(rows)[0]
+
+        self.assertEqual(result["best_day"], "Friday")
+        self.assertEqual(result["weekday_windows"][5]["window"], "5:00 PM–8:00 PM IST")
+
+    def test_intent_and_engagement_can_shift_the_publish_window(self):
+        comments = [
+            {
+                "platform": "instagram", "page_key": "travel", "weekday_ist": 1,
+                "hour_ist": 9, "comment_count": 6, "unique_authors": 6,
+            },
+        ]
+        quality = [
+            {
+                "platform": "instagram", "page_key": "travel", "weekday_ist": 6,
+                "hour_ist": 20, "text": "When is the next aarti?",
+            },
+            {
+                "platform": "instagram", "page_key": "travel", "weekday_ist": 6,
+                "hour_ist": 20, "text": "How can I visit this temple?",
+            },
+            {
+                "platform": "instagram", "page_key": "travel", "weekday_ist": 6,
+                "hour_ist": 21, "text": "Please cover Puri next",
+            },
+        ]
+        engagement = [
+            {
+                "platform": "instagram", "page_key": "travel", "weekday_ist": 6,
+                "hour_ist": 20, "view_growth": 400, "like_growth": 40,
+                "comment_growth": 12, "share_growth": 6,
+            },
+        ]
+
+        result = analytics.audience_timing_focus(
+            comments, engagement_rows=engagement, quality_rows=quality,
+        )[0]
+
+        self.assertEqual(result["best_day"], "Saturday")
+        self.assertEqual(result["weekday_windows"][6]["window"], "7:00 PM–10:00 PM IST")
+        self.assertIn("engagement growth", result["signals"])
+        self.assertIn("comment intent", result["signals"])
 
     def test_comment_intent_rules_are_local_and_auditable(self):
         self.assertEqual(analytics.classify_comment_intent("When is the next trip?"), "question")

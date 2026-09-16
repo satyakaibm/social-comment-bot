@@ -43,7 +43,9 @@ intent classification are implemented without an external AI service.
 - Categorize comments into praise, question, request, complaint, and spam using
   deterministic rules first, with cached Gemini classification as an opt-in.
 - Extract recurring topics from titles and comments per channel.
-- Recommend response priorities and publishing windows.
+- Recommend response priorities and publishing windows for each weekday
+  and platform from unique commenters, comment intent, and engagement
+  growth rather than raw comment volume alone.
 
 Success criteria: creators receive actionable time/topic suggestions with an
 auditable source sample and controlled AI cost.
