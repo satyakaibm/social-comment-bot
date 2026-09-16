@@ -280,7 +280,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Gateway Health", settings_page.data)
         self.assertIn(b'href="/health"', settings_page.data)
 
-    def test_comment_table_paginates_in_batches_of_one_hundred(self):
+    def test_comment_table_paginates_in_batches_of_fifty(self):
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="reply-c1")
             for index in range(100):
@@ -300,16 +300,18 @@ class DashboardTests(unittest.TestCase):
                     conn, comment_id, "posted", reply_comment_id=f"reply-{index}"
                 )
 
+        # 101 total posted comments (100 seeded + the pre-existing "c1") at
+        # 50 per page -> 3 pages: 50, 50, 1.
         first_page = self.client.get("/?status=posted")
-        self.assertIn(b"Page 1 of 2", first_page.data)
+        self.assertIn(b"Page 1 of 3", first_page.data)
         self.assertIn(b"Next", first_page.data)
         self.assertEqual(first_page.data.count(b"<tbody>") , 1)
-        self.assertEqual(first_page.data.count(b"<tr>"), 101)
+        self.assertEqual(first_page.data.count(b"<tr>"), 51)
 
-        second_page = self.client.get("/?status=posted&page=2")
-        self.assertIn(b"Page 2 of 2", second_page.data)
-        self.assertIn(b"Previous", second_page.data)
-        self.assertEqual(second_page.data.count(b"<tr>"), 2)
+        last_page = self.client.get("/?status=posted&page=3")
+        self.assertIn(b"Page 3 of 3", last_page.data)
+        self.assertIn(b"Previous", last_page.data)
+        self.assertEqual(last_page.data.count(b"<tr>"), 2)
 
     def test_retry_posts_failed_comment(self):
         with db.connect() as conn:
