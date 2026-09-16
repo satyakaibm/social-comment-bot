@@ -467,22 +467,42 @@ def get_facebook_post_message(post_id: str, *, page_key: str = config.DEFAULT_PA
 def get_facebook_post_stats(
     post_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
 ) -> dict:
-    """Return a Facebook post's like/comment/share counts.
+    """Return a Facebook post's like/comment/share/view counts.
 
     Graph API omits the "shares" field entirely on a post with zero shares,
     so its absence here means zero shares, not unknown.
+
+    Views only apply to video/Reel posts -- a photo or link post has no view
+    concept at all -- and the view count lives on the underlying video
+    object (attachments[0].target.id), not the post itself, as a plain
+    "views" field. That field needs no read_insights permission, unlike the
+    video_insights edge, which does and isn't granted here.
     """
     kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
     data = graph_get(
         post_id,
-        fields="likes.summary(true).limit(0),comments.summary(true).limit(0),shares",
+        fields=(
+            "likes.summary(true).limit(0),comments.summary(true).limit(0),"
+            "shares,attachments{media_type,target}"
+        ),
         page_key=page_key,
         **kwargs,
     )
+    view_count = None
+    attachments = data.get("attachments", {}).get("data") or []
+    if attachments and attachments[0].get("media_type") == "video":
+        video_id = (attachments[0].get("target") or {}).get("id")
+        if video_id:
+            try:
+                video = graph_get(video_id, fields="views", page_key=page_key, **kwargs)
+                view_count = video.get("views")
+            except GraphAPIError:
+                pass
     return {
         "like_count": data.get("likes", {}).get("summary", {}).get("total_count"),
         "comment_count": data.get("comments", {}).get("summary", {}).get("total_count"),
         "share_count": data.get("shares", {}).get("count", 0),
+        "view_count": view_count,
     }
 
 
@@ -530,21 +550,35 @@ def get_instagram_media_caption(media_id: str, *, page_key: str = config.DEFAULT
 def get_instagram_media_stats(
     media_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
 ) -> dict:
-    """Return an Instagram media's like/comment counts.
+    """Return an Instagram media's like/comment/view counts.
 
     Instagram's Graph API has no public share-count field, so callers only
-    get likes and comments back.
+    get likes and comments back directly. Views only apply to video/Reel
+    media -- a plain image has no view concept -- and require a separate
+    Insights lookup (metric=views) rather than a plain field; that lookup
+    is skipped, not raised, for media types the Insights API rejects it for.
     """
     kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
     data = graph_get(
         media_id,
-        fields="like_count,comments_count",
+        fields="like_count,comments_count,media_type",
         page_key=page_key,
         **kwargs,
     )
+    view_count = None
+    if data.get("media_type") == "VIDEO":
+        try:
+            insights = graph_get(
+                f"{media_id}/insights", metric="views", page_key=page_key, **kwargs
+            )
+            values = (insights.get("data") or [{}])[0].get("values") or []
+            view_count = values[0].get("value") if values else None
+        except GraphAPIError:
+            pass
     return {
         "like_count": data.get("like_count"),
         "comment_count": data.get("comments_count"),
+        "view_count": view_count,
     }
 
 
