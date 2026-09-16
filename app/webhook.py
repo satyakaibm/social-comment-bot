@@ -3,6 +3,7 @@ import hmac
 import json
 import sqlite3
 import threading
+import time
 
 from flask import Flask, Response, request
 
@@ -261,6 +262,7 @@ def worker_loop(stop: threading.Event) -> None:
     # when idle, was burning CPU on key derivation twice a second forever
     # and colliding with the dashboard/other containers over the DB lock.
     conn = db.open_connection()
+    last_heartbeat = 0.0
     try:
         db.reset_interrupted_webhook_events(conn)
         conn.commit()
@@ -276,6 +278,12 @@ def worker_loop(stop: threading.Event) -> None:
                 conn.rollback()
                 print(f"Webhook worker loop error: {exc}", flush=True)
                 processed = False
+            # Throttled to once/minute -- this loop ticks twice a second
+            # when idle, and a heartbeat only needs to prove the loop is
+            # still alive, not capture every single tick.
+            if time.monotonic() - last_heartbeat >= 60:
+                db.record_heartbeat(conn, "webhook_worker")
+                last_heartbeat = time.monotonic()
             if not processed:
                 stop.wait(0.5)
     finally:

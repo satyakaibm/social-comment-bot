@@ -1043,6 +1043,59 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Historical momentum is temporarily unavailable", page.data)
         self.assertIn(b"Audience intelligence", page.data)
 
+    def test_status_page_requires_login(self):
+        with self.client.session_transaction() as sess:
+            sess.clear()
+        self.assertEqual(self.client.get("/status").status_code, 302)
+
+    def test_status_page_shows_worker_heartbeats_and_webhook_queue(self):
+        with db.connect() as conn:
+            db.record_heartbeat(conn, "youtube_poller", detail="2 channel(s), 0 failure(s)")
+            db.enqueue_webhook_event(conn, event_key="k1", platform="facebook", payload="{}")
+            db.enqueue_webhook_event(conn, event_key="k2", platform="facebook", payload="{}")
+            db.finish_webhook_event(conn, "k2", error="boom")
+
+        page = self.client.get("/status")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"youtube_poller", page.data)
+        self.assertIn(b"2 channel(s), 0 failure(s)", page.data)
+        self.assertIn(b"ago", page.data)
+        # 1 still pending (k1), 1 failed (k2).
+        self.assertIn(b'<p class="stat-value">1</p><p class="stat-label">Pending</p>', page.data)
+        self.assertIn(b'<p class="stat-value">1</p><p class="stat-label">Failed</p>', page.data)
+
+    def test_status_page_shows_empty_states_with_no_data(self):
+        page = self.client.get("/status")
+
+        self.assertEqual(page.status_code, 200)
+        self.assertIn(b"No heartbeats recorded yet", page.data)
+        self.assertIn(b'<p class="stat-value">0</p><p class="stat-label">Pending</p>', page.data)
+
+    def test_record_heartbeat_upserts_by_worker(self):
+        with db.connect() as conn:
+            db.record_heartbeat(conn, "video_stats", detail="updated=3")
+            first = db.list_heartbeats(conn)
+            db.record_heartbeat(conn, "video_stats", detail="updated=7")
+            second = db.list_heartbeats(conn)
+
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0]["detail"], "updated=3")
+        # Same worker updates in place rather than accumulating rows.
+        self.assertEqual(len(second), 1)
+        self.assertEqual(second[0]["detail"], "updated=7")
+
+    def test_webhook_event_counts_covers_every_status(self):
+        with db.connect() as conn:
+            db.enqueue_webhook_event(conn, event_key="a", platform="facebook", payload="{}")
+            db.enqueue_webhook_event(conn, event_key="b", platform="facebook", payload="{}")
+            db.finish_webhook_event(conn, "b")
+            counts = db.webhook_event_counts(conn)
+
+        self.assertEqual(
+            counts, {"pending": 1, "processing": 0, "processed": 1, "failed": 0}
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
