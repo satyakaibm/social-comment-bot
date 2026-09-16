@@ -697,6 +697,32 @@ def comment_text_sample(
     return [dict(row) for row in conn.execute(sql, params)]
 
 
+def recently_active_video_ids(
+    conn: sqlite3.Connection,
+    *,
+    platform: str,
+    horizon: timedelta,
+    page_key: str | None = None,
+    reference_time: datetime | None = None,
+) -> list[str]:
+    """Video/container IDs with at least one comment seen within `horizon`.
+
+    Polling only ever scans a channel's most recent uploads (see
+    app/fetch.py), so a video that's still actively receiving comments long
+    after newer videos have been published silently falls out of scope --
+    it ages out of the "latest N uploads" window with no way back in short
+    of someone manually adding it to YOUTUBE_VIDEO_IDS. This lets polling
+    find such videos itself: anything with a comment we've recorded
+    recently is still worth re-checking, regardless of upload date.
+    """
+    reference_time = reference_time or datetime.now(timezone.utc)
+    cutoff = (reference_time - horizon).isoformat()
+    clause, extra = _page_key_filter(page_key)
+    sql = "SELECT DISTINCT video_id FROM comments WHERE platform = ? AND created_at >= ?" + clause
+    params: list = [platform, cutoff, *extra]
+    return [row["video_id"] for row in conn.execute(sql, params)]
+
+
 def engagement_totals(
     conn: sqlite3.Connection, *, platform: str, page_key: str, video_id: str | None = None
 ) -> dict:

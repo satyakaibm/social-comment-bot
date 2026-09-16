@@ -26,6 +26,12 @@ YOUTUBE_VIDEO_IDS = [
     v.strip() for v in os.environ.get("YOUTUBE_VIDEO_IDS", "").split(",") if v.strip()
 ]
 YOUTUBE_VIDEO_LIMIT = int(os.environ.get("YOUTUBE_VIDEO_LIMIT", "10"))
+# A video that keeps getting comments long after newer videos have been
+# uploaded falls out of the "latest N uploads" scan window with no way
+# back short of adding it to YOUTUBE_VIDEO_IDS by hand. Any video with a
+# comment we've recorded within this many days is kept in scope
+# automatically -- see db.recently_active_video_ids().
+YOUTUBE_ACTIVE_VIDEO_DAYS = int(os.environ.get("YOUTUBE_ACTIVE_VIDEO_DAYS", "30"))
 YOUTUBE_COMMENT_LIMIT = int(os.environ.get("YOUTUBE_COMMENT_LIMIT", "100"))
 YOUTUBE_DAILY_QUOTA_LIMIT = int(os.environ.get("YOUTUBE_DAILY_QUOTA_LIMIT", "10000"))
 # Cap how many replies this platform may post in one calendar day (IST),

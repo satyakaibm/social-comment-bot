@@ -1,3 +1,4 @@
+from datetime import timedelta
 from itertools import islice
 
 from googleapiclient.errors import HttpError
@@ -84,7 +85,6 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
         if page_key == config.DEFAULT_PAGE_KEY
         else config.PAGES[page_key].youtube_video_ids
     )
-    video_ids = list(dict.fromkeys([*configured_video_ids, *latest_video_ids]))
 
     new_count = 0
     remaining = max(0, config.YOUTUBE_COMMENT_LIMIT)
@@ -93,6 +93,17 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
     with db.connect() as conn:
         video_title = _video_title_cache(youtube, conn, page_key)
         drafted_today = db.count_drafted_today(conn)
+        # A video that keeps getting comments long after newer videos have
+        # been uploaded falls out of latest_video_ids with no way back
+        # short of adding it to YOUTUBE_VIDEO_IDS by hand -- this finds it
+        # automatically from our own comment history instead.
+        recently_active_ids = db.recently_active_video_ids(
+            conn, platform="youtube", page_key=page_key,
+            horizon=timedelta(days=config.YOUTUBE_ACTIVE_VIDEO_DAYS),
+        )
+        video_ids = list(dict.fromkeys(
+            [*configured_video_ids, *recently_active_ids, *latest_video_ids]
+        ))
         for index, video_id in enumerate(video_ids):
             if remaining <= 0:
                 break

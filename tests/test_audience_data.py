@@ -45,6 +45,46 @@ class AudienceDataTests(unittest.TestCase):
         self.assertEqual(activity[0]["page_key"], "travel")
         self.assertEqual([row["text"] for row in texts], ["Where is this?"])
 
+    def test_recently_active_video_ids_filters_by_horizon_platform_and_page(self):
+        reference = datetime(2026, 9, 14, 12, tzinfo=timezone.utc)
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id="fresh", platform="youtube", page_key="travel",
+                video_id="fresh-video", video_title="Title", author="viewer",
+                text="hi", published_at="", draft_reply="",
+            )
+            db.insert_comment(
+                conn, comment_id="stale", platform="youtube", page_key="travel",
+                video_id="stale-video", video_title="Title", author="viewer",
+                text="hi", published_at="", draft_reply="",
+            )
+            db.insert_comment(
+                conn, comment_id="other-platform", platform="facebook", page_key="travel",
+                video_id="fb-video", video_title="Title", author="viewer",
+                text="hi", published_at="", draft_reply="",
+            )
+            db.insert_comment(
+                conn, comment_id="other-page", platform="youtube", page_key="hindolroad",
+                video_id="other-page-video", video_title="Title", author="viewer",
+                text="hi", published_at="", draft_reply="",
+            )
+            conn.execute(
+                "UPDATE comments SET created_at = ? WHERE comment_id IN "
+                "('fresh', 'other-platform', 'other-page')",
+                ((reference - timedelta(hours=2)).isoformat(),),
+            )
+            conn.execute(
+                "UPDATE comments SET created_at = ? WHERE comment_id = 'stale'",
+                ((reference - timedelta(days=40)).isoformat(),),
+            )
+
+            active = db.recently_active_video_ids(
+                conn, platform="youtube", page_key="travel",
+                horizon=timedelta(days=30), reference_time=reference,
+            )
+
+        self.assertEqual(active, ["fresh-video"])
+
 
 if __name__ == "__main__":
     unittest.main()
