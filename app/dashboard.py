@@ -27,7 +27,7 @@ STATUSES = (
     "rejected",
 )
 PLATFORMS = ("youtube", "facebook", "instagram")
-PAGE_SIZE = 100
+PAGE_SIZE = 50
 CONTAINER_LABELS = {
     "youtube": "Video",
     "facebook": "Facebook post",
