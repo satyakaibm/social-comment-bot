@@ -48,6 +48,39 @@ class AudienceDataTests(unittest.TestCase):
         self.assertIn("weekday_ist", texts[0])
         self.assertIn("hour_ist", texts[0])
 
+    def test_audience_activity_parses_facebook_webhook_epoch_published_at(self):
+        # Meta's real-time webhook delivers Facebook's created_time as Unix
+        # epoch seconds (see app/webhook.py), unlike the ISO 8601 strings
+        # YouTube, Instagram, and Facebook's own Graph API polling send.
+        # 1789131600 == 2026-09-11 13:00:00 UTC == Friday 6:30 PM IST.
+        reference = datetime(2026, 9, 14, 12, tzinfo=timezone.utc)
+        with db.connect() as conn:
+            db.insert_comment(
+                conn, comment_id="fb-webhook", platform="facebook",
+                page_key="travel", video_id="post", video_title="Title",
+                author="viewer", text="hi", published_at="1789131600",
+                draft_reply="",
+            )
+            # Ingestion time is deliberately different so a fallback to
+            # created_at (instead of the parsed published_at) is caught.
+            conn.execute(
+                "UPDATE comments SET created_at = ? WHERE comment_id = 'fb-webhook'",
+                ((reference - timedelta(hours=9)).isoformat(),),
+            )
+            conn.execute(
+                "UPDATE seen_comments SET created_at = ? WHERE comment_id = 'fb-webhook'",
+                ((reference - timedelta(hours=9)).isoformat(),),
+            )
+
+            activity = db.audience_activity(
+                conn, horizon=timedelta(days=4), page_key="travel",
+                reference_time=reference,
+            )
+
+        self.assertEqual(len(activity), 1)
+        self.assertEqual(activity[0]["weekday_ist"], 5)
+        self.assertEqual(activity[0]["hour_ist"], 18)
+
     def test_engagement_activity_attributes_growth_to_later_capture_hour(self):
         reference = datetime(2026, 9, 11, 13, tzinfo=timezone.utc)
         with db.connect() as conn:
