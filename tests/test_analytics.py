@@ -119,6 +119,22 @@ class CreatorFocusTests(unittest.TestCase):
         self.assertEqual(results["youtube"]["best_day"], "Monday")
         self.assertEqual(results["instagram"]["best_day"], "Saturday")
 
+    def test_headline_window_does_not_merge_unrelated_late_and_early_hours(self):
+        # A burst at 11pm Saturday and an unrelated burst at 1am Saturday are
+        # ~22 hours apart, not adjacent -- the headline window must not
+        # wrap hour 23 back to hour 0 of the same day and merge them into a
+        # fabricated "11 PM-2 AM" window.
+        rows = [
+            {"platform": "youtube", "page_key": "p", "weekday_ist": 6, "hour_ist": 23, "comment_count": 20},
+            {"platform": "youtube", "page_key": "p", "weekday_ist": 6, "hour_ist": 1, "comment_count": 20},
+        ]
+
+        result = analytics.audience_timing_focus(rows)[0]
+
+        self.assertIn(result["window_start_hour"], (0, 21, 22, 23))
+        self.assertLessEqual(result["window_start_hour"] + 3, 24)
+        self.assertEqual(result["window_count"], 20)
+
     def test_same_day_window_covers_late_evening_without_wrapping(self):
         hours = [0] * 24
         hours[22] = 4

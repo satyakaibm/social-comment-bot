@@ -11,6 +11,28 @@ from app.config import DB_PATH, DEFAULT_PAGE_KEY
 SQLITE_HEADER = b"SQLite format 3\x00"
 
 
+def _published_at_utc_expr(column: str) -> str:
+    """SQL expression converting a platform `published_at` column to UTC.
+
+    YouTube's publishedAt and the Facebook/Instagram Graph API's
+    created_time/timestamp are all ISO 8601. But Meta's real-time webhook
+    delivers Facebook's `created_time` as Unix epoch seconds instead (see
+    app/webhook.py), so digit-only values are parsed as epoch seconds rather
+    than being handed to the ISO 8601 branch, where SQLite's datetime()
+    treats them as an out-of-range Julian day and silently returns NULL.
+    """
+    trimmed = f"trim({column})"
+    iso = (
+        f"datetime(replace(replace(replace({trimmed}, 'T', ' '), "
+        "'Z', ''), '+0000', ''))"
+    )
+    epoch = f"datetime(CAST({trimmed} AS INTEGER), 'unixepoch')"
+    return (
+        f"CASE WHEN {trimmed} GLOB '[0-9]*' AND {trimmed} NOT GLOB '*[^0-9]*' "
+        f"THEN {epoch} ELSE {iso} END"
+    )
+
+
 def _page_key_filter(page_key: str | None) -> tuple[str, list]:
     """Build a `page_key` SQL filter fragment, treating '' as the default page.
 
@@ -694,10 +716,7 @@ def audience_activity(
     cutoff = (reference_time - horizon).isoformat()
     platform_expr = "COALESCE(NULLIF(c.platform, ''), s.platform)"
     page_expr = "COALESCE(NULLIF(c.page_key, ''), NULLIF(s.page_key, ''), '')"
-    published_utc = (
-        "datetime(replace(replace(replace(trim(c.published_at), 'T', ' '), "
-        "'Z', ''), '+0000', ''))"
-    )
+    published_utc = _published_at_utc_expr("c.published_at")
     timestamp_expr = (
         f"COALESCE(CASE WHEN trim(COALESCE(c.published_at, '')) <> '' "
         f"AND {published_utc} IS NOT NULL THEN {published_utc} END, "
@@ -822,10 +841,7 @@ def comment_text_sample(
     """Return recent retained comment text for local intent classification."""
     reference_time = reference_time or datetime.now(timezone.utc)
     cutoff = (reference_time - horizon).isoformat()
-    published_utc = (
-        "datetime(replace(replace(replace(trim(published_at), 'T', ' '), "
-        "'Z', ''), '+0000', ''))"
-    )
+    published_utc = _published_at_utc_expr("published_at")
     timestamp_expr = (
         f"COALESCE(CASE WHEN trim(COALESCE(published_at, '')) <> '' "
         f"AND {published_utc} IS NOT NULL THEN {published_utc} END, created_at)"

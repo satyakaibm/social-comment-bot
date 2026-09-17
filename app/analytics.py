@@ -189,25 +189,22 @@ def audience_timing_focus(
         total_engagement = _grid_total(engagement)
         peak = max(
             (
-                (
-                    sum(score[day][(hour + offset) % 24] for offset in range(3)),
-                    day,
-                    hour,
-                )
+                (day_start_hour, day_window_score, day)
                 for day in range(7)
-                for hour in range(24)
-            )
+                for day_start_hour, day_window_score in [_best_same_day_window(score[day])]
+            ),
+            key=lambda item: (item[1], item[2], item[0]),
         )
-        window_score, best_day, start_hour = peak
+        start_hour, window_score, best_day = peak
         if _grid_total(score) <= 0:
             window_score, best_day, start_hour = 0.0, 0, 0
             window_label = "Insufficient data"
         else:
             window_label = (
-                f"{_hour_label(start_hour)}–{_hour_label((start_hour + 3) % 24)} IST"
+                f"{_hour_label(start_hour)}–{_hour_label(start_hour + 3)} IST"
             )
         peak_cell = max((score[day][hour], day, hour) for day in range(7) for hour in range(24))
-        window_comments = sum(comments[best_day][(start_hour + offset) % 24] for offset in range(3))
+        window_comments = sum(comments[best_day][start_hour + offset] for offset in range(3))
         confidence = _timing_confidence(
             total_comments=total_comments,
             total_demand=total_demand,
