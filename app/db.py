@@ -1662,7 +1662,9 @@ def top_fans(
                 ) AS rn
             FROM filtered
         )
-        SELECT author, platform, page_key, comment_count, last_comment_at
+        SELECT author, platform, page_key, comment_count,
+               strftime('%Y-%m-%d %H:%M', last_comment_at, '+5 hours', '+30 minutes')
+                   AS last_comment_at_ist
         FROM ranked
         WHERE rn = 1
         ORDER BY comment_count DESC, last_comment_at DESC
@@ -1683,6 +1685,7 @@ def top_fans(
                 "platform": row["platform"],
                 "page_key": row["page_key"],
                 "comment_count": row["comment_count"],
+                "last_comment_at": row["last_comment_at_ist"],
             }
             for i, row in enumerate(rows)
         ]

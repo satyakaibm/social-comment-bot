@@ -666,7 +666,7 @@ def create_app() -> Flask:
             top_fans = {
                 period: [_top_fan_row(row) for row in rows]
                 for period, rows in db.top_fans(
-                    conn, platform=platform or None, page_key=page_key or None
+                    conn, platform=platform or None, page_key=page_key or None, limit=10
                 ).items()
             }
             if window:
