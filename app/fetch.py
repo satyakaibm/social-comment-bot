@@ -148,6 +148,7 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
                     actual_video_id = snippet["videoId"]
                     text = snippet.get("textDisplay", "")
                     author = snippet.get("authorDisplayName", "someone")
+                    author_id = snippet.get("authorChannelId", {}).get("value", "")
                     title = video_title(actual_video_id)
 
                     try:
@@ -199,6 +200,7 @@ def poll_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
                         video_id=actual_video_id,
                         video_title=title,
                         author=author,
+                        author_id=author_id,
                         text=text,
                         published_at=snippet.get("publishedAt", ""),
                         draft_reply=reply,

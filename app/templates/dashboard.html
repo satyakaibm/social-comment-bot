@@ -106,6 +106,20 @@
     .quota-track { height:7px; margin-top:12px; overflow:hidden; background:#edf1f3; border-radius:99px; }
     .quota-fill { height:100%; background:linear-gradient(90deg,#ff8a62,#e95c63); border-radius:99px; }
     .quota-note { margin:9px 0 0; color:var(--muted); font-size:10px; line-height:1.4; }
+    .fan-period-buttons { display:flex; padding:3px; gap:4px; background:#eef3f5; border-radius:11px; }
+    .fan-period-button { min-height:34px; padding:0 13px; color:var(--muted); background:transparent; border:0; border-radius:8px; box-shadow:none; font-size:11px; white-space:nowrap; }
+    .fan-period-button:hover { color:var(--navy); transform:none; }
+    .fan-period-button.active { color:#fff; background:var(--navy); box-shadow:0 4px 10px rgba(15,42,56,.18); }
+    .fan-list { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+    .fan-item { display:flex; align-items:center; gap:12px; padding:11px 13px; background:#fbfcfc; border:1px solid var(--line); border-radius:12px; }
+    .fan-rank { flex:0 0 auto; width:26px; height:26px; display:grid; place-items:center; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:50%; font-size:11px; font-weight:850; }
+    .fan-item:first-child .fan-rank { color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border-color:transparent; }
+    .fan-info { flex:1; min-width:0; }
+    .fan-name { display:block; overflow:hidden; color:var(--navy); font-size:13px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
+    .fan-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+    .fan-count { flex:0 0 auto; color:var(--navy); font-size:15px; font-weight:850; text-align:right; }
+    .fan-count span { display:block; margin-top:2px; color:var(--muted); font-size:9px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .fan-empty { padding:22px; color:var(--muted); font-size:12px; text-align:center; }
     .activity-head { display:flex; align-items:center; justify-content:space-between; gap:18px; margin-bottom:18px; }
     .activity-title { margin:0; color:var(--navy); font-size:14px; font-weight:800; }
     .activity-platforms { display:flex; max-width:100%; gap:7px; overflow-x:auto; scrollbar-width:thin; }
@@ -287,6 +301,36 @@
       {% endfor %}
     </section>
 
+    <section class="activity" aria-label="Top fans">
+      <div class="activity-head">
+        <h2 class="activity-title">Top fans{% if not platform %} · all platforms{% endif %}{% if not page_key %} · all channels{% endif %}</h2>
+        <div class="fan-period-buttons" role="group" aria-label="Top fans period">
+          <button class="fan-period-button active" type="button" data-period="week" aria-pressed="true">This week</button>
+          <button class="fan-period-button" type="button" data-period="month" aria-pressed="false">This month</button>
+          <button class="fan-period-button" type="button" data-period="year" aria-pressed="false">This year</button>
+        </div>
+      </div>
+      {% for period in ('week', 'month', 'year') %}
+      <div class="fan-list" data-fan-period="{{ period }}" {% if period != 'week' %}hidden{% endif %}>
+        {% for fan in top_fans[period] %}
+        <div class="fan-item">
+          <span class="fan-rank">{{ fan.rank }}</span>
+          <div class="fan-info">
+            <span class="fan-name">{{ fan.author }}</span>
+            <div class="fan-meta">
+              {% if not platform %}<span class="platform-badge platform-{{ fan.platform }}">{{ fan.platform }}</span>{% endif %}
+              {% if not page_key and fan.page_label %}<span class="status-badge status-already_replied">{{ fan.page_label }}</span>{% endif %}
+            </div>
+          </div>
+          <span class="fan-count">{{ fan.comment_count }}<span>comment{{ '' if fan.comment_count == 1 else 's' }}</span></span>
+        </div>
+        {% else %}
+        <div class="fan-empty">No comments from viewers in this period yet.</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </section>
+
     <nav class="stats" aria-label="Comment status">
       {% for s in statuses %}
         <a class="stat {% if s == status %}active{% endif %}" href="/?status={{ s }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">
@@ -391,6 +435,20 @@
       window.addEventListener('resize', () => { if (details.open) positionMenu(); });
       document.addEventListener('click', (event) => {
         if (details.open && !details.contains(event.target)) details.removeAttribute('open');
+      });
+    });
+
+    document.querySelectorAll('.fan-period-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        const period = button.dataset.period;
+        document.querySelectorAll('.fan-period-button').forEach((item) => {
+          const selected = item === button;
+          item.classList.toggle('active', selected);
+          item.setAttribute('aria-pressed', String(selected));
+        });
+        document.querySelectorAll('[data-fan-period]').forEach((list) => {
+          list.hidden = list.dataset.fanPeriod !== period;
+        });
       });
     });
 
