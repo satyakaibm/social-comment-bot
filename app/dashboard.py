@@ -446,7 +446,7 @@ def create_app() -> Flask:
                 with request_db() as conn:
                     target = db.get_dashboard_user(conn, target_username) if target_username else None
                 if target is None:
-                    return render(error="Select a valid portal user."), 400
+                    return render(error=f"No portal user found with User ID {target_username!r}."), 400
                 resetting_self = target["username"].casefold() == (session.get("dashboard_username") or "").casefold()
                 if resetting_self:
                     current = request.form.get("current_password", "")
