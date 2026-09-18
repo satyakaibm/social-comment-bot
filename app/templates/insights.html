@@ -24,6 +24,7 @@
     .platform-badge{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:8px;font-size:10px;font-weight:800;text-transform:capitalize}.platform-badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.platform-youtube{color:#bd2335;background:#fff0f2}.platform-facebook{color:#2459a8;background:#eef4ff}.platform-instagram{color:#a52f68;background:#fff0f7}.empty{padding:70px 24px;color:var(--muted);text-align:center;font-size:13px}.empty-icon{width:46px;height:46px;margin:0 auto 14px;display:grid;place-items:center;color:var(--teal);background:#eaf8f8;border-radius:14px}.empty strong{display:block;margin-bottom:5px;color:var(--navy);font-size:15px}
     .focus-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.focus-card{padding:19px 20px;background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 5px 18px rgba(15,42,56,.035)}.focus-meta{display:flex;align-items:center;justify-content:space-between;gap:12px}.confidence{padding:5px 8px;color:var(--muted);background:#f0f4f5;border-radius:7px;font-size:9px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}.focus-card h3{margin:14px 0 6px;color:var(--navy);font-size:15px}.focus-card p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}.focus-note{margin:10px 2px 0;color:var(--muted);font-size:10px}
     .track-form{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:7px}.track-form select,.track-form input{min-width:0;height:32px;padding:0 9px;color:var(--navy);background:#fff;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:10px}.track-form .notes{grid-column:1/-1}.track-button,.status-button{min-height:32px;padding:0 11px;color:var(--navy);background:#eef5f6;border:1px solid #d6e3e6;border-radius:8px;font:inherit;font-size:10px;font-weight:800;cursor:pointer}.track-button{grid-column:1/-1}.track-button:hover,.status-button:hover{background:#e2eff1}.experiment-status{color:var(--coral);font-size:10px;font-weight:850;text-transform:uppercase}.outcome-deltas{margin-top:9px!important;color:var(--navy)!important;font-variant-numeric:tabular-nums}.status-actions{margin-top:13px;display:flex;gap:7px;flex-wrap:wrap}.flash{margin:12px 0;padding:11px 14px;color:var(--navy);background:#eaf8f8;border:1px solid #cbe9e9;border-radius:10px;font-size:12px}
+    .fans-card{margin-top:24px}.fans-body{padding:16px 22px 20px}.fan-period-buttons{display:flex;padding:3px;gap:4px;background:#eef3f5;border-radius:10px}.fan-period-button{min-height:30px;padding:0 10px;color:var(--muted);background:transparent;border:0;border-radius:7px;font:inherit;font-size:10px;font-weight:750;white-space:nowrap;cursor:pointer}.fan-period-button:hover{color:var(--navy)}.fan-period-button.active{color:var(--navy);background:#fff;box-shadow:0 2px 7px rgba(15,42,56,.1)}.fan-list{display:flex;flex-wrap:wrap;gap:7px}.fan-item{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 5px;background:#fbfcfc;border:1px solid var(--line);border-radius:999px}.fan-rank{flex:0 0 auto;width:18px;height:18px;display:grid;place-items:center;color:var(--navy);background:#fff;border:1px solid var(--line);border-radius:50%;font-size:9px;font-weight:850}.fan-item:first-child .fan-rank{color:#fff;background:linear-gradient(135deg,var(--coral),#e0562f);border-color:transparent}.fan-name{max-width:150px;overflow:hidden;color:var(--navy);font-size:11px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}.fan-count{flex:0 0 auto;color:var(--muted);font-size:10px;font-weight:700}.fan-page{flex:0 0 auto;color:var(--muted);font-size:9px;text-transform:capitalize}.fan-empty{color:var(--muted);font-size:12px}
     @media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.toolbar,.performance-head{align-items:flex-start;flex-direction:column}.toolbar-actions{width:100%;justify-content:flex-end}.freshness{width:100%;align-items:flex-start;flex-direction:column}.range-buttons{max-width:100%}}@media(max-width:700px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.focus-grid{grid-template-columns:1fr}}@media(max-width:620px){.topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.profile-menu{max-width:calc(100vw - 28px)}.page{padding:20px 14px 38px}.hero{padding:19px 17px}.hero-content{align-items:flex-start;flex-direction:column}.sync-badge{width:100%}.toolbar{margin:0;padding:14px;border-radius:0 0 14px 14px}.toolbar-actions{justify-content:flex-start}.kpi-grid{gap:10px}.kpi{min-height:124px;padding:16px}.kpi-value{font-size:23px}.performance-head{padding:18px}}
   </style>
 </head>
@@ -52,6 +53,33 @@
       {% endfor %}
     </section>
 
+    <section class="performance fans-card" aria-label="Top fans">
+      <div class="performance-head">
+        <div><h2>Top fans</h2><p class="performance-copy">Your most engaged commenters{% if not platform %} across every platform{% endif %}{% if not page_key %} and channel{% endif %}.</p></div>
+        <nav class="fan-period-buttons" aria-label="Top fans period">
+          <button class="fan-period-button active" type="button" data-period="week" aria-pressed="true">Week</button>
+          <button class="fan-period-button" type="button" data-period="month" aria-pressed="false">Month</button>
+          <button class="fan-period-button" type="button" data-period="year" aria-pressed="false">Year</button>
+        </nav>
+      </div>
+      <div class="fans-body">
+        {% for period in ('week', 'month', 'year') %}
+        <div class="fan-list" data-fan-period="{{ period }}" {% if period != 'week' %}hidden{% endif %}>
+          {% for fan in top_fans[period] %}
+          <span class="fan-item" title="{{ fan.author }} · {{ fan.comment_count }} comment{{ '' if fan.comment_count == 1 else 's' }}{% if not platform %} · {{ fan.platform }}{% endif %}{% if not page_key and fan.page_label %} · {{ fan.page_label }}{% endif %}">
+            <span class="fan-rank">{{ fan.rank }}</span>
+            <span class="fan-name">{{ fan.author }}</span>
+            <span class="fan-count">{{ fan.comment_count }}</span>
+            {% if not platform %}<span class="fan-page">{{ fan.platform }}</span>{% endif %}
+          </span>
+          {% else %}
+          <span class="fan-empty">No comments from viewers in this period yet.</span>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+
     <section class="performance">
       <div class="performance-head"><div><h2>Content performance · {{ report_label }}</h2><p class="performance-copy">{{ 'Growth measured from historical snapshots' if window else 'Current lifetime totals' }} across {{ selected_page_label|lower }}.</p></div></div>
       {% if video_stats %}<div class="table-wrap"><table><thead><tr><th>Platform</th>{% if page_choices|length > 1 %}<th>Channel</th>{% endif %}<th>Content</th>{% for column, label in (('views',('Views gained' if window else 'Views')),('likes',('Likes gained' if window else 'Likes')),('comments',('Comments gained' if window else 'Comments')),('shares',('Shares gained' if window else 'Shares')),('updated',('Period end' if window else 'Updated'))) %}{% set next_dir = 'asc' if sort_by == column and sort_dir == 'desc' else 'desc' %}<th><a class="col-tab{% if sort_by == column %} is-sorted{% endif %}" href="/insights?platform={{ platform }}&amp;page_key={{ page_key }}&amp;sort_by={{ column }}&amp;sort_dir={{ next_dir }}{% if window %}&amp;window={{ window }}{% endif %}" title="Sort {{ label }} {{ 'lowest first' if next_dir == 'asc' else 'highest first' }}" aria-label="Sort {{ label }} {{ 'lowest first' if next_dir == 'asc' else 'highest first' }}">{{ label }}{% if sort_by == column %}<span class="sort-arrow" aria-hidden="true">{{ '↓' if sort_dir == 'desc' else '↑' }}</span>{% endif %}</a></th>{% endfor %}</tr></thead>
@@ -63,6 +91,7 @@
   <script>
     document.querySelectorAll('details.channels-select').forEach((details)=>{const summary=details.querySelector('summary'),menu=details.querySelector('.channels-menu');const positionMenu=()=>{const rect=summary.getBoundingClientRect();menu.style.top=`${rect.bottom+8}px`;menu.style.left=`${Math.min(rect.left,window.innerWidth-226)}px`};details.addEventListener('toggle',()=>{if(details.open)positionMenu()});window.addEventListener('scroll',()=>{if(details.open)positionMenu()},true);window.addEventListener('resize',()=>{if(details.open)positionMenu()});document.addEventListener('click',(event)=>{if(details.open&&!details.contains(event.target))details.removeAttribute('open')})});
     document.addEventListener('keydown',(event)=>{const target=event.target;const typing=target&&(target.tagName==='INPUT'||target.tagName==='TEXTAREA'||target.isContentEditable);if(event.key==='Backspace'&&!typing){event.preventDefault();document.getElementById('back-link').click()}});
+    document.querySelectorAll('.fan-period-button').forEach((button)=>{button.addEventListener('click',()=>{const period=button.dataset.period;document.querySelectorAll('.fan-period-button').forEach((item)=>{const selected=item===button;item.classList.toggle('active',selected);item.setAttribute('aria-pressed',String(selected))});document.querySelectorAll('[data-fan-period]').forEach((list)=>{list.hidden=list.dataset.fanPeriod!==period})})});
   </script>
 </body>
 </html>

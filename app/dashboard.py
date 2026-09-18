@@ -518,12 +518,6 @@ def create_app() -> Flask:
                 conn, platform=platform or None, page_key=page_key or None
             )
             quota_cards = _quota_cards(conn, platform, page_key)
-            top_fans = {
-                period: [_top_fan_row(row) for row in rows]
-                for period, rows in db.top_fans(
-                    conn, platform=platform or None, page_key=page_key or None
-                ).items()
-            }
             total = db.count_comments(
                 conn,
                 status=status,
@@ -553,7 +547,6 @@ def create_app() -> Flask:
             counts=counts,
             activity=activity,
             quota_cards=quota_cards,
-            top_fans=top_fans,
             statuses=STATUSES,
             platforms=PLATFORMS,
             page_choices=page_choices,
@@ -670,6 +663,12 @@ def create_app() -> Flask:
             window = ""
         history_warning = ""
         with request_db() as conn:
+            top_fans = {
+                period: [_top_fan_row(row) for row in rows]
+                for period, rows in db.top_fans(
+                    conn, platform=platform or None, page_key=page_key or None
+                ).items()
+            }
             if window:
                 try:
                     video_stats = [
@@ -750,6 +749,7 @@ def create_app() -> Flask:
             "insights.html",
             video_stats=video_stats,
             insights_summary=insights_summary,
+            top_fans=top_fans,
             video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
