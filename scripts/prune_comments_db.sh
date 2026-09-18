@@ -109,8 +109,45 @@ fi
 echo "==== Prune comments.db started: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
 echo "DB: $DB_PATH"
 
+# Fail before anything is stopped, not after: the host venv used for this
+# script is maintained separately from the app's Docker image (which always
+# has sqlcipher3 from requirements.txt) and can drift out of sync with it.
+# A DB-open failure here previously surfaced only after the containers were
+# already stopped, leaving the bot down.
+echo "[$(date +"%H:%M:%S")] Verifying database access..."
+python -c "
+from app import db
+with db.connect() as conn:
+    conn.execute('SELECT 1')
+"
+
+CONTAINERS_STOPPED=false
+RESTART_DONE=false
+
+start_containers() {
+  if [[ "$REBUILD" == "true" ]]; then
+    echo "[$(date +"%H:%M:%S")] Starting containers with rebuild..."
+    docker compose up -d --build
+  else
+    echo "[$(date +"%H:%M:%S")] Starting containers..."
+    docker compose up -d
+  fi
+  docker compose ps
+  RESTART_DONE=true
+}
+
+on_exit() {
+  local exit_code=$?
+  if [[ "$exit_code" != 0 && "$CONTAINERS_STOPPED" == "true" && "$RESTART_DONE" == "false" && "$RESTART" == "true" ]]; then
+    echo "[$(date +"%H:%M:%S")] Script failed (exit $exit_code) after stopping containers; restarting them so the bot isn't left down..." >&2
+    start_containers || echo "Automatic restart also failed -- run 'docker compose up -d' manually." >&2
+  fi
+}
+trap on_exit EXIT
+
 echo "[$(date +"%H:%M:%S")] Stopping containers: ${COMPOSE_SERVICES[*]}..."
 docker compose stop "${COMPOSE_SERVICES[@]}"
+CONTAINERS_STOPPED=true
 
 if [[ "$BACKUP" == "true" ]]; then
   mkdir -p "$(dirname "$BACKUP_PATH")"
@@ -161,14 +198,7 @@ if [[ "$IMPORT_STATS" == "true" ]]; then
 fi
 
 if [[ "$RESTART" == "true" ]]; then
-  if [[ "$REBUILD" == "true" ]]; then
-    echo "[$(date +"%H:%M:%S")] Starting containers with rebuild..."
-    docker compose up -d --build
-  else
-    echo "[$(date +"%H:%M:%S")] Starting containers..."
-    docker compose up -d
-  fi
-  docker compose ps
+  start_containers
 else
   echo "[$(date +"%H:%M:%S")] Containers left stopped (--no-restart)."
 fi
