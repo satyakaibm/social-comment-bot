@@ -269,6 +269,7 @@ def create_app() -> Flask:
             config.DASHBOARD_USERNAME,
             legacy_auth["password_hash"] if legacy_auth else config.DASHBOARD_PASSWORD_HASH,
         )
+        db.ensure_dashboard_admin(conn, config.DASHBOARD_USERNAME)
 
     @contextmanager
     def request_db():
@@ -409,39 +410,76 @@ def create_app() -> Flask:
 
     @app.route("/profile/password", methods=("GET", "POST"))
     def reset_password():
+        auth = dashboard_auth()
+        is_admin = bool(auth and auth["is_admin"])
+        with request_db() as conn:
+            portal_users = db.list_dashboard_users(conn) if is_admin else []
+
+        def render(**kwargs):
+            return render_template(
+                "reset_password.html",
+                password_hint=PASSWORD_HINT,
+                is_admin=is_admin,
+                portal_users=portal_users,
+                own_username=session.get("dashboard_username", ""),
+                **kwargs,
+            )
+
         if request.method == "POST":
             csrf_valid = hmac.compare_digest(
                 request.form.get("csrf_token", ""), session.get("csrf_token", "")
             )
             if not csrf_valid:
-                return render_template(
-                    "reset_password.html", error="Your session expired. Please try again."
-                ), 400
-            auth = dashboard_auth()
-            current = request.form.get("current_password", "")
+                return render(error="Your session expired. Please try again."), 400
             new = request.form.get("new_password", "")
             confirmation = request.form.get("confirm_password", "")
+
+            if is_admin:
+                # Admins pick who they're resetting from a dropdown of every
+                # portal user (including themselves). Only the self case
+                # still requires the current password -- current-password
+                # verification is what stops a hijacked session from
+                # silently locking out the real admin, so it must stay for
+                # the admin's own account even though it's skipped when
+                # resetting someone else's.
+                target_username = request.form.get("target_username", "").strip()
+                with request_db() as conn:
+                    target = db.get_dashboard_user(conn, target_username) if target_username else None
+                if target is None:
+                    return render(error="Select a valid portal user."), 400
+                resetting_self = target["username"].casefold() == (session.get("dashboard_username") or "").casefold()
+                if resetting_self:
+                    current = request.form.get("current_password", "")
+                    if auth is None or not check_password_hash(auth["password_hash"], current):
+                        return render(error="Current password is incorrect."), 400
+                if not password_meets_policy(new):
+                    return render(error=PASSWORD_HINT), 400
+                if new != confirmation:
+                    return render(error="New passwords do not match."), 400
+                with request_db() as conn:
+                    db.update_dashboard_user_password(
+                        conn, target["username"], generate_password_hash(new)
+                    )
+                if resetting_self:
+                    session.clear()
+                    return redirect(url_for("login", password_changed="1"))
+                flash(f"Password updated for {target['username']}.", "ok")
+                return redirect(url_for("reset_password"))
+
+            current = request.form.get("current_password", "")
             if auth is None or not check_password_hash(auth["password_hash"], current):
-                return render_template(
-                    "reset_password.html", error="Current password is incorrect."
-                ), 400
+                return render(error="Current password is incorrect."), 400
             if not password_meets_policy(new):
-                return render_template(
-                    "reset_password.html",
-                    error=PASSWORD_HINT,
-                    password_hint=PASSWORD_HINT,
-                ), 400
+                return render(error=PASSWORD_HINT), 400
             if new != confirmation:
-                return render_template(
-                    "reset_password.html", error="New passwords do not match."
-                ), 400
+                return render(error="New passwords do not match."), 400
             with request_db() as conn:
                 db.update_dashboard_user_password(
                     conn, session["dashboard_username"], generate_password_hash(new)
                 )
             session.clear()
             return redirect(url_for("login", password_changed="1"))
-        return render_template("reset_password.html", password_hint=PASSWORD_HINT)
+        return render()
 
     @app.route("/profile", methods=("GET", "POST"))
     def profile():
