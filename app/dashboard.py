@@ -1040,10 +1040,52 @@ def create_app() -> Flask:
 
     @app.get("/settings")
     def settings():
+        auth = dashboard_auth()
+        is_admin = bool(auth and auth["is_admin"])
+        with request_db() as conn:
+            portal_users = db.list_dashboard_users(conn) if is_admin else []
         return render_template(
             "settings.html",
             user_created=request.args.get("user_created") == "1",
+            is_admin=is_admin,
+            portal_users=portal_users,
+            own_username=session.get("dashboard_username", ""),
         )
+
+    @app.post("/settings/admin")
+    def toggle_admin():
+        auth = dashboard_auth()
+        if not (auth and auth["is_admin"]):
+            return "Forbidden", 403
+        csrf_valid = hmac.compare_digest(
+            request.form.get("csrf_token", ""), session.get("csrf_token", "")
+        )
+        if not csrf_valid:
+            flash("Your session expired. Please try again.", "error")
+            return redirect(url_for("settings"))
+        target_username = request.form.get("target_username", "").strip()
+        make_admin = request.form.get("action") == "promote"
+        with request_db() as conn:
+            target = db.get_dashboard_user(conn, target_username) if target_username else None
+            if target is None:
+                flash(f"No portal user found with User ID {target_username!r}.", "error")
+                return redirect(url_for("settings"))
+            # Demoting the sole remaining admin would lock everyone out of
+            # this page -- and of resetting anyone's password -- with no
+            # way back in short of editing the database directly.
+            if not make_admin and target["is_admin"] and db.count_dashboard_admins(conn) <= 1:
+                flash(
+                    f"Can't remove admin from {target['username']} -- "
+                    "they're the only admin left.",
+                    "error",
+                )
+                return redirect(url_for("settings"))
+            db.set_dashboard_user_admin(conn, target["username"], make_admin)
+        flash(
+            f"{target['username']} is {'now an admin' if make_admin else 'no longer an admin'}.",
+            "ok",
+        )
+        return redirect(url_for("settings"))
 
     @app.get("/status")
     def status():

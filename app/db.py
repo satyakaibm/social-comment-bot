@@ -1273,6 +1273,23 @@ def ensure_dashboard_admin(conn: sqlite3.Connection, username: str) -> None:
     )
 
 
+def count_dashboard_admins(conn: sqlite3.Connection) -> int:
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) FROM dashboard_users WHERE is_admin = 1"
+        ).fetchone()[0]
+    )
+
+
+def set_dashboard_user_admin(
+    conn: sqlite3.Connection, username: str, is_admin: bool
+) -> None:
+    conn.execute(
+        "UPDATE dashboard_users SET is_admin = ?, updated_at = ? WHERE username = ? COLLATE NOCASE",
+        (1 if is_admin else 0, now(), username.strip()),
+    )
+
+
 def update_dashboard_user_password(
     conn: sqlite3.Connection, username: str, password_hash: str
 ) -> int:
