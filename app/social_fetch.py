@@ -64,6 +64,7 @@ def poll_facebook_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
 
                     text = comment.get("message", "")
                     author = comment.get("from", {}).get("name", "someone")
+                    author_id = comment.get("from", {}).get("id", "")
                     title = post_message(post_id)
 
                     existing_reply = None
@@ -112,6 +113,7 @@ def poll_facebook_and_draft(page_key: str = config.DEFAULT_PAGE_KEY) -> int:
                         video_id=post_id,
                         video_title=title,
                         author=author,
+                        author_id=author_id,
                         text=text,
                         published_at=comment.get("created_time", ""),
                         draft_reply=reply,

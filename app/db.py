@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS comments (
     video_id TEXT NOT NULL,
     video_title TEXT,
     author TEXT,
+    author_id TEXT NOT NULL DEFAULT '',
     text TEXT NOT NULL,
     published_at TEXT,
     status TEXT NOT NULL DEFAULT 'pending_review',
@@ -320,6 +321,10 @@ def init_db() -> None:
             conn.execute(
                 "UPDATE comments SET page_key = ? WHERE page_key = ''",
                 (DEFAULT_PAGE_KEY,),
+            )
+        if "author_id" not in columns:
+            conn.execute(
+                "ALTER TABLE comments ADD COLUMN author_id TEXT NOT NULL DEFAULT ''"
             )
         user_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(dashboard_users)")
@@ -1365,18 +1370,24 @@ def insert_comment(
     platform: str = "youtube",
     page_key: str = "",
     reply_checked_at: str | None = None,
+    author_id: str = "",
 ) -> None:
     # video_id/video_title double as the generic "container" id/title for
     # non-YouTube platforms (Facebook post id/message, Instagram media id/caption).
     # page_key identifies which configured page/channel (see config.PAGES)
     # this comment belongs to, across all three platforms.
+    # author_id is the platform's stable commenter id (Meta from.id / YouTube
+    # authorChannelId) -- used to group a commenter's activity even if they
+    # later change their display name. It's '' for older rows and any
+    # source that doesn't expose one.
     ts = now()
     cursor = conn.execute(
         """
         INSERT OR IGNORE INTO comments (
-            comment_id, platform, page_key, video_id, video_title, author, text,
+            comment_id, platform, page_key, video_id, video_title, author,
+            author_id, text,
             published_at, status, draft_reply, reply_checked_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_review', ?, ?, ?, ?)
         """,
         (
             comment_id,
@@ -1385,6 +1396,7 @@ def insert_comment(
             video_id,
             video_title,
             author,
+            author_id,
             text,
             published_at,
             draft_reply,
@@ -1594,6 +1606,87 @@ def activity_summary(
             }
         )
     return summaries
+
+
+def top_fans(
+    conn: sqlite3.Connection,
+    *,
+    platform: str | None = None,
+    page_key: str | None = None,
+    reference_time: datetime | None = None,
+    limit: int = 5,
+) -> dict[str, list[dict]]:
+    """Return each window's most active commenters, per platform/page.
+
+    Grouped by author_id (the platform's stable commenter id) so a
+    commenter's count survives a display-name change; rows written before
+    author_id was captured fall back to grouping by author name. week/month/
+    year windows are all computed together so the dashboard can switch
+    between them without a reload, matching activity_summary().
+    """
+    reference_time = reference_time or datetime.now(timezone.utc)
+    windows = (
+        ("week", timedelta(days=7)),
+        ("month", timedelta(days=30)),
+        ("year", timedelta(days=365)),
+    )
+    platform_filter = "AND platform = :platform" if platform else ""
+    if page_key == DEFAULT_PAGE_KEY:
+        page_key_filter = "AND page_key IN (:page_key, '')"
+    elif page_key:
+        page_key_filter = "AND page_key = :page_key"
+    else:
+        page_key_filter = ""
+    published_utc = _published_at_utc_expr("published_at")
+    sql = f"""
+        WITH filtered AS (
+            SELECT
+                COALESCE(NULLIF(author_id, ''), 'name:' || author) AS fan_key,
+                author, platform, page_key,
+                {published_utc} AS published_utc
+            FROM comments
+            WHERE trim(COALESCE(author, '')) <> ''
+              AND {published_utc} >= datetime(:cutoff)
+              {platform_filter} {page_key_filter}
+        ),
+        ranked AS (
+            SELECT
+                author, platform, page_key,
+                COUNT(*) OVER (PARTITION BY fan_key, platform, page_key)
+                    AS comment_count,
+                MAX(published_utc) OVER (PARTITION BY fan_key, platform, page_key)
+                    AS last_comment_at,
+                ROW_NUMBER() OVER (
+                    PARTITION BY fan_key, platform, page_key
+                    ORDER BY published_utc DESC
+                ) AS rn
+            FROM filtered
+        )
+        SELECT author, platform, page_key, comment_count, last_comment_at
+        FROM ranked
+        WHERE rn = 1
+        ORDER BY comment_count DESC, last_comment_at DESC
+        LIMIT :limit
+    """
+    results: dict[str, list[dict]] = {}
+    for label, duration in windows:
+        params = {"cutoff": (reference_time - duration).isoformat(), "limit": limit}
+        if platform:
+            params["platform"] = platform
+        if page_key:
+            params["page_key"] = page_key
+        rows = conn.execute(sql, params).fetchall()
+        results[label] = [
+            {
+                "rank": i + 1,
+                "author": row["author"],
+                "platform": row["platform"],
+                "page_key": row["page_key"],
+                "comment_count": row["comment_count"],
+            }
+            for i, row in enumerate(rows)
+        ]
+    return results
 
 
 def list_comments(

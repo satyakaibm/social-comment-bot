@@ -161,6 +161,13 @@ def _row_dict(row) -> dict:
     return item
 
 
+def _top_fan_row(row: dict) -> dict:
+    item = dict(row)
+    page = config.PAGES.get(item.get("page_key") or "")
+    item["page_label"] = page.label if page else ""
+    return item
+
+
 def _video_stats_row(row: dict) -> dict:
     item = dict(row)
     item["container_label"] = CONTAINER_LABELS.get(item["platform"], "Post")
@@ -511,6 +518,12 @@ def create_app() -> Flask:
                 conn, platform=platform or None, page_key=page_key or None
             )
             quota_cards = _quota_cards(conn, platform, page_key)
+            top_fans = {
+                period: [_top_fan_row(row) for row in rows]
+                for period, rows in db.top_fans(
+                    conn, platform=platform or None, page_key=page_key or None
+                ).items()
+            }
             total = db.count_comments(
                 conn,
                 status=status,
@@ -540,6 +553,7 @@ def create_app() -> Flask:
             counts=counts,
             activity=activity,
             quota_cards=quota_cards,
+            top_fans=top_fans,
             statuses=STATUSES,
             platforms=PLATFORMS,
             page_choices=page_choices,
