@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# Stop the dashboard, back up comments.db, prune handled rows, then start again.
+# Stop every container touching comments.db, back it up (including its WAL
+# and SHM files), prune handled rows, rotate polling.log, then start again.
 # Keeps comment IDs and activity timestamps so replies are not posted twice.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
+
+# All three containers mount ./data and can write comments.db concurrently
+# (video-stats and youtube-comments run independently of the dashboard), so
+# all of them must be stopped before the file is backed up or pruned --
+# otherwise a live writer can hold WAL frames that a plain file copy misses.
+COMPOSE_SERVICES=(dashboard video-stats youtube-comments)
 
 OLDER_THAN_DAYS=""
 IMPORT_STATS=false
@@ -20,8 +27,8 @@ Usage: scripts/prune_comments_db.sh [options]
   --older-than-days N  Only prune handled comments older than N days
   --import-stats       Restore dashboard counts from the backup after prune
   --backup PATH        Backup file (default: data/comments.db.bak)
-  --no-backup          Skip copying comments.db before prune
-  --no-restart         Leave the dashboard stopped
+  --no-backup          Skip backing up comments.db and polling.log before prune
+  --no-restart         Leave the containers stopped
   --rebuild            Restart with docker compose up -d --build
   -h, --help           Show this help
 
@@ -86,11 +93,13 @@ source "$SCRIPT_DIR/.venv/bin/activate"
 export PYTHONPATH="$SCRIPT_DIR"
 
 DB_PATH="$SCRIPT_DIR/data/comments.db"
+POLLING_LOG_PATH="$SCRIPT_DIR/data/polling.log"
 if [[ -z "$BACKUP_PATH" ]]; then
   BACKUP_PATH="$SCRIPT_DIR/data/comments.db.bak"
 elif [[ "$BACKUP_PATH" != /* ]]; then
   BACKUP_PATH="$SCRIPT_DIR/$BACKUP_PATH"
 fi
+POLLING_LOG_BACKUP_PATH="$(dirname "$BACKUP_PATH")/polling.log.bak"
 
 if [[ ! -f "$DB_PATH" ]]; then
   echo "Database not found: $DB_PATH" >&2
@@ -100,14 +109,38 @@ fi
 echo "==== Prune comments.db started: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
 echo "DB: $DB_PATH"
 
-echo "[$(date +"%H:%M:%S")] Stopping dashboard container..."
-docker compose stop dashboard
+echo "[$(date +"%H:%M:%S")] Stopping containers: ${COMPOSE_SERVICES[*]}..."
+docker compose stop "${COMPOSE_SERVICES[@]}"
 
 if [[ "$BACKUP" == "true" ]]; then
   mkdir -p "$(dirname "$BACKUP_PATH")"
+  # Fold the WAL into the main file first so the single comments.db file
+  # copied below is a complete, self-contained snapshot -- import-stats
+  # opens the backup path directly and never looks for a companion -wal
+  # file next to it. Safe now that every writer above is stopped.
+  echo "[$(date +"%H:%M:%S")] Checkpointing WAL into $DB_PATH..."
+  python -c "
+from app import db
+with db.connect() as conn:
+    conn.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+"
   echo "[$(date +"%H:%M:%S")] Backing up to $BACKUP_PATH..."
   cp "$DB_PATH" "$BACKUP_PATH"
+  # Defensive: copy any WAL/SHM remnants too, in case the checkpoint above
+  # couldn't fully drain them (e.g. a stray reader still had the db open).
+  for suffix in -wal -shm; do
+    if [[ -f "${DB_PATH}${suffix}" ]]; then
+      cp "${DB_PATH}${suffix}" "${BACKUP_PATH}${suffix}"
+    fi
+  done
   ls -lh "$DB_PATH" "$BACKUP_PATH"
+
+  if [[ -f "$POLLING_LOG_PATH" ]]; then
+    echo "[$(date +"%H:%M:%S")] Backing up and rotating $POLLING_LOG_PATH..."
+    cp "$POLLING_LOG_PATH" "$POLLING_LOG_BACKUP_PATH"
+    : > "$POLLING_LOG_PATH"
+    ls -lh "$POLLING_LOG_BACKUP_PATH" "$POLLING_LOG_PATH"
+  fi
 fi
 
 prune_args=(prune)
@@ -129,15 +162,15 @@ fi
 
 if [[ "$RESTART" == "true" ]]; then
   if [[ "$REBUILD" == "true" ]]; then
-    echo "[$(date +"%H:%M:%S")] Starting dashboard with rebuild..."
+    echo "[$(date +"%H:%M:%S")] Starting containers with rebuild..."
     docker compose up -d --build
   else
-    echo "[$(date +"%H:%M:%S")] Starting dashboard..."
+    echo "[$(date +"%H:%M:%S")] Starting containers..."
     docker compose up -d
   fi
   docker compose ps
 else
-  echo "[$(date +"%H:%M:%S")] Dashboard left stopped (--no-restart)."
+  echo "[$(date +"%H:%M:%S")] Containers left stopped (--no-restart)."
 fi
 
 echo "==== Prune comments.db finished: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
