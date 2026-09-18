@@ -534,6 +534,7 @@ class DashboardTests(unittest.TestCase):
             "/profile/password",
             data={
                 "csrf_token": "weak-token",
+                "target_username": "admin",
                 "current_password": "secret",
                 "new_password": "lowercase1",
                 "confirm_password": "lowercase1",
@@ -553,6 +554,7 @@ class DashboardTests(unittest.TestCase):
             "/profile/password",
             data={
                 "csrf_token": "reset-token",
+                "target_username": "admin",
                 "current_password": "secret",
                 "new_password": "New-secret1",
                 "confirm_password": "New-secret1",

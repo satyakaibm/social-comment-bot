@@ -26,7 +26,18 @@
     .link-card-arrow { color:var(--coral); font-size:18px; }
     .section-label { display:block; margin:28px 0 12px; color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
     .section-label:first-of-type { margin-top:0; }
-    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px} }
+    .flash { padding:11px 13px; margin:0 0 18px; border-radius:10px; font-size:13px; }
+    .flash.ok { color:#086142; background:#e9f8f1; border:1px solid #c9ecdd; }
+    .flash.error { color:#98253d; background:#fff0f3; border:1px solid #f5ccd5; }
+    .user-row { gap:14px; }
+    .user-row form { flex:0 0 auto; margin:0; }
+    .role-badge { display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; vertical-align:middle; }
+    .role-badge.is-admin { color:#086142; background:#e9f8f1; }
+    .role-badge.is-member { color:var(--muted); background:#eef1f3; }
+    .role-toggle { min-height:38px; padding:0 14px; color:var(--navy); background:#f4f7f8; border:1px solid var(--line); border-radius:9px; font:inherit; font-size:12px; font-weight:750; cursor:pointer; }
+    .role-toggle:hover { border-color:#b9c9d1; background:#eef2f3; }
+    .role-toggle.is-danger { color:#98253d; }
+    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px} .user-row{flex-direction:column;align-items:flex-start}.user-row form{width:100%}.role-toggle{width:100%} }
   </style>
 </head>
 <body>
@@ -39,6 +50,7 @@
     <h1>Settings</h1>
     <p class="summary">Account settings, plus the public policy pages used for Meta App Review.</p>
     {% if user_created %}<p class="summary" style="color:#086142">Portal user created. They can sign in from the login page.</p>{% endif %}
+    {% for category, message in get_flashed_messages(with_categories=true) %}<p class="flash {{ category }}">{{ message }}</p>{% endfor %}
 
     <span class="section-label">Account</span>
     <div class="links">
@@ -51,6 +63,26 @@
         <span class="link-card-arrow" aria-hidden="true">&#8594;</span>
       </a>
     </div>
+
+    {% if is_admin %}
+    <span class="section-label">Portal users</span>
+    <div class="links">
+      {% for user in portal_users %}
+      <div class="link-card user-row">
+        <span>
+          <span class="link-card-title">{{ user.display_name or user.username }}<span class="role-badge {{ 'is-admin' if user.is_admin else 'is-member' }}">{{ 'Admin' if user.is_admin else 'Member' }}</span></span>
+          <span class="link-card-url">{{ user.username }}</span>
+        </span>
+        <form method="post" action="/settings/admin">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="target_username" value="{{ user.username }}">
+          <input type="hidden" name="action" value="{{ 'demote' if user.is_admin else 'promote' }}">
+          <button type="submit" class="role-toggle{{ ' is-danger' if user.is_admin else '' }}">{{ 'Remove admin' if user.is_admin else 'Make admin' }}</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
 
     <span class="section-label">System</span>
     <div class="links">

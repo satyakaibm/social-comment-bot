@@ -269,6 +269,7 @@ def create_app() -> Flask:
             config.DASHBOARD_USERNAME,
             legacy_auth["password_hash"] if legacy_auth else config.DASHBOARD_PASSWORD_HASH,
         )
+        db.ensure_dashboard_admin(conn, config.DASHBOARD_USERNAME)
 
     @contextmanager
     def request_db():
@@ -409,39 +410,76 @@ def create_app() -> Flask:
 
     @app.route("/profile/password", methods=("GET", "POST"))
     def reset_password():
+        auth = dashboard_auth()
+        is_admin = bool(auth and auth["is_admin"])
+        with request_db() as conn:
+            portal_users = db.list_dashboard_users(conn) if is_admin else []
+
+        def render(**kwargs):
+            return render_template(
+                "reset_password.html",
+                password_hint=PASSWORD_HINT,
+                is_admin=is_admin,
+                portal_users=portal_users,
+                own_username=session.get("dashboard_username", ""),
+                **kwargs,
+            )
+
         if request.method == "POST":
             csrf_valid = hmac.compare_digest(
                 request.form.get("csrf_token", ""), session.get("csrf_token", "")
             )
             if not csrf_valid:
-                return render_template(
-                    "reset_password.html", error="Your session expired. Please try again."
-                ), 400
-            auth = dashboard_auth()
-            current = request.form.get("current_password", "")
+                return render(error="Your session expired. Please try again."), 400
             new = request.form.get("new_password", "")
             confirmation = request.form.get("confirm_password", "")
+
+            if is_admin:
+                # Admins pick who they're resetting from a dropdown of every
+                # portal user (including themselves). Only the self case
+                # still requires the current password -- current-password
+                # verification is what stops a hijacked session from
+                # silently locking out the real admin, so it must stay for
+                # the admin's own account even though it's skipped when
+                # resetting someone else's.
+                target_username = request.form.get("target_username", "").strip()
+                with request_db() as conn:
+                    target = db.get_dashboard_user(conn, target_username) if target_username else None
+                if target is None:
+                    return render(error=f"No portal user found with User ID {target_username!r}."), 400
+                resetting_self = target["username"].casefold() == (session.get("dashboard_username") or "").casefold()
+                if resetting_self:
+                    current = request.form.get("current_password", "")
+                    if auth is None or not check_password_hash(auth["password_hash"], current):
+                        return render(error="Current password is incorrect."), 400
+                if not password_meets_policy(new):
+                    return render(error=PASSWORD_HINT), 400
+                if new != confirmation:
+                    return render(error="New passwords do not match."), 400
+                with request_db() as conn:
+                    db.update_dashboard_user_password(
+                        conn, target["username"], generate_password_hash(new)
+                    )
+                if resetting_self:
+                    session.clear()
+                    return redirect(url_for("login", password_changed="1"))
+                flash(f"Password updated for {target['username']}.", "ok")
+                return redirect(url_for("reset_password"))
+
+            current = request.form.get("current_password", "")
             if auth is None or not check_password_hash(auth["password_hash"], current):
-                return render_template(
-                    "reset_password.html", error="Current password is incorrect."
-                ), 400
+                return render(error="Current password is incorrect."), 400
             if not password_meets_policy(new):
-                return render_template(
-                    "reset_password.html",
-                    error=PASSWORD_HINT,
-                    password_hint=PASSWORD_HINT,
-                ), 400
+                return render(error=PASSWORD_HINT), 400
             if new != confirmation:
-                return render_template(
-                    "reset_password.html", error="New passwords do not match."
-                ), 400
+                return render(error="New passwords do not match."), 400
             with request_db() as conn:
                 db.update_dashboard_user_password(
                     conn, session["dashboard_username"], generate_password_hash(new)
                 )
             session.clear()
             return redirect(url_for("login", password_changed="1"))
-        return render_template("reset_password.html", password_hint=PASSWORD_HINT)
+        return render()
 
     @app.route("/profile", methods=("GET", "POST"))
     def profile():
@@ -518,12 +556,6 @@ def create_app() -> Flask:
                 conn, platform=platform or None, page_key=page_key or None
             )
             quota_cards = _quota_cards(conn, platform, page_key)
-            top_fans = {
-                period: [_top_fan_row(row) for row in rows]
-                for period, rows in db.top_fans(
-                    conn, platform=platform or None, page_key=page_key or None
-                ).items()
-            }
             total = db.count_comments(
                 conn,
                 status=status,
@@ -553,7 +585,6 @@ def create_app() -> Flask:
             counts=counts,
             activity=activity,
             quota_cards=quota_cards,
-            top_fans=top_fans,
             statuses=STATUSES,
             platforms=PLATFORMS,
             page_choices=page_choices,
@@ -670,6 +701,12 @@ def create_app() -> Flask:
             window = ""
         history_warning = ""
         with request_db() as conn:
+            top_fans = {
+                period: [_top_fan_row(row) for row in rows]
+                for period, rows in db.top_fans(
+                    conn, platform=platform or None, page_key=page_key or None, limit=10
+                ).items()
+            }
             if window:
                 try:
                     video_stats = [
@@ -750,6 +787,7 @@ def create_app() -> Flask:
             "insights.html",
             video_stats=video_stats,
             insights_summary=insights_summary,
+            top_fans=top_fans,
             video_stats_refresh_label=video_stats_refresh_label,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
@@ -1002,10 +1040,52 @@ def create_app() -> Flask:
 
     @app.get("/settings")
     def settings():
+        auth = dashboard_auth()
+        is_admin = bool(auth and auth["is_admin"])
+        with request_db() as conn:
+            portal_users = db.list_dashboard_users(conn) if is_admin else []
         return render_template(
             "settings.html",
             user_created=request.args.get("user_created") == "1",
+            is_admin=is_admin,
+            portal_users=portal_users,
+            own_username=session.get("dashboard_username", ""),
         )
+
+    @app.post("/settings/admin")
+    def toggle_admin():
+        auth = dashboard_auth()
+        if not (auth and auth["is_admin"]):
+            return "Forbidden", 403
+        csrf_valid = hmac.compare_digest(
+            request.form.get("csrf_token", ""), session.get("csrf_token", "")
+        )
+        if not csrf_valid:
+            flash("Your session expired. Please try again.", "error")
+            return redirect(url_for("settings"))
+        target_username = request.form.get("target_username", "").strip()
+        make_admin = request.form.get("action") == "promote"
+        with request_db() as conn:
+            target = db.get_dashboard_user(conn, target_username) if target_username else None
+            if target is None:
+                flash(f"No portal user found with User ID {target_username!r}.", "error")
+                return redirect(url_for("settings"))
+            # Demoting the sole remaining admin would lock everyone out of
+            # this page -- and of resetting anyone's password -- with no
+            # way back in short of editing the database directly.
+            if not make_admin and target["is_admin"] and db.count_dashboard_admins(conn) <= 1:
+                flash(
+                    f"Can't remove admin from {target['username']} -- "
+                    "they're the only admin left.",
+                    "error",
+                )
+                return redirect(url_for("settings"))
+            db.set_dashboard_user_admin(conn, target["username"], make_admin)
+        flash(
+            f"{target['username']} is {'now an admin' if make_admin else 'no longer an admin'}.",
+            "ok",
+        )
+        return redirect(url_for("settings"))
 
     @app.get("/status")
     def status():

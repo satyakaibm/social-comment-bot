@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
     email TEXT,
     password_hash TEXT NOT NULL,
     version INTEGER NOT NULL DEFAULT 1,
+    is_admin INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -333,6 +334,10 @@ def init_db() -> None:
             conn.execute("ALTER TABLE dashboard_users ADD COLUMN display_name TEXT")
         if "email" not in user_columns:
             conn.execute("ALTER TABLE dashboard_users ADD COLUMN email TEXT")
+        if "is_admin" not in user_columns:
+            conn.execute(
+                "ALTER TABLE dashboard_users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"
+            )
         # Older builds allowed duplicate profile emails. Preserve the earliest
         # account as the owner and clear the duplicate copies before adding the
         # constraint; no user account is removed.
@@ -1240,10 +1245,49 @@ def create_dashboard_user(
 def get_dashboard_user(conn: sqlite3.Connection, username: str):
     return conn.execute(
         """SELECT id, username, display_name, email, password_hash, version,
-                  created_at, updated_at
+                  is_admin, created_at, updated_at
            FROM dashboard_users WHERE username = ? COLLATE NOCASE""",
         (username.strip(),),
     ).fetchone()
+
+
+def list_dashboard_users(conn: sqlite3.Connection):
+    return conn.execute(
+        """SELECT id, username, display_name, is_admin
+           FROM dashboard_users ORDER BY username COLLATE NOCASE"""
+    ).fetchall()
+
+
+def ensure_dashboard_admin(conn: sqlite3.Connection, username: str) -> None:
+    """Idempotently flag `username`'s account as the portal admin.
+
+    Called on every startup so the original bootstrap account (from
+    DASHBOARD_USERNAME) keeps admin rights even after upgrading an
+    existing install where the is_admin column didn't exist yet.
+    """
+    if not username:
+        return
+    conn.execute(
+        "UPDATE dashboard_users SET is_admin = 1 WHERE username = ? COLLATE NOCASE",
+        (username.strip(),),
+    )
+
+
+def count_dashboard_admins(conn: sqlite3.Connection) -> int:
+    return int(
+        conn.execute(
+            "SELECT COUNT(*) FROM dashboard_users WHERE is_admin = 1"
+        ).fetchone()[0]
+    )
+
+
+def set_dashboard_user_admin(
+    conn: sqlite3.Connection, username: str, is_admin: bool
+) -> None:
+    conn.execute(
+        "UPDATE dashboard_users SET is_admin = ?, updated_at = ? WHERE username = ? COLLATE NOCASE",
+        (1 if is_admin else 0, now(), username.strip()),
+    )
 
 
 def update_dashboard_user_password(
@@ -1662,7 +1706,9 @@ def top_fans(
                 ) AS rn
             FROM filtered
         )
-        SELECT author, platform, page_key, comment_count, last_comment_at
+        SELECT author, platform, page_key, comment_count,
+               strftime('%Y-%m-%d %H:%M', last_comment_at, '+5 hours', '+30 minutes')
+                   AS last_comment_at_ist
         FROM ranked
         WHERE rn = 1
         ORDER BY comment_count DESC, last_comment_at DESC
@@ -1683,6 +1729,7 @@ def top_fans(
                 "platform": row["platform"],
                 "page_key": row["page_key"],
                 "comment_count": row["comment_count"],
+                "last_comment_at": row["last_comment_at_ist"],
             }
             for i, row in enumerate(rows)
         ]
