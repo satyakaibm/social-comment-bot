@@ -106,7 +106,7 @@ def _refresh_instagram(conn) -> int:
             video_title=row.get("video_title") or "",
             view_count=stats.get("view_count"),
             like_count=stats.get("like_count"),
-            share_count=None,
+            share_count=stats.get("share_count"),
             comment_count=stats.get("comment_count"),
         )
         conn.commit()

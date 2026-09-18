@@ -550,35 +550,52 @@ def get_instagram_media_caption(media_id: str, *, page_key: str = config.DEFAULT
 def get_instagram_media_stats(
     media_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
 ) -> dict:
-    """Return an Instagram media's like/comment/view counts.
+    """Return an Instagram media's like/comment/view/share counts.
 
-    Instagram's Graph API has no public share-count field, so callers only
-    get likes and comments back directly. Views only apply to video/Reel
-    media -- a plain image has no view concept -- and require a separate
-    Insights lookup (metric=views) rather than a plain field; that lookup
-    is skipped, not raised, for media types the Insights API rejects it for.
+    Views and shares both come from the Insights API rather than a plain
+    field, and both are skipped (not raised) for media types the Insights
+    API rejects them for. Views apply to any video/Reel media -- a plain
+    image or carousel has no view concept. Shares are narrower still: the
+    Graph API only accepts metric=shares for Reels (media_product_type ==
+    "REELS"); it errors on a plain feed video, a photo, or a carousel, so
+    those always get share_count=None rather than a real 0.
     """
     kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
     data = graph_get(
         media_id,
-        fields="like_count,comments_count,media_type",
+        fields="like_count,comments_count,media_type,media_product_type",
         page_key=page_key,
         **kwargs,
     )
-    view_count = None
+    metrics = []
     if data.get("media_type") == "VIDEO":
+        metrics.append("views")
+    if data.get("media_product_type") == "REELS":
+        metrics.append("shares")
+    view_count = None
+    share_count = None
+    if metrics:
         try:
             insights = graph_get(
-                f"{media_id}/insights", metric="views", page_key=page_key, **kwargs
+                f"{media_id}/insights",
+                metric=",".join(metrics),
+                page_key=page_key,
+                **kwargs,
             )
-            values = (insights.get("data") or [{}])[0].get("values") or []
-            view_count = values[0].get("value") if values else None
+            for item in insights.get("data") or []:
+                values = item.get("values") or []
+                value = values[0].get("value") if values else None
+                if item.get("name") == "views":
+                    view_count = value
+                elif item.get("name") == "shares":
+                    share_count = value
         except GraphAPIError:
             pass
     return {
         "like_count": data.get("like_count"),
         "comment_count": data.get("comments_count"),
         "view_count": view_count,
+        "share_count": share_count,
     }
 
 

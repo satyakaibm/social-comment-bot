@@ -285,22 +285,26 @@ class MetaStatsTests(unittest.TestCase):
         ) as graph_get:
             stats = meta_client.get_instagram_media_stats("media1", page_key="p")
         self.assertEqual(
-            stats, {"like_count": 4, "comment_count": 1, "view_count": None}
+            stats,
+            {"like_count": 4, "comment_count": 1, "view_count": None, "share_count": None},
         )
         graph_get.assert_called_once_with(
-            "media1", fields="like_count,comments_count,media_type", page_key="p"
+            "media1",
+            fields="like_count,comments_count,media_type,media_product_type",
+            page_key="p",
         )
 
     def test_get_instagram_media_stats_fetches_views_for_video_media(self):
         responses = [
             {"like_count": 4, "comments_count": 1, "media_type": "VIDEO"},
-            {"data": [{"values": [{"value": 21296}]}]},
+            {"data": [{"name": "views", "values": [{"value": 21296}]}]},
         ]
         with patch.object(
             meta_client, "graph_get", side_effect=responses,
         ) as graph_get:
             stats = meta_client.get_instagram_media_stats("media1", page_key="p")
         self.assertEqual(stats["view_count"], 21296)
+        self.assertIsNone(stats["share_count"])
         graph_get.assert_any_call(
             "media1/insights", metric="views", page_key="p"
         )
@@ -313,6 +317,66 @@ class MetaStatsTests(unittest.TestCase):
         with patch.object(meta_client, "graph_get", side_effect=responses):
             stats = meta_client.get_instagram_media_stats("media1")
         self.assertIsNone(stats["view_count"])
+        self.assertIsNone(stats["share_count"])
+
+    def test_get_instagram_media_stats_fetches_shares_for_reels(self):
+        responses = [
+            {
+                "like_count": 4,
+                "comments_count": 1,
+                "media_type": "VIDEO",
+                "media_product_type": "REELS",
+            },
+            {
+                "data": [
+                    {"name": "views", "values": [{"value": 21296}]},
+                    {"name": "shares", "values": [{"value": 42}]},
+                ]
+            },
+        ]
+        with patch.object(
+            meta_client, "graph_get", side_effect=responses,
+        ) as graph_get:
+            stats = meta_client.get_instagram_media_stats("media1", page_key="p")
+        self.assertEqual(stats["view_count"], 21296)
+        self.assertEqual(stats["share_count"], 42)
+        graph_get.assert_any_call(
+            "media1/insights", metric="views,shares", page_key="p"
+        )
+
+    def test_get_instagram_media_stats_no_shares_for_carousel(self):
+        with patch.object(
+            meta_client, "graph_get",
+            return_value={
+                "like_count": 4,
+                "comments_count": 1,
+                "media_type": "CAROUSEL_ALBUM",
+                "media_product_type": "FEED",
+            },
+        ) as graph_get:
+            stats = meta_client.get_instagram_media_stats("media1", page_key="p")
+        self.assertIsNone(stats["share_count"])
+        self.assertIsNone(stats["view_count"])
+        graph_get.assert_called_once()
+
+    def test_get_instagram_media_stats_no_shares_for_feed_video(self):
+        responses = [
+            {
+                "like_count": 4,
+                "comments_count": 1,
+                "media_type": "VIDEO",
+                "media_product_type": "FEED",
+            },
+            {"data": [{"name": "views", "values": [{"value": 100}]}]},
+        ]
+        with patch.object(
+            meta_client, "graph_get", side_effect=responses,
+        ) as graph_get:
+            stats = meta_client.get_instagram_media_stats("media1", page_key="p")
+        self.assertIsNone(stats["share_count"])
+        graph_get.assert_any_call(
+            "media1/insights", metric="views", page_key="p"
+        )
 
 
 class RefreshAllTests(unittest.TestCase):
@@ -356,7 +420,7 @@ class RefreshAllTests(unittest.TestCase):
              ) as facebook_stats, \
              patch.object(
                  meta_client, "get_instagram_media_stats",
-                 return_value={"like_count": 8, "comment_count": 4},
+                 return_value={"like_count": 8, "comment_count": 4, "share_count": 6},
              ) as instagram_stats:
             updated = video_stats.refresh_all()
 
@@ -376,7 +440,7 @@ class RefreshAllTests(unittest.TestCase):
         self.assertIsNone(rows["facebook"]["view_count"])
         self.assertEqual(rows["facebook"]["share_count"], 1)
         self.assertEqual(rows["instagram"]["like_count"], 8)
-        self.assertIsNone(rows["instagram"]["share_count"])
+        self.assertEqual(rows["instagram"]["share_count"], 6)
         self.assertIsNone(rows["instagram"]["view_count"])
 
     def test_refresh_all_continues_after_one_platform_errors(self):
