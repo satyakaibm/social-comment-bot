@@ -1,0 +1,30 @@
+services:
+  billing-portal:
+    build:
+      context: ..
+      dockerfile: billing/Dockerfile
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      # Must equal the *host* path of the repo checkout, and be mounted at
+      # that identical path below -- tenant_ops shells `docker compose -f
+      # <this path>/docker-compose.yml ...` over the bind-mounted docker.sock,
+      # which is interpreted by the HOST's Docker daemon, not this container.
+      # A mismatched path here will fail with "no such file or directory"
+      # even though the file is clearly visible inside this container.
+      BOT_REPO_ROOT: "${HOST_REPO_PATH:-/opt/social-comment-bot}"
+    ports:
+      - "127.0.0.1:${BILLING_PORT:-9000}:9000"
+    volumes:
+      # Grants this container control over every sibling tenant stack on the
+      # host -- equivalent to root on the VM. Never expose BILLING_PORT
+      # beyond 127.0.0.1/the Cloudflare Tunnel, and keep /admin credentials
+      # as tightly held as the VM's SSH access.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "${HOST_REPO_PATH:-/opt/social-comment-bot}:${HOST_REPO_PATH:-/opt/social-comment-bot}"
+      - ./data:/app/billing/data
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
