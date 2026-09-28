@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign up · Social Comment Studio</title>
+  <style>
+    :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
+    * { box-sizing:border-box; }
+    body { min-height:100vh; margin:0; display:grid; place-items:center; padding:24px; color:#17252c; background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(430px,100%); padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
+    h1 { margin:0; color:var(--navy); font-size:26px; letter-spacing:-.03em; }
+    .copy { margin:10px 0 25px; color:var(--muted); font-size:14px; line-height:1.55; }
+    label { display:block; margin:15px 0 7px; color:var(--navy); font-size:12px; font-weight:750; }
+    input { width:100%; height:46px; padding:0 13px; color:#17252c; background:#f8fafb; border:1px solid var(--line); border-radius:11px; font:inherit; outline:none; }
+    input:focus { background:#fff; border-color:#36aeb4; box-shadow:0 0 0 3px rgba(54,174,180,.12); }
+    .hint { margin:6px 0 0; color:var(--muted); font-size:12px; }
+    button { width:100%; height:46px; margin-top:22px; color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; border-radius:11px; font:inherit; font-weight:800; cursor:pointer; }
+    .message { padding:11px 13px; margin:18px 0 0; color:#98253d; background:#fff0f3; border:1px solid #f5ccd5; border-radius:10px; font-size:13px; line-height:1.45; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Start your subscription</h1>
+    <p class="copy">You'll be redirected to Razorpay to authorize your recurring payment. We'll reach out by email to connect your Facebook/Instagram/YouTube accounts once payment goes through.</p>
+    {% if error %}<p class="message">{{ error }}</p>{% endif %}
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="name">Your name</label>
+      <input id="name" name="name" type="text" value="{{ name or '' }}" required autofocus>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ email or '' }}" required>
+      <label for="tenant_key">Workspace ID</label>
+      <input id="tenant_key" name="tenant_key" type="text" value="{{ tenant_key or '' }}" pattern="[a-z0-9][a-z0-9-]{1,30}[a-z0-9]" required>
+      <p class="hint">Lowercase letters, digits, hyphens. This becomes part of your bot's URL.</p>
+      <button type="submit">Continue to payment</button>
+    </form>
+  </main>
+</body>
+</html>

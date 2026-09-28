@@ -17,6 +17,10 @@ client_secret*.json
 
 SQL_DailyQueries/DBQuery_SocialComments.sql
 
+# Per-tenant secrets/data (billing/cli.py provision) -- never commit a
+# customer's DASHBOARD_SECRET/DB_ENCRYPTION_KEY/platform credentials.
+/tenants/
+
 # Terraform
 terraform/.terraform/
 terraform/*.tfstate

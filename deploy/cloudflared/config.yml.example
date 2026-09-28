@@ -1,0 +1,18 @@
+# Lives at /etc/cloudflared/config.yml on the VM (NOT committed with real
+# values -- tunnel/account ids and credentials-file are secrets, per the
+# comment in terraform/startup-script.sh). This file documents the shape so
+# the live config is reviewable even though the real one stays untracked.
+#
+# tunnel: <tunnel-id>
+# credentials-file: /etc/cloudflared/<tunnel-id>.json
+#
+# ingress:
+#   - hostname: bot.hindolroad.download
+#     service: http://localhost:9001
+#   - hostname: billing.hindolroad.download
+#     service: http://localhost:9000
+#   # One block per tenant, appended by scripts/add_tenant_route.sh:
+#   - hostname: <tenant_key>.hindolroad.download
+#     service: http://localhost:<tenant_port>
+#   # Must be last -- catches anything not matched above.
+#   - service: http_status:404

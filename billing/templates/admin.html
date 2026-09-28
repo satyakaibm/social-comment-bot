@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenants · Social Comment Studio Billing</title>
+  <style>
+    :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:#17252c; background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:960px; margin:0 auto; padding:40px 24px; }
+    h1 { color:var(--navy); font-size:24px; }
+    table { width:100%; border-collapse:collapse; margin-top:20px; background:#fff; border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+    th, td { padding:12px 14px; text-align:left; font-size:13px; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); font-weight:700; text-transform:uppercase; font-size:11px; letter-spacing:.05em; }
+    .status { display:inline-block; padding:3px 9px; border-radius:999px; font-weight:700; font-size:11px; }
+    .status-active { color:#086142; background:#e9f8f1; }
+    .status-inactive { color:#98253d; background:#fff0f3; }
+    .status-pending_provisioning { color:#8a5a00; background:#fff6e0; }
+    .status-created { color:var(--muted); background:#eef1f2; }
+    button { padding:7px 12px; color:#fff; background:var(--navy); border:0; border-radius:8px; font:inherit; font-size:12px; font-weight:700; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Tenants</h1>
+    <table>
+      <thead>
+        <tr><th>Workspace</th><th>Name</th><th>Email</th><th>Port</th><th>Status</th><th>Provisioned</th><th></th></tr>
+      </thead>
+      <tbody>
+        {% for t in tenants %}
+        <tr>
+          <td>{{ t.tenant_key }}</td>
+          <td>{{ t.name }}</td>
+          <td>{{ t.email }}</td>
+          <td>{{ t.port }}</td>
+          <td><span class="status status-{{ t.status }}">{{ t.status }}</span></td>
+          <td>{{ "yes" if t.provisioned else "no" }}</td>
+          <td>
+            {% if not t.provisioned %}
+            <form method="post" action="{{ url_for('admin_mark_provisioned', tenant_key=t.tenant_key) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit">Mark provisioned</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7">No tenants yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

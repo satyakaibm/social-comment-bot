@@ -282,6 +282,22 @@ When a batch has several Facebook or Instagram replies, it posts every reply fir
 
 Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]uit`.
 
+## Running this as a paid service (multiple customers)
+
+`billing/` is a separate, small Flask app + SQLite database (own Docker Compose project, own Dockerfile) that turns this repo into a subscription service: customers pay via Razorpay, and each one gets their own isolated copy of this bot running as its own Compose project on the same VM, on its own port and hostname.
+
+Onboarding is semi-manual by design -- there's no way to automate collecting a customer's Facebook Page token, Instagram user ID, or YouTube refresh token without a full Meta/Google OAuth app review, so you still gather those yourself.
+
+1. One-time setup: create a Plan in the Razorpay dashboard (Subscriptions > Plans), then fill in `billing/.env` from `billing/.env.example` (`RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_PLAN_ID`, `RAZORPAY_WEBHOOK_SECRET`, `BILLING_ADMIN_USERNAME`/`BILLING_ADMIN_PASSWORD_HASH_B64` via `scripts/generate_dashboard_password.py`, and `HOST_REPO_PATH` -- see the comment in `billing/docker-compose.yml` for why this must match the host path exactly). Then `cd billing && docker compose up -d --build`.
+2. A customer signs up at `https://billing.<yourdomain>/`, completes Razorpay Checkout. The `subscription.activated` webhook marks them `pending_provisioning` in `/admin`.
+3. You collect their Facebook Page ID/access token, Instagram user ID, and/or YouTube OAuth credentials (same fields as the "Setup" section above).
+4. Run `python -m billing.cli provision <tenant_key>` (from the repo root, in the host venv or `docker compose exec billing-portal ...`). This writes `tenants/<tenant_key>.env` from `.env.example` with fresh secrets and a unique port, prints a one-time dashboard password, and leaves the platform credential lines as `# TODO` comments for you to fill in.
+5. Fill in those TODO lines, then run `docker compose -p <tenant_key> --env-file tenants/<tenant_key>.env up -d --build` (or re-run `provision --start`).
+6. Run `scripts/add_tenant_route.sh <tenant_key> <port>` to add a Cloudflare Tunnel hostname for them and reload `cloudflared`.
+7. Have the customer point their Meta webhook subscription at `https://<tenant_key>.<yourdomain>/webhooks/meta` (see "Facebook and Instagram webhooks" above).
+
+From here, billing is hands-off: `subscription.charged` keeps their containers running, and `subscription.halted`/`subscription.cancelled` stops them automatically -- no app code checks a "is this customer paid up" flag, the tenant's containers simply aren't running when they haven't paid.
+
 ## Notes
 
 - Replies stay in `pending_review` until you run `review`, then `post`.
