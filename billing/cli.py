@@ -79,6 +79,12 @@ def _render_tenant_env(tenant_key: str, port: int) -> str:
         "META_APP_SECRET": secrets.token_urlsafe(32),  # placeholder -- see note above
         "META_WEBHOOK_VERIFY_TOKEN": secrets.token_urlsafe(24),
         "HOST_DATA_GID": _host_data_gid(),
+        # Without this, app/config.py defaults the unsuffixed page's key to
+        # "hindolroad" regardless of which credentials are configured (a
+        # holdover from this codebase's single-channel origin) -- every log
+        # line and this tenant's own dashboard would misname their channel.
+        "PAGE_KEY": tenant_key,
+        "PAGE_LABEL": tenant_key.replace("_", " ").title(),
     }
     password = _generate_password()
     overrides["DASHBOARD_PASSWORD_HASH_B64"] = _b64_hash(password)
