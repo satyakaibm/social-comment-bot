@@ -16,6 +16,14 @@ DB_PATH = DATA_DIR / "billing.db"
 REPO_ROOT = Path(os.environ.get("BOT_REPO_ROOT", str(BASE_DIR))).resolve()
 TENANTS_DIR = REPO_ROOT / "tenants"
 
+# Every tenant runs as extra services inside this one Compose project (same
+# network as the main instance) instead of its own isolated project, so they
+# share one docker network and one built image per service rather than each
+# tenant rebuilding an identical image under its own project name. A tenant's
+# containers are still stopped/started independently by naming only that
+# tenant's services (`<tenant_key>-dashboard`, etc.) in the compose command.
+PROJECT_NAME = "social-comment-bot"
+
 RAZORPAY_KEY_ID = os.environ.get("RAZORPAY_KEY_ID", "")
 RAZORPAY_KEY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET", "")
 RAZORPAY_PLAN_ID = os.environ.get("RAZORPAY_PLAN_ID", "")

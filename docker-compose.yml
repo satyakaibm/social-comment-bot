@@ -12,8 +12,8 @@ services:
     ports:
       - "127.0.0.1:${DASHBOARD_PORT:-9001}:9001"
     volumes:
-      - ${TENANT_DATA_DIR:-./data}:/app/data
-      - ${TENANT_REPLY_EXAMPLES_DIR:-./reply_examples}:/app/reply_examples:ro
+      - ./data:/app/data
+      - ./reply_examples:/app/reply_examples:ro
     # Lets the container (appuser, uid 1000) write to ./data files that the
     # hourly host-side cron (scripts/reply_comments.sh, running as whichever
     # OS Login user owns this VM) also writes to directly, outside Docker.
@@ -50,8 +50,8 @@ services:
       retries: 3
       start_period: 10s
     volumes:
-      - ${TENANT_DATA_DIR:-./data}:/app/data
-      - ${TENANT_REPLY_EXAMPLES_DIR:-./reply_examples}:/app/reply_examples:ro
+      - ./data:/app/data
+      - ./reply_examples:/app/reply_examples:ro
     # Stats are eventually consistent. Reserve most of the small VM's CPU
     # for Gunicorn and the webhook worker during a refresh cycle.
     cpus: "0.35"
@@ -83,8 +83,8 @@ services:
       retries: 3
       start_period: 10s
     volumes:
-      - ${TENANT_DATA_DIR:-./data}:/app/data
-      - ${TENANT_REPLY_EXAMPLES_DIR:-./reply_examples}:/app/reply_examples:ro
+      - ./data:/app/data
+      - ./reply_examples:/app/reply_examples:ro
     group_add:
       - "${HOST_DATA_GID:-1000}"
     security_opt:
