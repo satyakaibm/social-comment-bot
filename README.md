@@ -284,7 +284,7 @@ Review prompts: `[a]pprove` / `[e]dit & approve` / `[r]eject` / `[s]kip` / `[q]u
 
 ## Running this as a paid service (multiple customers)
 
-`billing/` is a separate, small Flask app + SQLite database (own Docker Compose project, own Dockerfile) that turns this repo into a subscription service: customers pay via Razorpay, and each one gets their own isolated copy of this bot running as its own Compose project on the same VM, on its own port and hostname.
+`billing/` is a separate, small Flask app + SQLite database (own Docker Compose project, own Dockerfile) that turns this repo into a subscription service: customers pay via Razorpay, and each one gets their own isolated copy of this bot running as extra services inside this repo's own `social-comment-bot` Compose project (same network, same built images as the main instance -- no per-tenant image rebuild), on its own port and hostname.
 
 Onboarding is semi-manual by design -- there's no way to automate collecting a customer's Facebook Page token, Instagram user ID, or YouTube refresh token without a full Meta/Google OAuth app review, so you still gather those yourself.
 
@@ -292,7 +292,7 @@ Onboarding is semi-manual by design -- there's no way to automate collecting a c
 2. A customer signs up at `https://billing.<yourdomain>/`, completes Razorpay Checkout. The `subscription.activated` webhook marks them `pending_provisioning` in `/admin`.
 3. You collect their Facebook Page ID/access token, Instagram user ID, and/or YouTube OAuth credentials (same fields as the "Setup" section above).
 4. Run `python -m billing.cli provision <tenant_key>` (from the repo root, in the host venv or `docker compose exec billing-portal ...`). This writes `tenants/<tenant_key>.env` from `.env.example` with fresh secrets and a unique port, prints a one-time dashboard password, and leaves the platform credential lines as `# TODO` comments for you to fill in.
-5. Fill in those TODO lines, then run `docker compose -p <tenant_key> --env-file tenants/<tenant_key>.env up -d --build` (or re-run `provision --start`).
+5. Fill in those TODO lines, then run `docker compose -p social-comment-bot -f docker-compose.yml -f tenants/<tenant_key>.compose.yml up -d <tenant_key>-dashboard <tenant_key>-video-stats <tenant_key>-youtube-comments` (or re-run `provision --start`). No `--build`: it reuses this instance's already-built `social-comment-bot-*` images.
 6. Run `scripts/add_tenant_route.sh <tenant_key> <port>` to add a Cloudflare Tunnel hostname for them and reload `cloudflared`.
 7. Have the customer point their Meta webhook subscription at `https://<tenant_key>.<yourdomain>/webhooks/meta` (see "Facebook and Instagram webhooks" above).
 

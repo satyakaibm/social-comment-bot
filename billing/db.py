@@ -70,7 +70,7 @@ def create_tenant(
             email,
             razorpay_customer_id,
             razorpay_subscription_id,
-            tenant_key,
+            config.PROJECT_NAME,
             str(config.TENANTS_DIR / f"{tenant_key}.env"),
             port,
             now,
