@@ -9,7 +9,7 @@ TENANT_KEY="${1:?Usage: add_tenant_route.sh <tenant_key> <port> [domain]}"
 PORT="${2:?Usage: add_tenant_route.sh <tenant_key> <port> [domain]}"
 DOMAIN="${3:-hindolroad.download}"
 CONFIG="${CLOUDFLARED_CONFIG:-/etc/cloudflared/config.yml}"
-TUNNEL_NAME="${CLOUDFLARE_TUNNEL_NAME:?Set CLOUDFLARE_TUNNEL_NAME to this VM's cloudflared tunnel name}"
+TUNNEL_NAME="${CLOUDFLARE_TUNNEL_NAME:?Set CLOUDFLARE_TUNNEL_NAME to the cloudflared tunnel name for this VM}"
 
 HOSTNAME="${TENANT_KEY}.${DOMAIN}"
 
