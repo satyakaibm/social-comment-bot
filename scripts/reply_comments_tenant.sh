@@ -23,8 +23,18 @@ if [[ ! -f "$TENANT_COMPOSE_FILE" ]]; then
 fi
 SERVICE="${TENANT_KEY}-dashboard"
 
-LOG_FILE="$SCRIPT_DIR/tenants/${TENANT_KEY}/data/polling.log"
+# Deliberately *not* polling.log: the tenant's YouTube worker container owns
+# that file (uid 1000, created mode 0644), and this script runs as the host
+# cron user, which only reaches the data/ dir as a *group* member via its
+# setgid bit. `exec >>polling.log` therefore failed with EACCES on every
+# hourly tick and killed the run before a single line was written -- a cron
+# that looked scheduled in syslog but produced no output anywhere.
+LOG_FILE="$SCRIPT_DIR/tenants/${TENANT_KEY}/data/meta_polling.log"
 mkdir -p "$(dirname "$LOG_FILE")"
+if ! { : >>"$LOG_FILE"; } 2>/dev/null; then
+  echo "reply_comments_tenant.sh: cannot append to $LOG_FILE; refusing to run blind." >&2
+  exit 1
+fi
 exec >>"$LOG_FILE" 2>&1
 
 LOCK_DIR="$SCRIPT_DIR/tenants/${TENANT_KEY}/data/reply_comments.lock"
