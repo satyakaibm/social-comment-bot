@@ -850,13 +850,13 @@ class DashboardTests(unittest.TestCase):
         markup = self.client.get("/insights").data.decode()
         header_end = markup.index("</header>")
         overview = markup.index('class="overview-head"')
-        dashboard_button = markup.index('>Dashboard</a>')
+        dashboard_button = markup.index('>Dashboard</span>')
         kpis = markup.index('class="kpi-grid"')
 
         self.assertLess(header_end, dashboard_button)
         self.assertLess(dashboard_button, overview)
         self.assertLess(overview, kpis)
-        self.assertIn(">Dashboard</a>", markup)
+        self.assertIn(">Dashboard</span>", markup)
 
     def test_workspace_navigation_highlights_the_current_page(self):
         dashboard = self.client.get("/").data
@@ -868,10 +868,54 @@ class DashboardTests(unittest.TestCase):
             self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page)
             self.assertIn(b'aria-label="Open My Profile menu"', page)
             self.assertIn(b'content-my-trip-logo.svg', page)
-        self.assertIn(b'class="insights-link active" href="/" aria-current="page"', dashboard)
+        self.assertIn(b'class="workspace-tab active" href="/" aria-current="page"', dashboard)
         self.assertLess(dashboard.index(b">Dashboard</span>"), dashboard.index(b">Insights</span>"))
-        self.assertIn(b'class="workspace-tab active" href="/insights?platform=&amp;page_key=" aria-current="page">Insights</a>', insights)
-        self.assertIn(b'class="workspace-tab active" href="/momentum?platform=&amp;page_key=" aria-current="page">Momentum</a>', momentum)
+        self.assertIn(b'class="workspace-tab active" href="/insights?platform=&amp;page_key=" aria-current="page">', insights)
+        self.assertIn(b'class="workspace-tab active" href="/momentum?platform=&amp;page_key=" aria-current="page">', momentum)
+
+    def test_banner_styling_is_identical_across_the_three_workspaces(self):
+        """The banner CSS is inlined separately in all three templates, so it
+        can silently drift. Pin the rules that control its size and its
+        buttons -- the things that have to match for the three pages to look
+        like one product."""
+        import re
+
+        templates = ("dashboard.html", "insights.html", "momentum.html")
+        rules = (
+            r"\.hero \{[^}]*\}",
+            r"\.hero-content \{[^}]*\}",
+            r"\.hero-actions \{[^}]*\}",
+            r"\.eyebrow \{[^}]*\}",
+            r"\.hero h1 \{[^}]*\}",
+            r"\.hero-copy \{[^}]*\}",
+            r"\.workspace-tab \{[^}]*\}",
+            r"\.workspace-tab\.active \{[^}]*\}",
+        )
+        root = Path(dashboard.__file__).parent / "templates"
+        for rule in rules:
+            found = []
+            for name in templates:
+                match = re.search(rule, (root / name).read_text())
+                self.assertIsNotNone(match, f"{rule} missing from {name}")
+                found.append(match.group(0))
+            self.assertEqual(
+                len(set(found)), 1,
+                f"{rule} differs between templates:\n" + "\n".join(found),
+            )
+
+    def test_every_workspace_banner_carries_the_same_three_tabs(self):
+        for path in ("/", "/insights", "/momentum"):
+            markup = self.client.get(path).data.decode()
+            banner = markup[markup.index('class="hero"'):markup.index("</section>")]
+            for label in ("Dashboard", "Insights", "Momentum"):
+                self.assertIn(
+                    f"<span>{label}</span>", banner,
+                    f"{path} banner is missing the {label} tab",
+                )
+            self.assertEqual(
+                banner.count('class="workspace-tab active"'), 1,
+                f"{path} banner should mark exactly one tab active",
+            )
 
     def test_insights_shows_history_based_momentum(self):
         with db.connect() as conn:
