@@ -67,17 +67,25 @@
     .profile-menu a:hover,.profile-menu button:hover { color:var(--navy); background:#f3f7f8; transform:none; }
     .profile-menu form { margin:0; }
     .page { width:100%; max-width:1920px; margin:0 auto; padding:clamp(22px,2.2vw,42px) clamp(16px,2.2vw,42px) 52px; flex:1; }
-    .intro { position:relative; display:flex; align-items:flex-end; justify-content:space-between; gap:24px; margin-bottom:22px; padding:22px 24px; overflow:hidden; color:#fff; background:linear-gradient(135deg,var(--navy),var(--navy-soft)); border-radius:18px; box-shadow:0 16px 34px rgba(15,42,56,.16); }
-    .intro::after { content:""; position:absolute; width:150px; height:150px; right:-46px; bottom:-90px; border:26px solid rgba(255,106,61,.25); border-radius:50%; pointer-events:none; }
-    .intro > * { position:relative; z-index:1; }
-    .eyebrow { margin:0 0 12px; color:#ffb098; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+    /* --- Workspace banner. These rules are deliberately identical in
+       dashboard.html, insights.html and momentum.html. Each page inlines its
+       own <style>, so editing the banner in one file alone silently diverges
+       the three; change all three together. --- */
+    .hero { position:relative; display:flex; align-items:center; min-height:160px; margin-bottom:22px; padding:22px 24px; overflow:hidden; color:#fff; background:linear-gradient(135deg,var(--navy),var(--navy-soft)); border-radius:18px; box-shadow:0 16px 34px rgba(15,42,56,.16); }
+    .hero::before,.hero::after { content:""; position:absolute; border-radius:50%; pointer-events:none; }
+    .hero::before { width:260px; height:260px; right:-100px; top:-150px; background:rgba(54,174,180,.16); }
+    .hero::after { width:150px; height:150px; right:80px; bottom:-120px; border:28px solid rgba(255,106,61,.18); }
+    .hero-content { position:relative; z-index:1; width:100%; display:flex; align-items:center; justify-content:space-between; gap:24px; }
+    .hero-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; flex-wrap:wrap; }
+    .eyebrow { margin:0 0 8px; color:#8cdae0; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+    .hero h1 { margin:0; color:#fff; font-size:clamp(26px,4vw,38px); line-height:1.1; letter-spacing:-.035em; }
+    .hero-copy { max-width:620px; margin:10px 0 0; color:rgba(255,255,255,.72); font-size:14px; line-height:1.6; }
+    .workspace-tabs { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .workspace-tab { min-height:34px; padding:0 13px; display:inline-flex; align-items:center; justify-content:center; gap:8px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:800; text-decoration:none; }
+    .workspace-tab:hover { color:#fff; background:rgba(255,255,255,.16); }
+    .workspace-tab.active { min-height:44px; padding:0 18px; color:#fff; background:#1769e0; border-color:#1769e0; box-shadow:0 8px 20px rgba(8,44,105,.28); font-size:14px; }
     .channel-indicator { display:inline-flex; align-items:center; gap:8px; margin:0 0 10px; padding:6px 13px; color:#fff; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.24); border-radius:999px; font-size:12px; font-weight:800; }
     .channel-indicator-dot { width:7px; height:7px; border-radius:50%; background:var(--teal); }
-    h1 { margin:0; color:var(--navy); font-size:clamp(28px,4vw,42px); line-height:1.08; letter-spacing:-.035em; }
-    .intro-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-    .insights-link { min-height:32px; display:inline-flex; align-items:center; gap:8px; padding:0 12px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:750; text-decoration:none; }
-    .insights-link:hover { color:#fff; background:rgba(255,255,255,.16); }
-    .insights-link.active { min-height:42px; padding:0 17px; color:#fff; background:#1769e0; border-color:#1769e0; box-shadow:0 8px 20px rgba(8,44,105,.28); font-size:14px; }
     .channels-select { position:relative; }
     .channels-select summary { min-height:32px; padding:0 12px; display:inline-flex; align-items:center; gap:8px; color:rgba(255,255,255,.82); background:rgba(255,255,255,.09); border:1px solid rgba(255,255,255,.22); border-radius:9px; font-size:12px; font-weight:750; cursor:pointer; list-style:none; }
     .channels-select summary::-webkit-details-marker { display:none; }
@@ -188,7 +196,7 @@
     @media (max-width:1280px) { .grid-wrap{height:55vh} }
     @media (max-width:980px) { .topbar{padding:0 22px}.toolbar{align-items:stretch;flex-direction:column}form.search{width:100%}.grid-wrap{height:58vh}.footer-main{grid-template-columns:1.4fr 1fr 1fr;gap:28px} }
     @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column}.activity-platforms,.range-scroll{width:100%}.activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px}.footer-main{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.page{padding:20px 14px 38px}.intro{align-items:flex-start;flex-direction:column;padding:19px 17px}.intro-actions{align-self:stretch;justify-content:flex-start}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.page{padding:20px 14px 38px}.hero{min-height:0;padding:19px 17px}.hero-content{align-items:flex-start;flex-direction:column}.hero-actions{align-self:stretch;justify-content:flex-start}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
     @media (max-width:390px) { .activity-platform{padding:8px 10px}.range-button{padding:0 10px}.stat-label{font-size:9px}.search{flex-direction:column}.search button{width:100%}.grid-wrap{height:56vh} }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important} }
   </style>
@@ -215,16 +223,17 @@
     </div>
   </header>
   <main class="page" id="main-content" tabindex="-1">
-    <section class="intro">
+    <section class="hero">
+      <div class="hero-content">
       <div>
-        <p class="channel-indicator"><span class="channel-indicator-dot"></span>{{ selected_page_label }}</p>
         <p class="eyebrow">Community workspace</p>
+        <p class="channel-indicator"><span class="channel-indicator-dot"></span>{{ selected_page_label }}</p>
         <nav class="activity-platforms" aria-label="Analytics platform">
           <a class="activity-platform {% if not platform %}active{% endif %}" href="/?status={{ status }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">All platforms</a>
           {% for p in platforms %}<a class="activity-platform {% if platform == p %}active{% endif %}" href="/?status={{ status }}&amp;platform={{ p }}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">{{ p }}</a>{% endfor %}
         </nav>
       </div>
-      <div class="intro-actions">
+      <div class="hero-actions">
         {% if page_choices|length > 1 %}
         <details class="channels-select">
           <summary aria-label="Switch channel">
@@ -238,21 +247,22 @@
           </div>
         </details>
         {% endif %}
-        <a class="insights-link active" href="/" aria-current="page">
+        <a class="workspace-tab active" href="/" aria-current="page">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"></rect><rect x="14" y="3" width="7" height="7" rx="1.5"></rect><rect x="3" y="14" width="7" height="7" rx="1.5"></rect><rect x="14" y="14" width="7" height="7" rx="1.5"></rect></svg>
           <span>Dashboard</span>
         </a>
-        <a class="insights-link" href="/insights{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
+        <a class="workspace-tab" href="/insights{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"></path><path d="M18 17V9"></path><path d="M13 17V5"></path><path d="M8 17v-3"></path></svg>
           <span>Insights</span>
         </a>
-        <a class="insights-link" href="/momentum{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
+        <a class="workspace-tab" href="/momentum{% if platform %}?platform={{ platform }}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% endif %}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 17 6-6 4 4 8-9"></path><path d="M15 6h6v6"></path></svg>
           <span>Momentum</span>
         </a>
         <button class="auto-refresh" id="auto-refresh" type="button" aria-label="Enable auto refresh" aria-pressed="false" title="Enable auto refresh">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M6.1 9a7 7 0 0 1 11.5-2.6L20 11M4 13l2.4 4.6A7 7 0 0 0 17.9 15"></path></svg>
         </button>
+      </div>
       </div>
     </section>
 
