@@ -53,40 +53,61 @@ run_cli() {
     exec -T "$SERVICE" python -m app.cli "$@"
 }
 
+# `docker compose exec` keeps the container's CRLF line endings, so strip them
+# before the value is compared.
+run_cli_python() {
+  docker compose -p social-comment-bot -f "$COMPOSE_FILE" -f "$TENANT_COMPOSE_FILE" \
+    exec -T "$SERVICE" python -c "$1" | tr -d '\r\n'
+}
+
 echo ""
 echo "==== Polling cycle started for ${TENANT_KEY}: $(date +"%Y-%m-%d %H:%M:%S %Z") ===="
 failures=0
 
-echo "[$(date +"%H:%M:%S")] Facebook: polling latest comments..."
-if run_cli poll-facebook; then
-  echo "[$(date +"%H:%M:%S")] Facebook: polling completed."
-else
-  failures=$((failures + 1))
-  echo "[$(date +"%H:%M:%S")] Facebook: polling failed."
-fi
+# Same guard as scripts/reply_comments.sh: when Meta webhooks are delivering
+# in real time, polling here would draft and post the same comments the
+# webhook handler already handled -- two independent writers racing to reply
+# to one comment. Read it from inside the container so we get the tenant's
+# own config rather than the host's.
+meta_webhook_enabled="$(run_cli_python 'from app import config; print(str(config.META_WEBHOOK_ENABLED).lower())')" || {
+  echo "[$(date +"%H:%M:%S")] Could not read META_WEBHOOK_ENABLED from ${SERVICE}; is the container running?" >&2
+  exit 1
+}
 
-echo "[$(date +"%H:%M:%S")] Instagram: polling latest comments..."
-if run_cli poll-instagram; then
-  echo "[$(date +"%H:%M:%S")] Instagram: polling completed."
+if [[ "$meta_webhook_enabled" == "true" ]]; then
+  echo "[$(date +"%H:%M:%S")] Meta: polling skipped because webhooks are enabled for ${TENANT_KEY}."
 else
-  failures=$((failures + 1))
-  echo "[$(date +"%H:%M:%S")] Instagram: polling failed."
-fi
+  echo "[$(date +"%H:%M:%S")] Facebook: polling latest comments..."
+  if run_cli poll-facebook; then
+    echo "[$(date +"%H:%M:%S")] Facebook: polling completed."
+  else
+    failures=$((failures + 1))
+    echo "[$(date +"%H:%M:%S")] Facebook: polling failed."
+  fi
 
-echo "[$(date +"%H:%M:%S")] Instagram: publishing pending replies and likes..."
-if run_cli post --platform instagram --pending --retry-failed --like-comments; then
-  echo "[$(date +"%H:%M:%S")] Instagram: publishing completed."
-else
-  failures=$((failures + 1))
-  echo "[$(date +"%H:%M:%S")] Instagram: publishing failed."
-fi
+  echo "[$(date +"%H:%M:%S")] Instagram: polling latest comments..."
+  if run_cli poll-instagram; then
+    echo "[$(date +"%H:%M:%S")] Instagram: polling completed."
+  else
+    failures=$((failures + 1))
+    echo "[$(date +"%H:%M:%S")] Instagram: polling failed."
+  fi
 
-echo "[$(date +"%H:%M:%S")] Facebook: publishing pending replies and likes..."
-if run_cli post --platform facebook --pending --retry-failed --like-comments; then
-  echo "[$(date +"%H:%M:%S")] Facebook: publishing completed."
-else
-  failures=$((failures + 1))
-  echo "[$(date +"%H:%M:%S")] Facebook: publishing failed."
+  echo "[$(date +"%H:%M:%S")] Instagram: publishing pending replies and likes..."
+  if run_cli post --platform instagram --pending --retry-failed --like-comments; then
+    echo "[$(date +"%H:%M:%S")] Instagram: publishing completed."
+  else
+    failures=$((failures + 1))
+    echo "[$(date +"%H:%M:%S")] Instagram: publishing failed."
+  fi
+
+  echo "[$(date +"%H:%M:%S")] Facebook: publishing pending replies and likes..."
+  if run_cli post --platform facebook --pending --retry-failed --like-comments; then
+    echo "[$(date +"%H:%M:%S")] Facebook: publishing completed."
+  else
+    failures=$((failures + 1))
+    echo "[$(date +"%H:%M:%S")] Facebook: publishing failed."
+  fi
 fi
 
 echo "==== Polling cycle finished for ${TENANT_KEY}: $(date +"%Y-%m-%d %H:%M:%S %Z"); failed steps: $failures ===="
