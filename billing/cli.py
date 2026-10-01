@@ -157,6 +157,11 @@ services:
     volumes:
       - {data_dir}:/app/data
       - {reply_examples_dir}:/app/reply_examples:ro
+    # Gunicorn (1 worker / 4 threads) peaks around 110 MiB here, so this is
+    # generous headroom rather than a tight cap -- an OOM-kill of the
+    # user-facing dashboard is worse than letting it grow. Uncapped it reports
+    # the whole host VM as its ceiling, which lets a leak take the VM down.
+    mem_limit: 512m
 {common_hardening}
   {tenant_key}-video-stats:
     image: {config.PROJECT_NAME}-video-stats
