@@ -1,0 +1,20 @@
+# Weekly comments.db cleanup for the main instance and each billing tenant.
+# Install into the crontab of the user that owns /opt/social-comment-bot (the
+# same user the reply_comments scripts run as):
+#
+#   crontab -e      # then paste the two schedule lines below
+#
+# --older-than-days 90 deletes only comments the bot has FINISHED with
+# (posted / already_replied / rejected) whose last update is over 90 days old.
+# pending_review, approved, failed and posting rows are never removed at any
+# value; comment IDs survive in seen_comments so nothing is replied to twice;
+# dashboard counts are folded into seen_stats before the delete. What is lost
+# is browsable history older than 90 days.
+#
+# Each run STOPS that instance's containers for a minute or two. Webhook
+# deliveries during that window are dropped by Meta and never retried, so this
+# runs at the quietest hour: 04:10 / 04:40 IST Sunday (22:40 / 23:10 UTC Sat).
+# The two are staggered, not concurrent -- they share one Docker daemon and the
+# main instance's database is by far the larger of the two.
+40 22 * * 6 /opt/social-comment-bot/scripts/prune_comments_db.sh --older-than-days 90 >> /opt/social-comment-bot/data/prune.log 2>&1
+10 23 * * 6 /opt/social-comment-bot/scripts/prune_comments_db.sh --tenant travel_explorer_satya --older-than-days 90 >> /opt/social-comment-bot/tenants/travel_explorer_satya/data/prune.log 2>&1

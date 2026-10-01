@@ -1,0 +1,38 @@
+# Weekly rotation for the bot's activity logs, for both the main instance and
+# every billing tenant. Install on the VM as:
+#
+#   sudo install -m 0644 deploy/logrotate/social-comment-bot \
+#        /etc/logrotate.d/social-comment-bot
+#
+# Nothing prunes these files otherwise -- they are append-only and grow for the
+# life of the VM.
+/opt/social-comment-bot/data/*.log
+/opt/social-comment-bot/tenants/*/data/*.log {
+    weekly
+    rotate 8
+    compress
+    delaycompress
+    missingok
+    notifempty
+
+    # copytruncate, not rename+create. Two writers with *different* uids append
+    # to these files: the containers (appuser, uid 1000) and the host cron user
+    # running scripts/reply_comments_tenant.sh. A rename would leave any writer
+    # holding an open fd appending to the already-rotated file, and a fresh
+    # `create` would have to pick one owner, locking the other writer out --
+    # exactly the permission failure that silently killed the tenant cron for a
+    # day (see scripts/reply_comments_tenant.sh). Truncating in place keeps the
+    # inode, its owner and its mode, so both writers carry on untouched.
+    copytruncate
+
+    # The data dirs are setgid and group-writable by `trexsatya` so the
+    # containers and the host cron can share them. That trips logrotate's
+    # "parent directory has insecure permissions" refusal unless su is set.
+    # Stay root rather than switching to the cron user: polling.log is mode
+    # 0644 owned by uid 1000, so only root can truncate it.
+    su root trexsatya
+
+    # Deliberately no `olddir`: rotated files stay beside their original.
+    # A shared olddir would collide, since every tenant has its own
+    # data/polling.log and they would all rotate to the same name.
+}
