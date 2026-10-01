@@ -671,6 +671,18 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'aria-label="Switch channel"', page.data)
         self.assertIn(b"Second Page", page.data)
 
+    def test_channel_indicator_names_the_channel_when_only_one_is_configured(self):
+        label = config.PAGES[config.DEFAULT_PAGE_KEY].label.encode()
+        page = self.client.get("/?platform=facebook")
+        self.assertIn(b'class="channel-indicator"', page.data)
+        self.assertIn(label, page.data)
+        self.assertNotIn(b"All channels", page.data)
+
+    def test_channel_indicator_says_all_channels_when_several_are_configured(self):
+        with self._with_second_page():
+            page = self.client.get("/?platform=facebook")
+        self.assertIn(b"All channels", page.data)
+
     def test_youtube_page_filter_narrows_results_and_shows_channel_pills(self):
         from tests.helpers import make_page_config
 

@@ -251,6 +251,21 @@ def _page_choices(platform: str) -> list:
     return [config.PAGES[k] for k in page_choice_keys]
 
 
+def _selected_page_label(page_key: str, platform: str) -> str:
+    """Label for the channel indicator at the top of the banner.
+
+    "All channels" only means something when there is more than one channel to
+    aggregate. A single-channel instance -- every billing tenant is one -- has
+    nothing to aggregate, so name the channel instead of describing the set.
+    """
+    if page_key in config.PAGES:
+        return config.PAGES[page_key].label
+    choices = _page_choices(platform)
+    if len(choices) == 1:
+        return choices[0].label
+    return "All channels"
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.secret_key = config.DASHBOARD_SECRET
@@ -578,7 +593,7 @@ def create_app() -> Flask:
             ]
         pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
         page_choices = _page_choices(platform)
-        selected_page_label = config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
+        selected_page_label = _selected_page_label(page_key, platform)
         return render_template(
             "dashboard.html",
             rows=rows,
@@ -782,7 +797,7 @@ def create_app() -> Flask:
                 f"YouTube every {config.YOUTUBE_VIDEO_STATS_REFRESH_MINUTES} min"
                 f" · Meta every {config.META_VIDEO_STATS_REFRESH_MINUTES} min"
             )
-        selected_page_label = config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
+        selected_page_label = _selected_page_label(page_key, platform)
         return render_template(
             "insights.html",
             video_stats=video_stats,
@@ -969,9 +984,7 @@ def create_app() -> Flask:
             analysis_warning=analysis_warning,
             platforms=PLATFORMS,
             page_choices=_page_choices(platform),
-            selected_page_label=(
-                config.PAGES[page_key].label if page_key in config.PAGES else "All channels"
-            ),
+            selected_page_label=_selected_page_label(page_key, platform),
             platform=platform,
             page_key=page_key,
             dashboard_username=session["dashboard_username"],
