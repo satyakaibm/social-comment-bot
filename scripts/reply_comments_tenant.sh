@@ -58,15 +58,30 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# The host cron user is deliberately not in the `docker` group -- membership
+# there is effectively root -- so /var/run/docker.sock is unreadable and a
+# bare `docker compose` fails with "permission denied while trying to connect
+# to the docker API". It does have passwordless sudo (the Jenkins deploy
+# stage relies on the same thing), so probe the socket once and fall back.
+DOCKER=(docker)
+if ! docker info >/dev/null 2>&1; then
+  if sudo -n docker info >/dev/null 2>&1; then
+    DOCKER=(sudo -n docker)
+  else
+    echo "[$(date +"%H:%M:%S")] Cannot reach the Docker daemon as $(id -un), and passwordless 'sudo docker' is unavailable. Add the user to the docker group or grant NOPASSWD sudo for docker." >&2
+    exit 1
+  fi
+fi
+
 run_cli() {
-  docker compose -p social-comment-bot -f "$COMPOSE_FILE" -f "$TENANT_COMPOSE_FILE" \
+  "${DOCKER[@]}" compose -p social-comment-bot -f "$COMPOSE_FILE" -f "$TENANT_COMPOSE_FILE" \
     exec -T "$SERVICE" python -m app.cli "$@"
 }
 
 # `docker compose exec` keeps the container's CRLF line endings, so strip them
 # before the value is compared.
 run_cli_python() {
-  docker compose -p social-comment-bot -f "$COMPOSE_FILE" -f "$TENANT_COMPOSE_FILE" \
+  "${DOCKER[@]}" compose -p social-comment-bot -f "$COMPOSE_FILE" -f "$TENANT_COMPOSE_FILE" \
     exec -T "$SERVICE" python -c "$1" | tr -d '\r\n'
 }
 
