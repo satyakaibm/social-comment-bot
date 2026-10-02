@@ -616,6 +616,39 @@ def prune_video_stats_history(
     return cursor.rowcount
 
 
+def expire_stale_video_stats(
+    conn: sqlite3.Connection, *, retention_days: int
+) -> int:
+    """Clear statistics on snapshots we have not refreshed inside the window.
+
+    `video_stats` holds one row per video -- the latest snapshot -- and is
+    overwritten on every refresh, so a video that is still being refreshed
+    never holds a figure older than a refresh cycle. A video that drops out
+    of the refresh set (VIDEO_STATS_CONTAINER_LIMIT only covers the most
+    recently active containers) would otherwise keep its last counts
+    forever, which YouTube Developer Policy III.E.4 does not allow beyond
+    30 days.
+
+    The counts are nulled rather than the row deleted so `video_title`
+    survives -- that cache is what keeps get_cached_video_title() from
+    spending API quota re-fetching a title that never changes.
+    """
+    cursor = conn.execute(
+        """UPDATE video_stats
+              SET view_count = NULL,
+                  like_count = NULL,
+                  share_count = NULL,
+                  comment_count = NULL
+            WHERE datetime(updated_at) < datetime('now', ?)
+              AND (view_count IS NOT NULL
+                   OR like_count IS NOT NULL
+                   OR share_count IS NOT NULL
+                   OR comment_count IS NOT NULL)""",
+        (f"-{max(1, retention_days)} days",),
+    )
+    return cursor.rowcount
+
+
 def list_video_stats_history(
     conn: sqlite3.Connection,
     *,
@@ -1018,12 +1051,16 @@ VIDEO_STATS_SORT_COLUMNS = {
 }
 
 
+# Capped at 30 days by YouTube Developer Policy III.E.4 -- statistics
+# retrieved from the API may not be displayed (or stored) beyond that, so
+# the dashboard cannot offer a longer reporting period to select.
 VIDEO_STATS_WINDOWS = {
     "1h": ("1 Hour", timedelta(hours=1)),
     "24h": ("24 Hours", timedelta(hours=24)),
     "7d": ("7 Day", timedelta(days=7)),
-    "365d": ("365 Days", timedelta(days=365)),
+    "30d": ("30 Days", timedelta(days=30)),
 }
+DEFAULT_VIDEO_STATS_WINDOW = "30d"
 
 
 def get_cached_video_title(
@@ -1349,7 +1386,7 @@ def remember_seen_comment(
 ) -> None:
     """Keep a tiny fingerprint so pruned comments are not drafted or posted again.
 
-    created_at / updated_at power dashboard 1 Hour–365 Day counts after prune.
+    created_at / updated_at power dashboard 1 Hour–30 Day counts after prune.
     page_key keeps page attribution alive across a prune, so a Facebook/
     Instagram comment's account doesn't become unknown once its full
     comments row is deleted.
@@ -1584,7 +1621,8 @@ def activity_summary(
         ("1 Hour", timedelta(hours=1)),
         ("24 Hours", timedelta(hours=24)),
         ("7 Day", timedelta(days=7)),
-        ("365 Days", timedelta(days=365)),
+        # 30 days is the ceiling allowed by YouTube Developer Policy III.E.4.
+        ("30 Days", timedelta(days=30)),
     )
     # Named parameters (not positional "?") so the same :platform value can
     # be bound once and reused everywhere it appears in the query, instead
@@ -1664,15 +1702,18 @@ def top_fans(
 
     Grouped by author_id (the platform's stable commenter id) so a
     commenter's count survives a display-name change; rows written before
-    author_id was captured fall back to grouping by author name. week/month/
-    year windows are all computed together so the dashboard can switch
-    between them without a reload, matching activity_summary().
+    author_id was captured fall back to grouping by author name. Both
+    windows are computed together so the dashboard can switch between them
+    without a reload, matching activity_summary().
+
+    30 days is the longest window offered: a per-commenter tally is a
+    statistic derived from YouTube data, which Developer Policy III.E.4
+    caps at 30 days.
     """
     reference_time = reference_time or datetime.now(timezone.utc)
     windows = (
         ("week", timedelta(days=7)),
         ("month", timedelta(days=30)),
-        ("year", timedelta(days=365)),
     )
     platform_filter = "AND platform = :platform" if platform else ""
     if page_key == DEFAULT_PAGE_KEY:

@@ -101,6 +101,69 @@ class VideoStatsDbTests(unittest.TestCase):
         self.assertEqual(removed, 1)
         self.assertEqual(history, [])
 
+    def test_expire_stale_video_stats_clears_counts_but_keeps_title(self):
+        """YouTube Developer Policy III.E.4: statistics may not be stored
+        past 30 days. A video that falls out of the refresh set would
+        otherwise keep its last counts forever, so they are nulled -- while
+        video_title stays, since get_cached_video_title() uses it to avoid
+        re-spending API quota on a title that never changes."""
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="stale", page_key="",
+                video_title="Aarti", view_count=1234, like_count=10,
+                share_count=None, comment_count=3,
+            )
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="fresh", page_key="",
+                video_title="Recent", view_count=50, like_count=5,
+                share_count=None, comment_count=1,
+            )
+            conn.execute(
+                "UPDATE video_stats SET updated_at = '2020-01-01T00:00:00+00:00' "
+                "WHERE video_id = 'stale'"
+            )
+            cleared = db.expire_stale_video_stats(conn, retention_days=30)
+            rows = {
+                row["video_id"]: row
+                for row in conn.execute("SELECT * FROM video_stats")
+            }
+
+        self.assertEqual(cleared, 1)
+        self.assertIsNone(rows["stale"]["view_count"])
+        self.assertIsNone(rows["stale"]["like_count"])
+        self.assertIsNone(rows["stale"]["comment_count"])
+        self.assertEqual(rows["stale"]["video_title"], "Aarti")
+        # The row still inside the window is untouched.
+        self.assertEqual(rows["fresh"]["view_count"], 50)
+
+    def test_expire_stale_video_stats_is_idempotent(self):
+        with db.connect() as conn:
+            db.upsert_video_stats(
+                conn, platform="youtube", video_id="stale", page_key="",
+                video_title="Aarti", view_count=1234, like_count=10,
+                share_count=None, comment_count=3,
+            )
+            conn.execute(
+                "UPDATE video_stats SET updated_at = '2020-01-01T00:00:00+00:00'"
+            )
+            first = db.expire_stale_video_stats(conn, retention_days=30)
+            second = db.expire_stale_video_stats(conn, retention_days=30)
+
+        self.assertEqual(first, 1)
+        # Already cleared rows are not rewritten on every worker tick.
+        self.assertEqual(second, 0)
+
+    def test_statistics_retention_is_capped_at_thirty_days(self):
+        """The cap is applied to the env override too, so a stray deployment
+        variable cannot put the deployment back in violation."""
+        self.assertEqual(config.YOUTUBE_STATS_MAX_RETENTION_DAYS, 30)
+        self.assertLessEqual(config.VIDEO_STATS_HISTORY_RETENTION_DAYS, 30)
+
+    def test_no_reporting_window_exceeds_thirty_days(self):
+        for key, (label, horizon) in db.VIDEO_STATS_WINDOWS.items():
+            with self.subTest(window=key):
+                self.assertLessEqual(horizon, timedelta(days=30), label)
+
     def test_video_stats_growth_returns_real_deltas(self):
         reference_time = datetime(2026, 9, 14, 12, tzinfo=timezone.utc)
         with db.connect() as conn:

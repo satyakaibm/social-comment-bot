@@ -141,7 +141,14 @@ def refresh_selected(*, youtube: bool, meta: bool) -> int:
         updated = _refresh_youtube(conn) if youtube else 0
         if meta:
             updated += _refresh_facebook(conn) + _refresh_instagram(conn)
+        # Both halves of the 30-day cap required by YouTube Developer Policy
+        # III.E.4: drop historical snapshots past the window, and clear the
+        # counts on any latest-snapshot row that has gone stale because its
+        # video fell out of the refresh set.
         db.prune_video_stats_history(
+            conn, retention_days=config.VIDEO_STATS_HISTORY_RETENTION_DAYS
+        )
+        db.expire_stale_video_stats(
             conn, retention_days=config.VIDEO_STATS_HISTORY_RETENTION_DAYS
         )
         db.record_heartbeat(conn, "video_stats", detail=f"updated={updated}")
