@@ -1,24 +1,20 @@
 #!/usr/bin/env bash
-#
 # Delete branches whose commits are already in the default branch.
-#
-# The whole script rests on one rule: a branch is only deleted when every
-# commit on it is reachable from the default branch. Deleting such a branch
-# removes a *name*, never code — the commits stay in the default branch's
-# history. Anything that fails that test is reported, never deleted.
-#
+
+# The whole script rests on one rule: a branch is only deleted when every commit on it is reachable from the default branch. 
+# Deleting such a branch removes a *name*, never code — the commits stay in the default branch's history. 
+
 # Dry run by default. Nothing is deleted until you pass --yes.
-#
 #   ./scripts/prune-merged-branches.sh                 # show what would go
 #   ./scripts/prune-merged-branches.sh --yes           # delete local + remote
 #   ./scripts/prune-merged-branches.sh --yes --local   # local only
 #   ./scripts/prune-merged-branches.sh --repo ~/other-project --yes
-#
+
 # Exclusions, always applied:
 #   - the default branch itself
 #   - head branches of OPEN pull requests
 #   - branches checked out in any git worktree (someone is working there)
-#
+
 set -euo pipefail
 
 APPLY=0 SCOPE=both REPO="" SKIP_PR_CHECK=0 INCLUDE_SQUASHED=0
@@ -140,9 +136,8 @@ if [ "$APPLY" -eq 0 ]; then
 fi
 
 # --- delete -------------------------------------------------------------------
-# xargs, deliberately: `git push` inside a `while read ... done < file` loop
-# swallows the loop's stdin and silently deletes nothing. Errors are NOT
-# suppressed — a failure here needs to be visible.
+# xargs, deliberately: `git push` inside a `while read ... done < file` loop swallows the loop's stdin and silently deletes nothing. 
+# Errors are NOT suppressed — a failure here needs to be visible.
 if [ "$SCOPE" != local ] && [ "$r" -gt 0 ]; then
   echo; echo "deleting $r remote branches..."
   xargs -n 25 git push origin --delete < "$DEL_R"
