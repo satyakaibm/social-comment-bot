@@ -9,6 +9,31 @@ from werkzeug.security import generate_password_hash
 from app import analytics, config, db, dashboard
 
 
+def _seed_two_snapshots(
+    conn,
+    *,
+    video_id: str,
+    video_title: str,
+    first: tuple[int, int, int],
+    second: tuple[int, int, int],
+    platform: str = "youtube",
+):
+    """Write the two history rows video_stats_growth needs to measure a delta.
+
+    Since the Insights page lost its lifetime view (YouTube Developer Policy
+    III.E.4 caps displayed statistics at 30 days), every window is a
+    first-to-last delta and video_stats_growth skips any video with fewer
+    than two snapshots inside it -- so a single upsert now renders nothing.
+    """
+    for views, likes, comments in (first, second):
+        db.upsert_video_stats(
+            conn, platform=platform, video_id=video_id,
+            page_key=config.DEFAULT_PAGE_KEY, video_title=video_title,
+            view_count=views, like_count=likes,
+            share_count=None, comment_count=comments,
+        )
+
+
 class DashboardTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -128,7 +153,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b">83%</strong><span>Remaining", page.data)
         self.assertNotIn(b"YouTube resets", page.data)
 
-    def test_activity_summary_shows_24_hour_week_and_year_totals(self):
+    def test_activity_summary_shows_24_hour_week_and_30_day_totals(self):
         reference = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="reply")
@@ -154,14 +179,17 @@ class DashboardTests(unittest.TestCase):
                 {"label": "1 Hour", "received": 0, "posted": 1, "already_replied": 0, "handled": 1, "detailed_posted": 1},
                 {"label": "24 Hours", "received": 1, "posted": 1, "already_replied": 0, "handled": 1, "detailed_posted": 1},
                 {"label": "7 Day", "received": 2, "posted": 1, "already_replied": 1, "handled": 2, "detailed_posted": 1},
-                {"label": "365 Days", "received": 2, "posted": 1, "already_replied": 1, "handled": 2, "detailed_posted": 1},
+                {"label": "30 Days", "received": 2, "posted": 1, "already_replied": 1, "handled": 2, "detailed_posted": 1},
             ],
         )
         page = self.client.get("/")
         self.assertIn(b"1 Hour", page.data)
         self.assertIn(b"24 Hours", page.data)
         self.assertIn(b"7 Day", page.data)
-        self.assertIn(b"365 Days", page.data)
+        # 30 days is the longest window YouTube Developer Policy III.E.4
+        # allows statistics to be displayed over.
+        self.assertIn(b"30 Days", page.data)
+        self.assertNotIn(b"365 Days", page.data)
         self.assertEqual(page.data.count(b'<button class="range-button'), 4)
         self.assertIn(b"Bot replies sent", page.data)
         self.assertIn(b"Comments taken care of", page.data)
@@ -757,21 +785,29 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'aria-label="Switch channel"', page.data)
         self.assertIn(b"Second Page", page.data)
 
-    def test_video_engagement_section_shows_cached_counts(self):
+    def test_video_engagement_section_shows_window_growth(self):
+        """Insights opens on a 30-day window, never on lifetime totals.
+
+        YouTube Developer Policy III.E.4 forbids displaying statistics
+        retrieved more than 30 days ago, so there is no "all time" view to
+        fall back to -- the landing state is the widest window allowed.
+        """
         with db.connect() as conn:
-            db.upsert_video_stats(
-                conn, platform="youtube", video_id="vid", page_key=config.DEFAULT_PAGE_KEY,
-                video_title="Aarti", view_count=1234, like_count=42,
-                share_count=None, comment_count=7,
+            _seed_two_snapshots(
+                conn, video_id="vid", video_title="Aarti",
+                first=(1000, 20, 3), second=(1234, 42, 7),
             )
         page = self.client.get("/insights")
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b"42", page.data)
-        self.assertIn(b"7", page.data)
-        self.assertIn(b"Tracked content", page.data)
-        self.assertIn(b"Total likes", page.data)
-        self.assertIn(b"Total views", page.data)
-        self.assertIn(b"1,234", page.data)
+        self.assertIn(b"Content performance \xc2\xb7 30 Days".decode("unicode_escape").encode("latin-1"), page.data)
+        self.assertIn(b"Measured content", page.data)
+        self.assertIn(b"Likes gained", page.data)
+        self.assertIn(b"Views gained", page.data)
+        # 234 views gained, not the 1,234 lifetime total.
+        self.assertIn(b">234<", page.data)
+        self.assertNotIn(b"Total views", page.data)
+        self.assertNotIn(b"Tracked content", page.data)
+        self.assertNotIn(b"All time", page.data)
         self.assertIn(b"Performance insights", page.data)
         self.assertNotIn(b"Creator focus", page.data)
         self.assertNotIn(b"Next content focus", page.data)
@@ -820,16 +856,14 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b"Views gained", page.data)
         self.assertIn(b"Period growth", page.data)
         self.assertIn(b">150<", page.data)
-        self.assertIn(b"window=365d", page.data)
+        self.assertIn(b"window=30d", page.data)
 
     def test_insights_content_performance_paginates_fifty_rows(self):
         with db.connect() as conn:
             for number in range(1, 56):
-                db.upsert_video_stats(
-                    conn, platform="youtube", video_id=f"page-{number}",
-                    page_key=config.DEFAULT_PAGE_KEY, video_title=f"Content {number}",
-                    view_count=number, like_count=number,
-                    share_count=number, comment_count=number,
+                _seed_two_snapshots(
+                    conn, video_id=f"page-{number}", video_title=f"Content {number}",
+                    first=(0, 0, 0), second=(number, number, number),
                 )
 
         first = self.client.get("/insights?sort_by=views&sort_dir=desc")
@@ -1031,31 +1065,29 @@ class DashboardTests(unittest.TestCase):
 
     def test_insights_updated_header_is_sortable(self):
         with db.connect() as conn:
-            db.upsert_video_stats(
-                conn, platform="youtube", video_id="vid",
-                page_key=config.DEFAULT_PAGE_KEY, video_title="Aarti",
-                view_count=1234, like_count=42, share_count=None, comment_count=7,
+            _seed_two_snapshots(
+                conn, video_id="vid", video_title="Aarti",
+                first=(1000, 20, 3), second=(1234, 42, 7),
             )
 
         page = self.client.get("/insights?sort_by=updated&sort_dir=desc")
 
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"sort_by=updated", page.data)
-        self.assertIn(b'aria-label="Sort Updated lowest first"', page.data)
-        self.assertIn(b"Updated", page.data)
+        self.assertIn(b'aria-label="Sort Period end lowest first"', page.data)
+        self.assertIn(b"Period end", page.data)
 
     def test_insights_views_header_is_sortable(self):
         with db.connect() as conn:
-            db.upsert_video_stats(
-                conn, platform="youtube", video_id="vid",
-                page_key=config.DEFAULT_PAGE_KEY, video_title="Aarti",
-                view_count=1234, like_count=42, share_count=None, comment_count=7,
+            _seed_two_snapshots(
+                conn, video_id="vid", video_title="Aarti",
+                first=(1000, 20, 3), second=(1234, 42, 7),
             )
 
         page = self.client.get("/insights?sort_by=views&sort_dir=desc")
 
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b'aria-label="Sort Views lowest first"', page.data)
+        self.assertIn(b'aria-label="Sort Views gained lowest first"', page.data)
 
     def test_video_engagement_section_shows_empty_state_with_no_cached_stats(self):
         page = self.client.get("/insights")

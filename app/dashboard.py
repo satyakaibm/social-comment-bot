@@ -28,6 +28,9 @@ STATUSES = (
     "rejected",
 )
 PLATFORMS = ("youtube", "facebook", "instagram")
+# Every Momentum analysis looks back exactly as far as we are allowed to
+# retain the data behind it (YouTube Developer Policy III.E.4).
+MOMENTUM_HORIZON = timedelta(days=config.YOUTUBE_STATS_MAX_RETENTION_DAYS)
 PAGE_SIZE = 50
 CONTAINER_LABELS = {
     "youtube": "Video",
@@ -711,9 +714,13 @@ def create_app() -> Flask:
         sort_dir = request.args.get("sort_dir", "desc").lower()
         if sort_dir not in {"asc", "desc"}:
             sort_dir = "desc"
+        # There is no "all time" view: YouTube Developer Policy III.E.4 caps
+        # displayed statistics at 30 days, so an unrecognised (or absent)
+        # window falls back to the longest period we are allowed to show
+        # rather than to lifetime totals.
         window = request.args.get("window", "").strip()
         if window not in db.VIDEO_STATS_WINDOWS:
-            window = ""
+            window = db.DEFAULT_VIDEO_STATS_WINDOW
         history_warning = ""
         with request_db() as conn:
             top_fans = {
@@ -722,50 +729,38 @@ def create_app() -> Flask:
                     conn, platform=platform or None, page_key=page_key or None, limit=10
                 ).items()
             }
-            if window:
-                try:
-                    video_stats = [
-                        _video_stats_row(row)
-                        for row in db.video_stats_growth(
-                            conn,
-                            horizon=db.VIDEO_STATS_WINDOWS[window][1],
-                            platform=platform or None,
-                            page_key=page_key or None,
-                        )
-                    ]
-                except Exception as exc:
-                    video_stats = []
-                    history_warning = (
-                        "Historical statistics are temporarily unavailable for this period."
-                    )
-                    app.logger.exception("Insights history query failed: %s", exc)
-                for row in video_stats:
-                    row["view_count"] = row.get("view_growth")
-                    row["like_count"] = row.get("like_growth")
-                    row["comment_count"] = row.get("comment_growth")
-                    row["share_count"] = row.get("share_growth")
-                    row["updated_at_ist"] = row.get("period_end")
-                growth_sort = {
-                    "recent": "period_end", "updated": "period_end",
-                    "views": "view_count", "likes": "like_count",
-                    "comments": "comment_count", "shares": "share_count",
-                }[sort_by]
-                measured = [row for row in video_stats if row.get(growth_sort) is not None]
-                missing = [row for row in video_stats if row.get(growth_sort) is None]
-                video_stats = sorted(
-                    measured, key=lambda row: row[growth_sort], reverse=sort_dir == "desc"
-                ) + missing
-            else:
+            try:
                 video_stats = [
                     _video_stats_row(row)
-                    for row in db.list_video_stats(
+                    for row in db.video_stats_growth(
                         conn,
+                        horizon=db.VIDEO_STATS_WINDOWS[window][1],
                         platform=platform or None,
                         page_key=page_key or None,
-                        sort_by=sort_by,
-                        sort_dir=sort_dir,
                     )
                 ]
+            except Exception as exc:
+                video_stats = []
+                history_warning = (
+                    "Historical statistics are temporarily unavailable for this period."
+                )
+                app.logger.exception("Insights history query failed: %s", exc)
+            for row in video_stats:
+                row["view_count"] = row.get("view_growth")
+                row["like_count"] = row.get("like_growth")
+                row["comment_count"] = row.get("comment_growth")
+                row["share_count"] = row.get("share_growth")
+                row["updated_at_ist"] = row.get("period_end")
+            growth_sort = {
+                "recent": "period_end", "updated": "period_end",
+                "views": "view_count", "likes": "like_count",
+                "comments": "comment_count", "shares": "share_count",
+            }[sort_by]
+            measured = [row for row in video_stats if row.get(growth_sort) is not None]
+            missing = [row for row in video_stats if row.get(growth_sort) is None]
+            video_stats = sorted(
+                measured, key=lambda row: row[growth_sort], reverse=sort_dir == "desc"
+            ) + missing
         def total_for(field: str):
             values = [row[field] for row in video_stats if row[field] is not None]
             return sum(values) if values else None
@@ -811,7 +806,7 @@ def create_app() -> Flask:
             sort_dir=sort_dir,
             window=window,
             windows=db.VIDEO_STATS_WINDOWS,
-            report_label=(db.VIDEO_STATS_WINDOWS[window][0] if window else "All time"),
+            report_label=db.VIDEO_STATS_WINDOWS[window][0],
             page=page,
             page_size=page_size,
             total_items=total_items,
@@ -864,20 +859,26 @@ def create_app() -> Flask:
                     "and audience analysis is still shown."
                 )
                 app.logger.exception("Historical momentum query failed: %s", exc)
+            # 30 days, not 90: YouTube Developer Policy III.E.4 caps how long
+            # retrieved statistics may be stored or displayed, and
+            # engagement_activity reads video_stats_history, which is now
+            # pruned at that same boundary. Keeping the three momentum
+            # horizons equal to the retention window stops the page claiming
+            # a depth of evidence the database no longer holds.
             activity_rows = db.audience_activity(
-                conn, horizon=timedelta(days=90),
+                conn, horizon=MOMENTUM_HORIZON,
                 platform=platform or None, page_key=page_key or None,
             )
             try:
                 engagement_rows = db.engagement_activity(
-                    conn, horizon=timedelta(days=90),
+                    conn, horizon=MOMENTUM_HORIZON,
                     platform=platform or None, page_key=page_key or None,
                 )
             except Exception as exc:
                 engagement_rows = []
                 app.logger.exception("Engagement timing query failed: %s", exc)
             intent_rows = db.comment_text_sample(
-                conn, horizon=timedelta(days=90),
+                conn, horizon=MOMENTUM_HORIZON,
                 platform=platform or None, page_key=page_key or None,
             )
             experiments = db.list_recommendation_experiments(

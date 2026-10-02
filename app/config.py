@@ -52,8 +52,14 @@ META_VIDEO_STATS_REFRESH_MINUTES = int(
 # refreshed each cycle. The bound prevents an old channel history from
 # consuming an entire cycle or a day's API allowance.
 VIDEO_STATS_CONTAINER_LIMIT = int(os.environ.get("VIDEO_STATS_CONTAINER_LIMIT", "50"))
-VIDEO_STATS_HISTORY_RETENTION_DAYS = int(
-    os.environ.get("VIDEO_STATS_HISTORY_RETENTION_DAYS", "366")
+# YouTube Developer Policy III.E.4 forbids displaying or storing statistics
+# retrieved as Authorized or Non-Authorized Data for more than 30 days. The
+# ceiling is applied to the env override as well, so a stray deployment
+# variable cannot quietly put us back in violation.
+YOUTUBE_STATS_MAX_RETENTION_DAYS = 30
+VIDEO_STATS_HISTORY_RETENTION_DAYS = min(
+    YOUTUBE_STATS_MAX_RETENTION_DAYS,
+    int(os.environ.get("VIDEO_STATS_HISTORY_RETENTION_DAYS", "30")),
 )
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")

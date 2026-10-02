@@ -152,7 +152,7 @@ def cmd_import_stats(args) -> None:
     n = database.import_seen_stats_from_backup(args.backup)
     print(
         f"Imported timestamps for {n} comment(s) from {args.backup}. "
-        "Dashboard 1 Hour–365 Day counts now include pruned history."
+        "Dashboard 1 Hour–30 Day counts now include pruned history."
     )
 
 
@@ -171,6 +171,32 @@ def cmd_prune(args) -> None:
         f"{result['comments_deleted']} comment row(s) and "
         f"{result['webhooks_deleted']} webhook event(s). "
         "Comment IDs remain in seen_comments so they will not be drafted or posted again."
+    )
+
+
+def cmd_purge_stats(args) -> None:
+    """Apply the 30-day statistics cap right now, without waiting for the
+    stats worker's next tick -- used once at deploy time to clear data that
+    predates the cap, and available afterwards as an on-demand audit."""
+    from app import db as database
+
+    database.init_db()
+    retention = min(
+        config.YOUTUBE_STATS_MAX_RETENTION_DAYS,
+        args.retention_days or config.VIDEO_STATS_HISTORY_RETENTION_DAYS,
+    )
+    with database.connect() as conn:
+        snapshots = database.prune_video_stats_history(
+            conn, retention_days=retention
+        )
+        expired = database.expire_stale_video_stats(conn, retention_days=retention)
+        conn.commit()
+    if not args.no_vacuum:
+        database.vacuum_db()
+    print(
+        f"Statistics retention enforced at {retention} day(s): "
+        f"deleted {snapshots} historical snapshot(s) and cleared counts on "
+        f"{expired} stale video row(s)."
     )
 
 
@@ -296,6 +322,29 @@ def main() -> None:
         help="Skip SQLite VACUUM (file size will not shrink until vacuum runs)",
     )
     prune_p.set_defaults(func=cmd_prune)
+    purge_stats_p = sub.add_parser(
+        "purge-stats",
+        help=(
+            "Enforce the 30-day cap on stored YouTube statistics immediately "
+            "(YouTube Developer Policy III.E.4)"
+        ),
+    )
+    purge_stats_p.add_argument(
+        "--retention-days",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "Override the retention window (default: "
+            "VIDEO_STATS_HISTORY_RETENTION_DAYS, capped at 30)"
+        ),
+    )
+    purge_stats_p.add_argument(
+        "--no-vacuum",
+        action="store_true",
+        help="Skip SQLite VACUUM (file size will not shrink until vacuum runs)",
+    )
+    purge_stats_p.set_defaults(func=cmd_purge_stats)
     import_p = sub.add_parser(
         "import-stats",
         help=(
