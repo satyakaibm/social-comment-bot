@@ -129,6 +129,10 @@
     .activity-number { display:block; color:var(--navy); font-size:23px; font-weight:850; line-height:1; }
     .activity-name { display:block; margin-top:7px; color:var(--muted); font-size:10px; font-weight:700; line-height:1.25; text-transform:uppercase; }
     .activity-metric.highlight .activity-number { color:var(--coral); }
+    /* The time-range selector above belongs to "Channel activity" only;
+       these totals are all-time, so they say so rather than letting the
+       selector appear to apply to the whole page. */
+    .stats-scope { margin:0 0 9px; color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
     .stats { display:grid; grid-template-columns:repeat(3,minmax(135px,1fr)); gap:12px; margin-bottom:22px; }
     .stat { position:relative; min-height:102px; padding:18px; overflow:hidden; text-decoration:none; background:var(--surface); border:1px solid var(--line); border-radius:17px; box-shadow:0 5px 18px rgba(15,42,56,.035); transition:.18s ease; }
     .stat:hover { transform:translateY(-2px); border-color:#b9c9d1; box-shadow:var(--shadow); }
@@ -281,7 +285,7 @@
       <div class="activity-values" aria-live="polite">
         <div class="activity-metric"><span class="activity-number" id="activity-received">{{ selected.received }}</span><span class="activity-name">Comments found</span></div>
         <div class="activity-metric highlight"><span class="activity-number" id="activity-posted">{{ selected.posted }}</span><span class="activity-name">Bot replies sent</span></div>
-        <div class="activity-metric"><span class="activity-number" id="activity-already">{{ selected.already_replied }}</span><span class="activity-name">Had a reply already</span></div>
+        <div class="activity-metric"><span class="activity-number" id="activity-already">{{ selected.already_replied }}</span><span class="activity-name">Answered by you</span></div>
         <div class="activity-metric"><span class="activity-number" id="activity-handled">{{ selected.handled }}</span><span class="activity-name">Comments taken care of</span></div>
       </div>
       {% for quota in quota_cards %}
@@ -297,10 +301,11 @@
       {% endfor %}
     </section>
 
-    <nav class="stats" aria-label="Comment status">
+    <div class="stats-scope">Totals — all time</div>
+    <nav class="stats" aria-label="Comment status totals, all time">
       {% for s in statuses %}
         <a class="stat {% if s == status %}active{% endif %}" href="/?status={{ s }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}">
-          <span class="stat-label">{{ s.replace('_', ' ') }}</span><span class="stat-value">{{ counts.get(s, 0) }}</span>
+          <span class="stat-label">{{ s|status_label }}</span><span class="stat-value">{{ counts.get(s, 0) }}</span>
         </a>
       {% endfor %}
     </nav>
@@ -320,7 +325,7 @@
       </form>
     </section>
 
-    <div class="table-meta">Showing {{ total }} comment{{ '' if total == 1 else 's' }} · {{ status.replace('_', ' ')|title }}</div>
+    <div class="table-meta">Showing {{ total }} comment{{ '' if total == 1 else 's' }} · {{ status|status_label|title }}</div>
     {% if not rows %}
       <div class="empty"><strong>No comments found</strong>Try another status, platform, or search term.</div>
     {% else %}
@@ -328,7 +333,7 @@
       <div class="grid-wrap"><table class="db">
         <thead><tr><th>Comment ID</th><th>Platform</th><th>Content ID</th><th>Content title</th><th>Author</th><th>Comment</th><th>Published (IST)</th><th>Status</th><th>Draft reply</th><th>Reply ID</th><th>Error</th><th>Created (IST)</th><th><a class="sort-button" href="/?status={{ status }}&amp;sort={{ next_sort_order }}{% if platform %}&amp;platform={{ platform }}{% endif %}{% if page_key %}&amp;page_key={{ page_key }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}" title="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}" aria-label="Sort Posted (IST) {{ 'oldest first' if next_sort_order == 'asc' else 'newest first' }}">Posted (IST) <span class="sort-arrow" aria-hidden="true">{{ '↓' if sort_order == 'desc' else '↑' }}</span></a></th><th>Actions</th></tr></thead>
         <tbody>{% for row in rows %}<tr>
-          <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span>{% if row.page_label %}<br><span class="narrow">{{ row.page_label }}</span>{% endif %}</td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status.replace('_', ' ') }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td><td>{{ row.posted_at_ist or '—' }}</td>
+          <td class="narrow">{{ row.comment_id }}</td><td><span class="platform-badge platform-{{ row.platform }}">{{ row.platform }}</span>{% if row.page_label %}<br><span class="narrow">{{ row.page_label }}</span>{% endif %}</td><td class="narrow">{{ row.video_id }}</td><td class="title" title="{{ row.video_title }}">{{ row.video_title }}</td><td><strong>{{ row.author }}</strong></td><td class="wrap">{{ row.text }}</td><td>{{ row.published_at_ist or '—' }}</td><td><span class="status-badge status-{{ row.status }}">{{ row.status|status_label }}</span></td><td class="wrap">{{ row.draft_reply or '—' }}</td><td class="narrow">{{ row.reply_comment_id or '—' }}</td><td class="wrap error-box">{{ row.error or '' }}</td><td>{{ row.created_at_ist or '—' }}</td><td>{{ row.posted_at_ist or '—' }}</td>
           <td>{% if row.status == 'failed' %}<form method="post"><textarea name="draft_reply" rows="3">{{ row.draft_reply or '' }}</textarea><div class="actions"><button type="submit" formaction="/comments/{{ row.comment_id }}/publish{{ qs }}">Retry reply</button></div></form>{% else %}—{% endif %}</td>
         </tr>{% endfor %}</tbody>
       </table></div>

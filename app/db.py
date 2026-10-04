@@ -99,7 +99,12 @@ CREATE TABLE IF NOT EXISTS dashboard_users (
 );
 
 CREATE TABLE IF NOT EXISTS seen_comments (
-    comment_id TEXT PRIMARY KEY,
+    -- NOT NULL is load-bearing, not decoration: a bare TEXT PRIMARY KEY
+    -- accepts unlimited NULLs (SQLite's UNIQUE treats every NULL as
+    -- distinct), so id-less rows pile up instead of colliding, and every
+    -- dashboard window count that reads this table counts them. See the
+    -- NULL sweep in _migrate_seen_comments() for the time that happened.
+    comment_id TEXT PRIMARY KEY NOT NULL,
     platform TEXT,
     status TEXT,
     recorded_at TEXT NOT NULL,
@@ -1159,6 +1164,17 @@ def _migrate_seen_comments(conn: sqlite3.Connection) -> None:
         WHERE created_at IS NULL OR updated_at IS NULL
         """
     )
+    # Sweep rows that have no comment_id. The column is a bare TEXT PRIMARY
+    # KEY in every database created before this sweep, and SQLite lets a
+    # TEXT PRIMARY KEY hold unlimited NULLs, so nothing rejected them.
+    # On 2026-09-15 a bulk insert put 90,728 such rows into the production
+    # database -- their `status` values were a video's like and comment
+    # counts rather than a status name -- and because activity_summary()
+    # counts seen_comments rows, "Comments found" over 30 days read 92,987
+    # against 1,484 real replies. A row with no comment_id can never join
+    # to a comment or dedupe anything, so it is noise by definition and
+    # safe to delete. Idempotent, so it also re-cleans after any recurrence.
+    conn.execute("DELETE FROM seen_comments WHERE comment_id IS NULL")
 
 
 def sync_seen_stats_from_comments(conn: sqlite3.Connection) -> None:
@@ -1391,6 +1407,11 @@ def remember_seen_comment(
     Instagram comment's account doesn't become unknown once its full
     comments row is deleted.
     """
+    if not comment_id:
+        # Refuse rather than store: an id-less row dedupes nothing (every
+        # future lookup misses it) but is still counted by the dashboard's
+        # time-window totals, so it only ever inflates them.
+        raise ValueError("remember_seen_comment() requires a comment_id")
     ts = now()
     conn.execute(
         """

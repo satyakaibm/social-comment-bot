@@ -28,6 +28,18 @@ STATUSES = (
     "rejected",
 )
 PLATFORMS = ("youtube", "facebook", "instagram")
+# Display names for the stored status values, which are a database/URL
+# contract and so stay as they are. Only statuses whose raw name misleads
+# need an entry; anything else falls back to the underscores-to-spaces
+# rendering in status_label().
+#
+# "already_replied" read as "ALREADY REPLIED" in the status strip, which
+# sounds like a count of replies the bot sent -- the opposite of what it
+# is. These are comments the bot deliberately left alone because your own
+# account had answered them first, so no reply was sent for any of them.
+STATUS_LABELS = {
+    "already_replied": "Answered by you",
+}
 # Every Momentum analysis looks back exactly as far as we are allowed to
 # retain the data behind it (YouTube Developer Policy III.E.4).
 MOMENTUM_HORIZON = timedelta(days=config.YOUTUBE_STATS_MAX_RETENTION_DAYS)
@@ -278,6 +290,16 @@ def create_app() -> Flask:
         SESSION_COOKIE_SECURE=config.DASHBOARD_COOKIE_SECURE,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=config.DASHBOARD_SESSION_HOURS),
     )
+    @app.template_filter("status_label")
+    def status_label(status: str) -> str:
+        """Human name for a status, left for CSS text-transform to case.
+
+        The fallback is deliberately the bare underscores-to-spaces form the
+        templates used before STATUS_LABELS existed, so unlabelled statuses
+        render byte-for-byte as they always have.
+        """
+        return STATUS_LABELS.get(status) or (status or "").replace("_", " ")
+
     db.init_db()
     with db.connect() as conn:
         db.initialize_dashboard_auth(conn, config.DASHBOARD_PASSWORD_HASH)

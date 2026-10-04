@@ -91,11 +91,15 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn(b">Auto refresh</button>", page.data)
         self.assertNotIn(b"All timestamps shown in IST", page.data)
         self.assertIn(b"Community workspace", page.data)
-        # .stat-label renders the raw status string (only underscores -> spaces,
-        # no title-casing) -- visual capitalization comes from CSS text-transform.
+        # .stat-label renders what the status_label filter returns (no
+        # title-casing) -- visual capitalization comes from CSS text-transform.
+        # Unlabelled statuses keep the bare underscores -> spaces form;
+        # already_replied has a STATUS_LABELS entry because "already replied"
+        # read as a count of replies the bot had sent.
         self.assertIn(b"pending review", page.data)
         self.assertIn(b"posting", page.data)
-        self.assertIn(b"already replied", page.data)
+        self.assertIn(b"Answered by you", page.data)
+        self.assertNotIn(b"already replied", page.data)
         self.assertIn(b"rejected", page.data)
         # Moved to the dedicated /faq page -- no longer on the main dashboard.
         self.assertNotIn(b'class="overview-grid"', page.data)
@@ -197,7 +201,7 @@ class DashboardTests(unittest.TestCase):
         facebook = self.client.get("/?status=already_replied&platform=facebook")
         self.assertIn(b'<body class="theme-facebook">', facebook.data)
         self.assertIn(b'class="activity-platform active" href="/?status=already_replied&amp;platform=facebook"', facebook.data)
-        self.assertIn(b'<span class="stat-label">already replied</span><span class="stat-value">1</span>', facebook.data)
+        self.assertIn(b'<span class="stat-label">Answered by you</span><span class="stat-value">1</span>', facebook.data)
         self.assertIn(b'data-received="1"', facebook.data)
         self.assertIn(b'data-already="1"', facebook.data)
 
