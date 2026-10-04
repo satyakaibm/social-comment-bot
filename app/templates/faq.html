@@ -41,14 +41,15 @@
       <dl class="guide-list">
         <div><dt>Comments found</dt><dd>New comments the bot saw during the selected time range.</dd></div>
         <div><dt>Bot replies sent</dt><dd>Comments the bot answered during the selected time range.</dd></div>
-        <div><dt>Had a reply already</dt><dd>Comments your account had answered before the bot checked.</dd></div>
-        <div><dt>Comments taken care of</dt><dd>Bot replies sent plus comments that already had a reply.</dd></div>
+        <div><dt>Answered by you</dt><dd>Comments your own account had answered before the bot checked, so the bot sent no reply for them.</dd></div>
+        <div><dt>Comments taken care of</dt><dd>Bot replies sent plus comments you had answered yourself.</dd></div>
         <div><dt>Pending review</dt><dd>A reply is drafted and waiting for the automation to process it.</dd></div>
         <div><dt>Posting</dt><dd>The reply is currently claimed by an active publishing process.</dd></div>
         <div><dt>Posted</dt><dd>The automation successfully published the reply.</dd></div>
         <div><dt>Failed</dt><dd>The platform rejected the reply or returned an error; it remains available for retry.</dd></div>
-        <div><dt>Already replied</dt><dd>An existing reply from your account was found, so the automation avoided a duplicate.</dd></div>
+        <div><dt>Answered by you</dt><dd>An existing reply from your own account was found, so the automation avoided a duplicate. No reply was sent.</dd></div>
         <div><dt>Rejected</dt><dd>The comment was intentionally excluded, such as when it exceeded the configured age limit, or Meta rejected the reply on every attempt (see META_MAX_POST_ATTEMPTS) and it will not be retried automatically.</dd></div>
+        <div><dt>Why is a status total so much bigger than "Bot replies sent"?</dt><dd>They cover different spans of time. The "Channel activity" numbers follow the 1 Hour / 24 Hours / 7 Day / 30 Days selector above them, while the status totals underneath are all-time counts and ignore that selector. So "Bot replies sent: 6" can sit above an all-time "Answered by you: 130" with nothing wrong — one is the last day, the other is every comment ever.</dd></div>
         <div><dt>Why do "Bot replies sent" and "Sent replies still saved" sometimes differ?</dt><dd>The bot remembers the total number sent. Old comment details may be removed later to save space, so the saved-record count can be lower than the all-time total.</dd></div>
       </dl>
     </section>
