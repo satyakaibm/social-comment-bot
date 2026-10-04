@@ -116,6 +116,23 @@ gcloud config set project project-e1de8eb7-3b06-4142-9b3 --quiet
 # by project+zone+name over Google's own IAP tunnel rather than a raw
 # internet address, so there's no real host-spoofing exposure here to check
 # against.
+# Deploy through rebuild_all_containers.sh rather than a bare `docker compose
+# up -d --build`. That bare form names no tenant compose file, so it rebuilt
+# the images but recreated only the main instance's three containers; every
+# tenant kept running whatever image it was created with and fell behind
+# silently. On 2026-10-04 travel_explorer_satya's video-stats and
+# youtube-comments were two days and one merged PR behind the main instance,
+# both reporting "healthy" throughout, because they were -- just old. The
+# script passes every tenant's -f file in one command (so none is an orphan,
+# and --remove-orphans is never needed) and skips the youtube-comments
+# service for tenants with no YOUTUBE_REFRESH_TOKEN.
+# The script always force-recreates. A --no-force variant was tried here and
+# removed after it reproduced the very bug this replaces: the rebuild tagged
+# a new video-stats image, but only the one container whose env_file had
+# changed was recreated, leaving main and travel_explorer_satya on the
+# previous image. Compose's change detection is not a guarantee that a
+# container ends up on the image just built, so the deploy pays a few
+# seconds of restart across the stack instead.
 # A flat `sleep 5 && curl` here used to fail the build (exit 56, connection
 # reset) purely from timing: gunicorn/the app were still finishing their
 # cold start on a freshly recreated container, well after the deploy step
@@ -126,7 +143,7 @@ gcloud config set project project-e1de8eb7-3b06-4142-9b3 --quiet
 # and an earlier `$ok` flag was expanded by the wrong `set -u` shell.
 gcloud compute ssh social-comment-bot \
   --zone=us-central1-a --project=project-e1de8eb7-3b06-4142-9b3 --tunnel-through-iap --quiet \
-  --command="cd /opt/social-comment-bot && sudo git pull && sudo docker compose up -d --build && { for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do curl -sf http://localhost:9001/api/health >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1; }" \
+  --command="cd /opt/social-comment-bot && sudo git pull && sudo ./scripts/rebuild_all_containers.sh && { for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do curl -sf http://localhost:9001/api/health >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1; }" \
   -- -o StrictHostKeyChecking=no
 DEPLOY
                     '''

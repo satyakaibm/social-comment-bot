@@ -45,6 +45,15 @@ HEALTH_URL="http://localhost:9001/api/health"
 DO_PULL=0
 DO_BUILD=1
 DRY_RUN=0
+# Always force-recreate; there is deliberately no flag to turn this off.
+# A --no-force variant was tried and removed: on 2026-10-04, `up -d --build`
+# without it rebuilt social-comment-bot-video-stats to b5088ed380b2 but left
+# the main and travel_explorer_satya containers running c0a317b3b6ea, with
+# only the one tenant whose env_file had changed being recreated. Compose's
+# own change detection is not a reliable guarantee that a container ends up
+# on the image just built, and that silent staleness is the entire bug this
+# script exists to prevent. A few seconds of restart across the stack is the
+# cheaper half of that trade.
 for arg in "$@"; do
   case "$arg" in
     --pull)     DO_PULL=1 ;;
