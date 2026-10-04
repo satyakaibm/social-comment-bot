@@ -158,12 +158,24 @@ class DashboardTests(unittest.TestCase):
         self.assertNotIn(b"YouTube resets", page.data)
 
     def test_activity_summary_shows_24_hour_week_and_30_day_totals(self):
-        reference = datetime(2026, 9, 7, 12, 0, tzinfo=timezone.utc)
+        # Timestamps are relative to now, never absolute. The assertions
+        # further down read a page rendered by self.client, and that render
+        # has no reference_time to inject -- it always uses the real clock.
+        # With fixed dates the test therefore passed only while the wall
+        # clock stayed inside the 30-day window of the hardcoded values: a
+        # 2026-09-03 row aged out on 2026-10-03 and broke CI the next day,
+        # on a commit that had not touched any of this.
+        reference = datetime.now(timezone.utc)
+        hours_2 = (reference - timedelta(hours=2)).isoformat()
+        minutes_30 = (reference - timedelta(minutes=30)).isoformat()
+        days_4 = (reference - timedelta(days=4)).isoformat()
         with db.connect() as conn:
             db.update_status(conn, "c1", "posted", reply_comment_id="reply")
+            # Created 2h ago but replied 30m ago: outside the 1 Hour
+            # "received" count, inside its "posted" count.
             conn.execute(
                 "UPDATE comments SET created_at = ?, updated_at = ? WHERE comment_id = 'c1'",
-                ("2026-09-07T10:00:00+00:00", "2026-09-07T11:00:00+00:00"),
+                (hours_2, minutes_30),
             )
             db.insert_comment(
                 conn, comment_id="week", platform="facebook", video_id="post",
@@ -171,9 +183,11 @@ class DashboardTests(unittest.TestCase):
                 published_at="", draft_reply="🙏",
             )
             db.update_status(conn, "week", "already_replied", reply_comment_id="manual")
+            # 4 days back: in the 7 Day and 30 Days windows, out of the
+            # 1 Hour and 24 Hours ones.
             conn.execute(
                 "UPDATE comments SET created_at = ?, updated_at = ? WHERE comment_id = 'week'",
-                ("2026-09-03T10:00:00+00:00", "2026-09-03T11:00:00+00:00"),
+                (days_4, days_4),
             )
             activity = db.activity_summary(conn, reference_time=reference)
 
