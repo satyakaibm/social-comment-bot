@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 import hashlib
 import re
 
@@ -257,6 +258,187 @@ def audience_timing_focus(
             }
         )
     return results
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
+# Hours of a weekday that must be observed before its window is ranked.
+WEEKDAY_MIN_HOURS = 20
+
+
+def instagram_online_focus(rows: list[dict], *, limit: int = 4) -> list[dict]:
+    """Present Instagram's own follower-online counts the way its app does.
+
+    `rows` are audience_online rows (one per day bucket and UTC hour). Nothing
+    here is modelled: the hour profile is the per-hour average of Instagram's
+    counts over the days we hold, and the window is the best three
+    consecutive hours of that average. The only transformation is the clock:
+    Meta reports UTC hours, so each slot is shown as the IST hour it maps to
+    (UTC 06:00 -> 11:30 AM IST). Slots are ordered by IST so the chart reads
+    midnight to midnight locally.
+
+    Weekday rows attribute each UTC hour to the calendar day it actually
+    fell in: a bucket ending at 07:00Z covers the previous day's 07-23Z plus
+    this day's 00-06Z.
+    """
+    groups: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        groups[row.get("page_key") or ""].append(row)
+
+    results = []
+    for page_key, page_rows in groups.items():
+        by_day: dict[str, dict[int, int]] = defaultdict(dict)
+        for row in page_rows:
+            by_day[row["bucket_end"]][int(row["hour_utc"])] = int(row["online_count"])
+        if not by_day:
+            continue
+        days = len(by_day)
+        hour_total = [0.0] * 24
+        hour_samples = [0] * 24
+        weekday_total = [[0.0] * 24 for _ in range(7)]
+        weekday_days: list[set] = [set() for _ in range(7)]
+        weekday_hours: list[set] = [set() for _ in range(7)]
+        for bucket_end, hours in by_day.items():
+            end = _parse_bucket_end(bucket_end)
+            for hour_utc, count in hours.items():
+                hour_total[hour_utc] += count
+                hour_samples[hour_utc] += 1
+                if end is None:
+                    continue
+                # Hours at or after the bucket's own clock hour belong to
+                # the previous calendar day (UTC); earlier ones to this day.
+                day = end.date() if hour_utc < end.hour else (end - timedelta(days=1)).date()
+                moment = datetime(day.year, day.month, day.day, hour_utc, tzinfo=timezone.utc)
+                local = moment.astimezone(IST)
+                weekday = (local.weekday() + 1) % 7  # WEEKDAYS starts on Sunday
+                weekday_total[weekday][hour_utc] += count
+                # Count sample days on the IST calendar, the same one the
+                # weekday came from. An IST day straddles two UTC dates, so
+                # counting UTC dates here reported "2 Wednesdays" for one
+                # Wednesday and halved every weekday's average.
+                weekday_days[weekday].add(local.date())
+                weekday_hours[weekday].add(hour_utc)
+        average = [
+            hour_total[h] / hour_samples[h] if hour_samples[h] else 0.0 for h in range(24)
+        ]
+        peak_value = max(average) or 1.0
+        start_utc, window_avg = _best_circular_window(average)
+        window_hours = {(start_utc + offset) % 24 for offset in range(3)}
+        peak_utc = max(range(24), key=lambda h: (average[h], -h))
+        profile = sorted(
+            (
+                {
+                    "hour_utc": h,
+                    "label": _ist_slot_label(h),
+                    "avg": int(round(average[h])),
+                    "share": int(round(100 * average[h] / peak_value)),
+                    "in_window": h in window_hours,
+                    "is_peak": h == peak_utc,
+                    "ist_minutes": _ist_minutes(h),
+                }
+                for h in range(24)
+            ),
+            key=lambda slot: slot["ist_minutes"],
+        )
+        weekday_windows = []
+        for day in range(7):
+            samples = len(weekday_days[day])
+            # A bucket ends at 07:00Z, so the newest one holds only the first
+            # seven UTC hours of its final calendar day. Ranking a window on
+            # a weekday seen for seven hours "finds" the best of those seven
+            # (live data showed Sunday at 5:30 AM for exactly this reason),
+            # so a weekday counts only once nearly its whole day is covered.
+            if samples and len(weekday_hours[day]) >= WEEKDAY_MIN_HOURS:
+                day_avg = [weekday_total[day][h] / samples for h in range(24)]
+                day_start, day_score = _best_circular_window(day_avg)
+                weekday_windows.append(
+                    {
+                        "day": WEEKDAYS[day],
+                        "day_index": day,
+                        "window": _ist_window_label(day_start),
+                        "avg_online": int(round(day_score / 3)),
+                        "samples": samples,
+                        "has_signal": True,
+                    }
+                )
+            else:
+                weekday_windows.append(
+                    {"day": WEEKDAYS[day], "day_index": day, "window": "—",
+                     "avg_online": 0, "samples": 0, "has_signal": False,
+                     "partial": bool(samples)}
+                )
+        best_weekday = max(
+            (w for w in weekday_windows if w["has_signal"]),
+            key=lambda w: w["avg_online"],
+            default=None,
+        )
+        confidence = "high" if days >= 14 else "medium" if days >= 7 else "early"
+        latest = max(by_day)
+        latest_end = _parse_bucket_end(latest)
+        results.append(
+            {
+                "page_key": page_key,
+                "platform": "instagram",
+                "days": days,
+                "latest_day": (
+                    (latest_end - timedelta(days=1)).astimezone(IST).strftime("%a %d %b")
+                    if latest_end else latest[:10]
+                ),
+                "window": _ist_window_label(start_utc),
+                "window_avg_online": int(round(window_avg / 3)),
+                "peak_label": _ist_slot_label(peak_utc),
+                "peak_online": int(round(average[peak_utc])),
+                "hour_profile": profile,
+                "weekday_windows": weekday_windows,
+                "best_weekday": best_weekday["day"] if best_weekday else "",
+                "best_weekday_index": best_weekday["day_index"] if best_weekday else None,
+                "confidence": confidence,
+                "message": (
+                    f"Instagram counted an average of {int(round(window_avg / 3)):,} followers "
+                    f"online per hour between {_ist_window_label(start_utc)} across the last "
+                    f"{days} day(s) -- the same figures behind the app's Most active times. "
+                    "Publish just before the window so the post is live when they arrive."
+                ),
+            }
+        )
+    return sorted(results, key=lambda item: item["page_key"])[:limit]
+
+
+def _parse_bucket_end(value: str):
+    try:
+        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S%z")
+    except (TypeError, ValueError):
+        try:
+            return datetime.fromisoformat(value)
+        except (TypeError, ValueError):
+            return None
+
+
+def _best_circular_window(hours: list[float]) -> tuple[int, float]:
+    """(start_hour, summed score) of the best 3-hour block, wrapping midnight.
+
+    Follower presence is a daily cycle with no day boundary of its own, so a
+    window may cross midnight; ties go to the earlier start.
+    """
+    best = max(
+        (sum(hours[(start + offset) % 24] for offset in range(3)), -start)
+        for start in range(24)
+    )
+    return -best[1], best[0]
+
+
+def _ist_minutes(hour_utc: int) -> int:
+    return (hour_utc * 60 + 330) % 1440
+
+
+def _ist_slot_label(hour_utc: int) -> str:
+    minutes = _ist_minutes(hour_utc)
+    hour, minute = divmod(minutes, 60)
+    suffix = "AM" if hour < 12 else "PM"
+    return f"{hour % 12 or 12}:{minute:02d} {suffix}"
+
+
+def _ist_window_label(start_utc: int) -> str:
+    return f"{_ist_slot_label(start_utc)}–{_ist_slot_label((start_utc + 3) % 24)} IST"
 
 
 def _group_timing_rows(rows: list[dict]) -> dict[tuple[str, str], list[dict]]:

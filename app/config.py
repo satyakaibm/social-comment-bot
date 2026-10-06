@@ -63,6 +63,16 @@ VIDEO_STATS_HISTORY_RETENTION_DAYS = min(
     YOUTUBE_STATS_MAX_RETENTION_DAYS,
     int(os.environ.get("VIDEO_STATS_HISTORY_RETENTION_DAYS", "30")),
 )
+# Instagram's hourly follower-online counts (Graph `online_followers`, the
+# data behind the app's "Most active times") move slowly and Meta publishes
+# them about two days behind, so a handful of fetches a day is plenty. The
+# fetch asks for the trailing week each time, which also backfills any day a
+# worker outage missed. Meta data, so the YouTube 30-day cap does not apply;
+# 90 days gives every weekday a dozen samples.
+INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS = int(
+    os.environ.get("INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS", "6")
+)
+AUDIENCE_ONLINE_RETENTION_DAYS = int(os.environ.get("AUDIENCE_ONLINE_RETENTION_DAYS", "90"))
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")

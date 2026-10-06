@@ -906,6 +906,13 @@ def create_app() -> Flask:
             experiments = db.list_recommendation_experiments(
                 conn, platform=platform or None, page_key=page_key or None
             )
+            online_rows = (
+                db.list_audience_online(
+                    conn, platform="instagram", page_key=page_key or None, days=28
+                )
+                if platform in ("", "instagram")
+                else []
+            )
         for row in activity_rows + intent_rows + engagement_rows:
             row["page_key"] = row.get("page_key") or config.DEFAULT_PAGE_KEY
         creator_recommendations = analytics.creator_focus(video_stats)
@@ -919,13 +926,14 @@ def create_app() -> Flask:
             quality_rows=intent_rows,
         )
         audience_intents = analytics.comment_intent_focus(intent_rows)
-        for item in audience_timing + audience_intents:
+        instagram_online = analytics.instagram_online_focus(online_rows)
+        for item in audience_timing + audience_intents + instagram_online:
             page = config.PAGES.get(item.get("page_key") or "")
             item["page_label"] = page.label if page else "Default channel"
         for kind, recommendations in (
             ("current", creator_recommendations),
             ("momentum", momentum_recommendations),
-            ("timing", audience_timing),
+            ("timing", audience_timing + instagram_online),
             ("intent", audience_intents),
         ):
             for item in recommendations:
@@ -999,6 +1007,7 @@ def create_app() -> Flask:
             creator_recommendations=creator_recommendations,
             momentum_recommendations=momentum_recommendations,
             audience_timing=audience_timing,
+            instagram_online=instagram_online,
             audience_intents=audience_intents,
             experiments=experiments,
             trend_rows=trend_rows,

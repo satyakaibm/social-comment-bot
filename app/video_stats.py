@@ -114,6 +114,39 @@ def _refresh_instagram(conn) -> int:
     return updated
 
 
+def _refresh_instagram_online(conn) -> int:
+    """Pull Instagram's hourly follower-online counts for every IG account.
+
+    Runs on the Meta tick but is rate-limited separately: the figures only
+    change once a day on Meta's side, so re-asking every 30 minutes would
+    spend Graph calls on identical answers. Each fetch covers the trailing
+    week, so a page that missed a few cycles backfills itself.
+    """
+    updated = 0
+    for page_key in config.instagram_page_keys():
+        if db.audience_online_fetched_within(
+            conn, platform="instagram", page_key=page_key,
+            hours=config.INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS,
+        ):
+            continue
+        try:
+            buckets = meta_client.get_instagram_online_followers(
+                page_key=page_key, quota_conn=conn
+            )
+        except Exception as exc:
+            print(
+                f"video_stats: Instagram online_followers fetch failed for page "
+                f"'{page_key}': {exc}",
+                flush=True,
+            )
+            continue
+        updated += db.upsert_audience_online(
+            conn, platform="instagram", page_key=page_key, buckets=buckets
+        )
+        conn.commit()
+    return updated
+
+
 def refresh_all() -> int:
     """Refresh cached like/share/comment counts for the most recently active
     videos and posts on every configured platform.
@@ -141,6 +174,10 @@ def refresh_selected(*, youtube: bool, meta: bool) -> int:
         updated = _refresh_youtube(conn) if youtube else 0
         if meta:
             updated += _refresh_facebook(conn) + _refresh_instagram(conn)
+            _refresh_instagram_online(conn)
+            db.prune_audience_online(
+                conn, retention_days=config.AUDIENCE_ONLINE_RETENTION_DAYS
+            )
         # Both halves of the 30-day cap required by YouTube Developer Policy
         # III.E.4: drop historical snapshots past the window, and clear the
         # counts on any latest-snapshot row that has gone stale because its

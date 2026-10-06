@@ -239,6 +239,12 @@ If Meta webhooks are disabled, the host cron entry for Facebook and Instagram do
 
 For another environment, create a file with the same variables and select it with `POLLING_CONFIG_FILE=/path/to/polling.env`. Set `FACEBOOK_POST_IDS` or `INSTAGRAM_MEDIA_IDS` in `.env` to stay on specific content.
 
+### Instagram "Most active times" (Instagram's own data)
+
+Momentum's **Most active times** card for each Instagram account is not modelled by this app. It is Meta's `online_followers` insight -- the hourly follower-online counts behind the chart in the Instagram app -- averaged per hour over the days held and shown on the IST clock (Meta reports UTC hours, so UTC 06:00 appears as 11:30 AM IST). The video-stats worker fetches the trailing week every `INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS` (default 6) using the existing page token (`instagram_manage_insights`, already granted) and keeps `AUDIENCE_ONLINE_RETENTION_DAYS` (default 90) of it. Meta publishes each day about two days after it ends, so the most recent two days are always missing; an account needs at least 100 followers before Meta returns anything.
+
+Facebook and YouTube have no API equivalent: Meta removed `page_fans_online` from Page Insights in 2024, and the YouTube Analytics API has no hour-of-day dimension, so YouTube Studio's "When your viewers are on YouTube" cannot be reproduced here. For those platforms the dashboard can only show when your audience *engages* (comments and snapshot growth), which is a different and much sparser signal -- use the native dashboards for publish timing.
+
 ## Reply examples
 
 Put examples in `reply_examples/` (copy `_template.txt`). One file can hold **many** `comment:` / `reply:` pairs, or you can split them across files. Gemini still drafts every reply; it uses your pairs as a style list, not a skip list.
