@@ -200,6 +200,69 @@ class CreatorFocusTests(unittest.TestCase):
         self.assertIn("engagement growth", result["signals"])
         self.assertIn("comment intent", result["signals"])
 
+    def test_bot_replies_do_not_count_as_engagement(self):
+        # comment_growth comes from the platform's comment_count, which
+        # includes the bot's own replies; it must not move the window.
+        viewer_only = {"like_growth": 10, "share_growth": 2, "view_growth": 500}
+        with_bot_replies = {**viewer_only, "comment_growth": 400}
+        self.assertEqual(
+            analytics._timing_engagement_score(with_bot_replies),
+            analytics._timing_engagement_score(viewer_only),
+        )
+
+    def test_thin_window_is_early_whatever_the_grid_totals_say(self):
+        # 100 comments from 100 people, one per cell: totals that used to
+        # rate "high", for a window that itself holds three people -- below
+        # WINDOW_MIN_DEMAND, so it cannot be more than "early".
+        rows = [
+            {"platform": "youtube", "page_key": "p", "weekday_ist": d, "hour_ist": h,
+             "comment_count": 1, "unique_authors": 1}
+            for d in range(7) for h in range(24)
+        ][:100]
+        result = analytics.audience_timing_focus(rows)[0]
+        self.assertEqual(result["window_demand"], 3)
+        self.assertEqual(result["confidence"], "early")
+
+    def test_pooled_window_is_reported_alongside_the_weekday_peak(self):
+        rows = [
+            {"platform": "youtube", "page_key": "p", "weekday_ist": d, "hour_ist": 20,
+             "comment_count": 2, "unique_authors": 2}
+            for d in range(7)
+        ]
+        result = analytics.audience_timing_focus(rows)[0]
+        self.assertEqual(result["pooled_window"], "7:00 PM–10:00 PM IST")
+        self.assertEqual(result["pooled_window_demand"], 14)
+
+    def test_next_window_resolves_to_the_soonest_upcoming_time(self):
+        from datetime import datetime
+        rows = [
+            {"platform": "youtube", "page_key": "p", "weekday_ist": 5, "hour_ist": 18, "comment_count": 8, "unique_authors": 8},
+            {"platform": "youtube", "page_key": "p", "weekday_ist": 1, "hour_ist": 9, "comment_count": 4, "unique_authors": 4},
+        ]
+        # Wednesday 7 Oct 2026, 10:00 IST: Friday's window is the next one.
+        wed = datetime(2026, 10, 7, 10, 0, tzinfo=analytics.IST)
+        nxt = analytics.audience_timing_focus(rows, now=wed)[0]["next_window"]
+        self.assertEqual(nxt["day"], "Friday")
+        self.assertEqual(nxt["when_label"], "Friday 09 Oct")
+        self.assertEqual(nxt["starts_in"], "in 2 day(s)")
+        self.assertFalse(nxt["in_progress"])
+        # Monday's block is 8-11 AM (centred on the 9 AM peak). At 07:00 IST
+        # on Monday 12 Oct it is still ahead today.
+        mon = datetime(2026, 10, 12, 7, 0, tzinfo=analytics.IST)
+        nxt = analytics.audience_timing_focus(rows, now=mon)[0]["next_window"]
+        self.assertEqual((nxt["when_label"], nxt["window"], nxt["starts_in"]),
+                         ("today", "8:00 AM–11:00 AM IST", "in 1 h"))
+        # 09:30 IST: in progress. 12:00 IST: passed -> Friday.
+        mid = datetime(2026, 10, 12, 9, 30, tzinfo=analytics.IST)
+        self.assertTrue(analytics.audience_timing_focus(rows, now=mid)[0]["next_window"]["in_progress"])
+        late = datetime(2026, 10, 12, 12, 0, tzinfo=analytics.IST)
+        self.assertEqual(analytics.audience_timing_focus(rows, now=late)[0]["next_window"]["day"], "Friday")
+
+    def test_no_signal_means_no_next_window(self):
+        self.assertIsNone(analytics.next_engagement_window(
+            [{"day": d, "day_index": i, "has_signal": False, "window_start_hour": None} for i, d in enumerate(analytics.WEEKDAYS)]
+        ))
+
     def test_comment_intent_rules_are_local_and_auditable(self):
         self.assertEqual(analytics.classify_comment_intent("When is the next trip?"), "question")
         self.assertEqual(analytics.classify_comment_intent("Please visit Odisha"), "request")

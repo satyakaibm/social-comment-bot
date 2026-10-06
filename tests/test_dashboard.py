@@ -1009,8 +1009,10 @@ class DashboardTests(unittest.TestCase):
 
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Audience intelligence", page.data)
-        self.assertIn(b"Best audience window", page.data)
-        self.assertIn(b"Publish window", page.data)
+        self.assertIn(b"engagement window", page.data)
+        self.assertIn(b"Engagement window", page.data)
+        self.assertNotIn(b"Best audience window", page.data)
+        self.assertNotIn(b"Publish window", page.data)
         self.assertIn(b"Audience score", page.data)
         self.assertIn(b"unique commenters", page.data)
         self.assertIn(b"Leading intent", page.data)
