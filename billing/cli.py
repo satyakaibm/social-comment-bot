@@ -123,6 +123,12 @@ def _render_tenant_compose(tenant_key: str, port: int) -> str:
     separate project rebuilding an identical image per tenant. Each service
     is still independently start/stop-able by name (see tenant_ops.py), so
     a lapsed subscription only touches this tenant's containers.
+
+    Those image names are pinned by `image:` in docker-compose.yml -- they are
+    NOT derived from its service names, which are `hindolroad-*`. Keep both
+    sides in step: renaming a main service does not change the image a tenant
+    needs, but dropping the pins there would, and every tenant service would
+    then fail to start with "image not found".
     """
     common_hardening = (
         "    group_add:\n"

@@ -56,7 +56,7 @@ the image. `DASHBOARD_PORT` in `.env` can change the host port (default 9001).
 
 ```bash
 docker compose ps                         # Status and health
-docker compose logs -f --tail=100 dashboard video-stats youtube-comments # Follow logs
+docker compose logs -f --tail=100 hindolroad-dashboard hindolroad-video-stats hindolroad-youtube-comments # Follow logs
 docker compose up -d --build              # Apply code or .env changes
 docker compose stop                      # Stop until explicitly started again
 docker compose up -d                      # Start again
@@ -202,7 +202,7 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 
 The avatar menu links to **My Profile**, where each user can maintain a display name and email address, review account dates, and open the password reset form. Email addresses are unique across portal accounts and are matched without regard to letter case.
 
-YouTube polling and publishing run in the dedicated `youtube-comments` container. It runs immediately when started and then every `YOUTUBE_POLL_INTERVAL_SECONDS` (3600 by default). Each configured channel is processed independently, so a token or API failure for one channel does not block the others. Output is available through `docker compose logs youtube-comments` and is also appended to the `POLLING_LOG_FILE` configured in `config/polling.env` (`data/polling.log` by default). The separate video-stats worker refreshes YouTube engagement every `YOUTUBE_VIDEO_STATS_REFRESH_MINUTES` (30 by default) and Facebook/Instagram engagement every `META_VIDEO_STATS_REFRESH_MINUTES` (30 by default).
+YouTube polling and publishing run in the dedicated `hindolroad-youtube-comments` container. It runs immediately when started and then every `YOUTUBE_POLL_INTERVAL_SECONDS` (3600 by default). Each configured channel is processed independently, so a token or API failure for one channel does not block the others. Output is available through `docker compose logs hindolroad-youtube-comments` and is also appended to the `POLLING_LOG_FILE` configured in `config/polling.env` (`data/polling.log` by default). The separate video-stats worker refreshes YouTube engagement every `YOUTUBE_VIDEO_STATS_REFRESH_MINUTES` (30 by default) and Facebook/Instagram engagement every `META_VIDEO_STATS_REFRESH_MINUTES` (30 by default).
 
 ### Statistics retention (YouTube Developer Policy III.E.4)
 
@@ -223,7 +223,7 @@ for more than 30 days:
 - `python -m app.cli purge-stats` applies the cap on demand rather than
   waiting for the next worker tick.
 
-Trigger an immediate YouTube cycle with `docker compose restart youtube-comments`; the worker runs once on startup. The legacy `./scripts/reply_comments.sh` remains for Facebook and Instagram polling when Meta webhooks are disabled; it no longer handles YouTube.
+Trigger an immediate YouTube cycle with `docker compose restart hindolroad-youtube-comments`; the worker runs once on startup. The legacy `./scripts/reply_comments.sh` remains for Facebook and Instagram polling when Meta webhooks are disabled; it no longer handles YouTube.
 
 Each worker cycle is bounded to recent content and a fixed number of comments per platform. Edit `config/polling.env` to control how many YouTube videos, Facebook posts, Instagram media items, and comments are checked in one run. The three `*_PUBLISH_LIMIT` values control how many replies can be attempted in that cycle. New work is processed first, then failed replies are retried after a remote duplicate check. `PUBLISH_ERROR_LIMIT` stops a platform after repeated consecutive API errors. Publishers atomically claim each comment before posting, and interrupted claims become retryable after ten minutes.
 

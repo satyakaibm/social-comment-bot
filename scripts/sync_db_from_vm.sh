@@ -34,7 +34,7 @@ cleanup_remote() {
 trap cleanup_remote EXIT
 
 gcloud compute ssh "$INSTANCE" --zone="$ZONE" --project="$PROJECT" --tunnel-through-iap --quiet \
-  --command="sudo docker exec social-comment-bot-dashboard-1 python -c \"
+  --command="sudo docker exec social-comment-bot-hindolroad-dashboard-1 python -c \"
 from app.db import open_connection
 import os
 os.remove('/app/data/comments_sync.db') if os.path.exists('/app/data/comments_sync.db') else None
@@ -51,16 +51,16 @@ gcloud compute scp --zone="$ZONE" --project="$PROJECT" --tunnel-through-iap --qu
 # Swap in the fresh copy. Stop the local container first if it's running,
 # so nothing has the old file open mid-swap; restart it after if it was up.
 WAS_RUNNING=""
-if docker compose ps --status running --services 2>/dev/null | grep -q '^dashboard$'; then
+if docker compose ps --status running --services 2>/dev/null | grep -q '^hindolroad-dashboard$'; then
   WAS_RUNNING=1
-  docker compose stop dashboard
+  docker compose stop hindolroad-dashboard
 fi
 
 mv "$LOCAL_TMP" "$LOCAL_DB"
 rm -f data/comments.db-wal data/comments.db-shm
 
 if [[ -n "$WAS_RUNNING" ]]; then
-  docker compose start dashboard
+  docker compose start hindolroad-dashboard
 fi
 
 echo "==== DB sync finished: $(date -u +"%Y-%m-%d %H:%M:%S UTC") ===="
