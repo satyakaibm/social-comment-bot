@@ -358,6 +358,20 @@ def init_db() -> None:
             conn.execute(
                 "ALTER TABLE dashboard_users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"
             )
+        # Email verification + profile photo (2026-10). The pending-code
+        # columns hold one in-flight verification per user; the hash is of
+        # the 6-digit code, never the code itself.
+        for column, ddl in (
+            ("email_verified_at", "TEXT"),
+            ("avatar_path", "TEXT"),
+            ("email_code_hash", "TEXT"),
+            ("email_code_target", "TEXT"),
+            ("email_code_expires_at", "TEXT"),
+            ("email_code_sent_at", "TEXT"),
+            ("email_code_attempts", "INTEGER NOT NULL DEFAULT 0"),
+        ):
+            if column not in user_columns:
+                conn.execute(f"ALTER TABLE dashboard_users ADD COLUMN {column} {ddl}")
         # Older builds allowed duplicate profile emails. Preserve the earliest
         # account as the owner and clear the duplicate copies before adding the
         # constraint; no user account is removed.
@@ -1398,7 +1412,9 @@ def create_dashboard_user(
 def get_dashboard_user(conn: sqlite3.Connection, username: str):
     return conn.execute(
         """SELECT id, username, display_name, email, password_hash, version,
-                  is_admin, created_at, updated_at
+                  is_admin, created_at, updated_at, email_verified_at, avatar_path,
+                  email_code_hash, email_code_target, email_code_expires_at,
+                  email_code_sent_at, email_code_attempts
            FROM dashboard_users WHERE username = ? COLLATE NOCASE""",
         (username.strip(),),
     ).fetchone()
@@ -1460,18 +1476,98 @@ def update_dashboard_user_password(
 def update_dashboard_user_profile(
     conn: sqlite3.Connection, username: str, *, display_name: str, email: str
 ) -> bool:
+    """Save display name and email. A changed email drops its verified state
+    and any code in flight for the old address; an unchanged one keeps both."""
+    current = get_dashboard_user(conn, username)
+    email_changed = (
+        current is not None
+        and (current["email"] or "").strip().casefold() != (email or "").strip().casefold()
+    )
     try:
-        conn.execute(
-            """
-            UPDATE dashboard_users
-            SET display_name = ?, email = ?, updated_at = ?
-            WHERE username = ? COLLATE NOCASE
-            """,
-            (display_name or None, email or None, now(), username.strip()),
-        )
+        if email_changed:
+            conn.execute(
+                """
+                UPDATE dashboard_users
+                SET display_name = ?, email = ?, updated_at = ?,
+                    email_verified_at = NULL, email_code_hash = NULL,
+                    email_code_target = NULL, email_code_expires_at = NULL,
+                    email_code_sent_at = NULL, email_code_attempts = 0
+                WHERE username = ? COLLATE NOCASE
+                """,
+                (display_name or None, email or None, now(), username.strip()),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE dashboard_users
+                SET display_name = ?, email = ?, updated_at = ?
+                WHERE username = ? COLLATE NOCASE
+                """,
+                (display_name or None, email or None, now(), username.strip()),
+            )
     except sqlite3.IntegrityError:
         return False
     return True
+
+
+def store_email_code(
+    conn: sqlite3.Connection, username: str, *, code_hash: str, target_email: str,
+    expires_at: str,
+) -> None:
+    conn.execute(
+        """UPDATE dashboard_users
+              SET email_code_hash = ?, email_code_target = ?, email_code_expires_at = ?,
+                  email_code_sent_at = ?, email_code_attempts = 0
+            WHERE username = ? COLLATE NOCASE""",
+        (code_hash, target_email, expires_at, now(), username.strip()),
+    )
+
+
+def record_email_code_attempt(conn: sqlite3.Connection, username: str) -> int:
+    """Count a wrong guess; returns the new total."""
+    conn.execute(
+        """UPDATE dashboard_users SET email_code_attempts = email_code_attempts + 1
+            WHERE username = ? COLLATE NOCASE""",
+        (username.strip(),),
+    )
+    row = conn.execute(
+        "SELECT email_code_attempts FROM dashboard_users WHERE username = ? COLLATE NOCASE",
+        (username.strip(),),
+    ).fetchone()
+    return int(row["email_code_attempts"]) if row else 0
+
+
+def clear_email_code(conn: sqlite3.Connection, username: str) -> None:
+    conn.execute(
+        """UPDATE dashboard_users
+              SET email_code_hash = NULL, email_code_target = NULL,
+                  email_code_expires_at = NULL, email_code_sent_at = NULL,
+                  email_code_attempts = 0
+            WHERE username = ? COLLATE NOCASE""",
+        (username.strip(),),
+    )
+
+
+def mark_email_verified(conn: sqlite3.Connection, username: str) -> None:
+    conn.execute(
+        """UPDATE dashboard_users
+              SET email_verified_at = ?, updated_at = ?,
+                  email_code_hash = NULL, email_code_target = NULL,
+                  email_code_expires_at = NULL, email_code_sent_at = NULL,
+                  email_code_attempts = 0
+            WHERE username = ? COLLATE NOCASE""",
+        (now(), now(), username.strip()),
+    )
+
+
+def set_dashboard_user_avatar(
+    conn: sqlite3.Connection, username: str, avatar_path: str | None
+) -> None:
+    conn.execute(
+        """UPDATE dashboard_users SET avatar_path = ?, updated_at = ?
+            WHERE username = ? COLLATE NOCASE""",
+        (avatar_path, now(), username.strip()),
+    )
 
 
 def dashboard_email_registered(

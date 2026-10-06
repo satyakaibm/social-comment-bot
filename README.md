@@ -204,6 +204,22 @@ The avatar menu links to **My Profile**, where each user can maintain a display 
 
 YouTube polling and publishing run in the dedicated `hindolroad-youtube-comments` container. It runs immediately when started and then every `YOUTUBE_POLL_INTERVAL_SECONDS` (3600 by default). Each configured channel is processed independently, so a token or API failure for one channel does not block the others. Output is available through `docker compose logs hindolroad-youtube-comments` and is also appended to the `POLLING_LOG_FILE` configured in `config/polling.env` (`data/polling.log` by default). The separate video-stats worker refreshes YouTube engagement every `YOUTUBE_VIDEO_STATS_REFRESH_MINUTES` (30 by default) and Facebook/Instagram engagement every `META_VIDEO_STATS_REFRESH_MINUTES` (30 by default).
 
+### Profile email verification and photo
+
+On **My Profile**, saving a new email address marks it *Not verified* and emails a 6-digit code (15-minute expiry, 5 guesses, one resend per minute); entering it shows a green **Verified** tick. The portal has no mail provider built in, so sending needs SMTP settings in each instance's `.env` -- any mailbox with SMTP works (a Gmail app password, Amazon SES, Brevo...):
+
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587            # 465 with SMTP_USE_SSL=true, or 25/587 with STARTTLS (default)
+SMTP_USERNAME=you@gmail.com
+SMTP_PASSWORD=app-password
+MAIL_FROM=you@gmail.com
+```
+
+Until `SMTP_HOST` and `MAIL_FROM` are set, the page says verification is unavailable rather than failing. Tenants are separate containers with their own `.env`, so each needs its own settings (they can share one mailbox).
+
+Users can also upload a profile photo (PNG, JPEG or WebP, 1 MB max, identified by file signature rather than filename) which replaces the initial-letter badge in the header on every page. Files live in `data/avatars/` -- per tenant, alongside the database -- and are served only to signed-in users.
+
 ### Statistics retention (YouTube Developer Policy III.E.4)
 
 Statistics retrieved from the YouTube Data API are never displayed or stored

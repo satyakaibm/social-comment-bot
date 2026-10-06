@@ -1,17 +1,21 @@
 import socket
+import hashlib
 import hmac
 import os
 import re
 import secrets
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
-from flask import Flask, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
+
+from app import mailer
 from werkzeug.serving import make_server
 
 from app import analytics, config, db
@@ -57,6 +61,67 @@ _login_lock = threading.Lock()
 _failed_retry_lock = threading.Lock()
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_.-]{3,50}$")
 EMAIL_PATTERN = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+# Accepted profile-photo formats, identified by their leading bytes rather than
+# the uploaded filename or Content-Type, both of which the client controls.
+# No SVG (script-capable) and no re-encoding library in the image; the browser
+# scales the stored file with object-fit.
+_IMAGE_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "png", "image/png"),
+    (b"\xff\xd8\xff", "jpg", "image/jpeg"),
+)
+_AVATAR_MIMETYPES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
+
+
+def _sniff_image(data: bytes) -> tuple[str, str] | None:
+    for signature, ext, mimetype in _IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return ext, mimetype
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp", "image/webp"
+    return None
+
+
+def _code_hash(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _parse_ts(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def email_verification_state(user) -> dict:
+    """What the profile page needs to know about the user's email status."""
+    if user is None or not user["email"]:
+        return {"verified": False, "pending": False, "can_resend": True, "resend_in": 0}
+    pending = bool(user["email_code_hash"]) and (
+        (user["email_code_target"] or "").casefold() == (user["email"] or "").casefold()
+    )
+    expires = _parse_ts(user["email_code_expires_at"])
+    if pending and expires is not None and expires < _utcnow():
+        pending = False
+    sent = _parse_ts(user["email_code_sent_at"])
+    resend_in = 0
+    if sent is not None:
+        elapsed = (_utcnow() - sent).total_seconds()
+        resend_in = max(0, int(config.EMAIL_CODE_RESEND_SECONDS - elapsed))
+    return {
+        "verified": bool(user["email_verified_at"]),
+        "pending": pending,
+        "can_resend": resend_in == 0,
+        "resend_in": resend_in,
+    }
+
 
 
 def _retry_failed_batch(platforms: tuple[str, ...]) -> None:
@@ -283,6 +348,9 @@ def _selected_page_label(page_key: str, platform: str) -> str:
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    # Bounds every request body; the only large upload is the profile photo,
+    # which is capped separately at config.AVATAR_MAX_BYTES after sniffing.
+    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
     app.secret_key = config.DASHBOARD_SECRET
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
@@ -333,6 +401,43 @@ def create_app() -> Flask:
         username = username or session.get("dashboard_username", "")
         with request_db() as conn:
             return db.get_dashboard_user(conn, username) if username else None
+
+    @app.context_processor
+    def _profile_context():
+        """Avatar + verification state for the shared header on every page.
+
+        One small query per rendered page, keyed on the session user; pages
+        rendered without a session (login) get nothing and fall back to the
+        initial-letter badge.
+        """
+        username = session.get("dashboard_username")
+        if not username or not session.get("dashboard_authenticated"):
+            return {}
+        try:
+            user = dashboard_auth(username)
+        except Exception:
+            return {}
+        if user is None:
+            return {}
+        avatar_url = (
+            url_for("profile_avatar", username=user["username"], v=user["updated_at"])
+            if user["avatar_path"] else None
+        )
+        return {
+            "profile_avatar_url": avatar_url,
+            "profile_email_verified": bool(user["email_verified_at"]),
+        }
+
+    @app.errorhandler(413)
+    def _too_large(_error):
+        auth = dashboard_auth() if session.get("dashboard_username") else None
+        if auth is None:
+            return "Request too large", 413
+        return render_template(
+            "profile.html", user=auth, verification=email_verification_state(auth),
+            mail_configured=mailer.configured(),
+            error="That file is too large. Profile photos must be 1 MB or smaller.",
+        ), 413
 
     @app.route("/favicon.ico")
     def favicon():
@@ -521,58 +626,196 @@ def create_app() -> Flask:
             return redirect(url_for("login", password_changed="1"))
         return render()
 
+    def _render_profile(user, status=200, **kwargs):
+        return render_template(
+            "profile.html",
+            user=user,
+            verification=email_verification_state(user),
+            mail_configured=mailer.configured(),
+            **kwargs,
+        ), status
+
+    def _csrf_ok() -> bool:
+        return hmac.compare_digest(
+            request.form.get("csrf_token", ""), session.get("csrf_token", "")
+        )
+
+    def _send_verification_code(conn, user) -> str | None:
+        """Generate, store and email a code. Returns an error message or None."""
+        if not mailer.configured():
+            return (
+                "Email verification is not set up on this portal yet: SMTP_HOST and "
+                "MAIL_FROM must be configured before codes can be sent."
+            )
+        state = email_verification_state(user)
+        if not state["can_resend"]:
+            return f"A code was sent moments ago. You can request another in {state['resend_in']}s."
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        expires_at = (_utcnow() + timedelta(minutes=config.EMAIL_CODE_TTL_MINUTES)).isoformat()
+        try:
+            mailer.send(
+                to=user["email"],
+                subject="Your verification code",
+                body=(
+                    f"Hi {user['display_name'] or user['username']},\n\n"
+                    f"Your email verification code is: {code}\n\n"
+                    f"It expires in {config.EMAIL_CODE_TTL_MINUTES} minutes. If you did not "
+                    "request this, you can ignore this message.\n"
+                ),
+            )
+        except mailer.MailError as exc:
+            app.logger.warning("Verification email failed for %s: %s", user["username"], exc)
+            return "The verification email could not be sent. Check the portal's SMTP settings and try again."
+        db.store_email_code(
+            conn, user["username"], code_hash=_code_hash(code),
+            target_email=user["email"], expires_at=expires_at,
+        )
+        return None
+
     @app.route("/profile", methods=("GET", "POST"))
     def profile():
         auth = dashboard_auth()
         if request.method == "POST":
-            csrf_valid = hmac.compare_digest(
-                request.form.get("csrf_token", ""), session.get("csrf_token", "")
-            )
             display_name = request.form.get("display_name", "").strip()
             email = request.form.get("email", "").strip()
-            submitted_user = {
-                **dict(auth),
-                "display_name": display_name,
-                "email": email,
-            }
-            if not csrf_valid:
-                return render_template(
-                    "profile.html", user=submitted_user, error="Your session expired. Please try again."
-                ), 400
+            submitted_user = {**dict(auth), "display_name": display_name, "email": email}
+            if not _csrf_ok():
+                return _render_profile(submitted_user, 400, error="Your session expired. Please try again.")
             if len(display_name) > 100:
-                return render_template(
-                    "profile.html", user=submitted_user, error="Display name cannot exceed 100 characters."
-                ), 400
+                return _render_profile(submitted_user, 400, error="Display name cannot exceed 100 characters.")
             if email and (len(email) > 254 or not EMAIL_PATTERN.fullmatch(email)):
-                return render_template(
-                    "profile.html", user=submitted_user, error="Enter a valid email address."
-                ), 400
+                return _render_profile(submitted_user, 400, error="Enter a valid email address.")
+            email_changed = (auth["email"] or "").strip().casefold() != email.casefold()
             with request_db() as conn:
                 if db.dashboard_email_registered(
                     conn, email, excluding_username=session["dashboard_username"]
                 ):
-                    return render_template(
-                        "profile.html",
-                        user=submitted_user,
+                    return _render_profile(
+                        submitted_user, 409,
                         error="This email address is already registered to another account.",
-                    ), 409
+                    )
                 updated = db.update_dashboard_user_profile(
-                    conn,
-                    session["dashboard_username"],
-                    display_name=display_name,
-                    email=email,
+                    conn, session["dashboard_username"], display_name=display_name, email=email,
                 )
                 if not updated:
-                    return render_template(
-                        "profile.html",
-                        user=submitted_user,
+                    return _render_profile(
+                        submitted_user, 409,
                         error="This email address is already registered to another account.",
-                    ), 409
+                    )
                 auth = db.get_dashboard_user(conn, session["dashboard_username"])
-            return render_template(
-                "profile.html", user=auth, success="Profile details updated."
-            )
-        return render_template("profile.html", user=auth)
+                notice = None
+                if email_changed and email:
+                    # A new address starts unverified; send its code right away
+                    # so the user can finish in one visit.
+                    notice = _send_verification_code(conn, auth)
+                    auth = db.get_dashboard_user(conn, session["dashboard_username"])
+            if email_changed and email:
+                if notice:
+                    return _render_profile(auth, 200, success="Profile details updated.", error=notice)
+                return _render_profile(
+                    auth, 200,
+                    success=f"Profile details updated. We sent a 6-digit code to {email} -- enter it below to verify the address.",
+                )
+            return _render_profile(auth, 200, success="Profile details updated.")
+        return _render_profile(auth)
+
+    @app.post("/profile/email/send-code")
+    def profile_send_email_code():
+        auth = dashboard_auth()
+        if not _csrf_ok():
+            return _render_profile(auth, 400, error="Your session expired. Please try again.")
+        if not auth["email"]:
+            return _render_profile(auth, 400, error="Add an email address first.")
+        if auth["email_verified_at"]:
+            return _render_profile(auth, 200, success="This email address is already verified.")
+        with request_db() as conn:
+            notice = _send_verification_code(conn, auth)
+            auth = db.get_dashboard_user(conn, session["dashboard_username"])
+        if notice:
+            return _render_profile(auth, 400, error=notice)
+        return _render_profile(auth, 200, success=f"We sent a 6-digit code to {auth['email']}.")
+
+    @app.post("/profile/email/verify")
+    def profile_verify_email():
+        auth = dashboard_auth()
+        if not _csrf_ok():
+            return _render_profile(auth, 400, error="Your session expired. Please try again.")
+        code = re.sub(r"\D", "", request.form.get("code", ""))
+        state = email_verification_state(auth)
+        if not state["pending"]:
+            return _render_profile(auth, 400, error="No code is pending for this address. Send a new one.")
+        with request_db() as conn:
+            if len(code) != 6 or not hmac.compare_digest(_code_hash(code), auth["email_code_hash"]):
+                attempts = db.record_email_code_attempt(conn, auth["username"])
+                if attempts >= config.EMAIL_CODE_MAX_ATTEMPTS:
+                    db.clear_email_code(conn, auth["username"])
+                    auth = db.get_dashboard_user(conn, auth["username"])
+                    return _render_profile(
+                        auth, 400,
+                        error="Too many incorrect codes. That code is now void -- send a new one.",
+                    )
+                auth = db.get_dashboard_user(conn, auth["username"])
+                left = config.EMAIL_CODE_MAX_ATTEMPTS - attempts
+                return _render_profile(auth, 400, error=f"That code is not correct. {left} attempt(s) left.")
+            db.mark_email_verified(conn, auth["username"])
+            auth = db.get_dashboard_user(conn, auth["username"])
+        return _render_profile(auth, 200, success="Email address verified.")
+
+    @app.post("/profile/avatar")
+    def profile_upload_avatar():
+        auth = dashboard_auth()
+        if not _csrf_ok():
+            return _render_profile(auth, 400, error="Your session expired. Please try again.")
+        upload = request.files.get("avatar")
+        if upload is None or not upload.filename:
+            return _render_profile(auth, 400, error="Choose an image file first.")
+        data = upload.read(config.AVATAR_MAX_BYTES + 1)
+        if len(data) > config.AVATAR_MAX_BYTES:
+            return _render_profile(auth, 400, error="That file is too large. Profile photos must be 1 MB or smaller.")
+        sniffed = _sniff_image(data)
+        if sniffed is None:
+            return _render_profile(auth, 400, error="Use a PNG, JPEG or WebP image.")
+        ext, _mimetype = sniffed
+        config.AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"{auth['id']}.{ext}"
+        # Remove any previous photo with a different extension before
+        # writing, so one user never has two files on disk.
+        for stale in config.AVATAR_DIR.glob(f"{auth['id']}.*"):
+            if stale.name != filename:
+                stale.unlink(missing_ok=True)
+        (config.AVATAR_DIR / filename).write_bytes(data)
+        with request_db() as conn:
+            db.set_dashboard_user_avatar(conn, auth["username"], filename)
+            auth = db.get_dashboard_user(conn, auth["username"])
+        return _render_profile(auth, 200, success="Profile photo updated.")
+
+    @app.post("/profile/avatar/remove")
+    def profile_remove_avatar():
+        auth = dashboard_auth()
+        if not _csrf_ok():
+            return _render_profile(auth, 400, error="Your session expired. Please try again.")
+        if auth["avatar_path"]:
+            (config.AVATAR_DIR / auth["avatar_path"]).unlink(missing_ok=True)
+        with request_db() as conn:
+            db.set_dashboard_user_avatar(conn, auth["username"], None)
+            auth = db.get_dashboard_user(conn, auth["username"])
+        return _render_profile(auth, 200, success="Profile photo removed.")
+
+    @app.get("/profile/avatar/<username>")
+    def profile_avatar(username: str):
+        # Any signed-in portal user may load any user's photo (it is what the
+        # header shows); nothing is served to anonymous requests.
+        user = dashboard_auth(username)
+        if user is None or not user["avatar_path"]:
+            abort(404)
+        path = config.AVATAR_DIR / os.path.basename(user["avatar_path"])
+        if not path.is_file():
+            abort(404)
+        ext = path.suffix.lstrip(".").lower()
+        response = send_file(path, mimetype=_AVATAR_MIMETYPES.get(ext, "application/octet-stream"))
+        response.headers["Cache-Control"] = "private, max-age=300"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     @app.post("/logout")
     def logout():
