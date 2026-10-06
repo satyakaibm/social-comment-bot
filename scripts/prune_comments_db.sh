@@ -121,7 +121,7 @@ if [[ -n "$TENANT_KEY" ]]; then
   DATA_DIR="$SCRIPT_DIR/tenants/${TENANT_KEY}/data"
   LABEL="tenant ${TENANT_KEY}"
 else
-  COMPOSE_SERVICES=(dashboard video-stats youtube-comments)
+  COMPOSE_SERVICES=(hindolroad-dashboard hindolroad-video-stats hindolroad-youtube-comments)
   DATA_DIR="$SCRIPT_DIR/data"
   LABEL="main instance"
 fi

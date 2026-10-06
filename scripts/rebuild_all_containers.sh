@@ -91,7 +91,7 @@ fi
 # because the tenant compose files always define youtube-comments even for
 # tenants that must not run it (see rule 2 above).
 COMPOSE_FILES=(-f docker-compose.yml)
-SERVICES=(dashboard video-stats youtube-comments)
+SERVICES=(hindolroad-dashboard hindolroad-video-stats hindolroad-youtube-comments)
 
 shopt -s nullglob
 for env_file in "$REPO"/tenants/*.env; do
@@ -132,6 +132,27 @@ if [[ $DRY_RUN -eq 1 ]]; then
   exit 0
 fi
 
+# --- Cutover from the pre-rename main containers. ---------------------------
+# The main instance's services were once plain `dashboard`/`video-stats`/
+# `youtube-comments`, so Compose named their containers
+# social-comment-bot-<service>-1. They are hindolroad-* now (see the header of
+# docker-compose.yml). Compose has no memory of the old service names, and this
+# script deliberately never passes --remove-orphans (rule 1 above), so without
+# this step the old three would keep running beside the new ones: two
+# app.youtube_worker and two app.video_stats processes against the same
+# data/comments.db -- duplicate replies, and two SQLCipher writers on one file.
+# (The old dashboard would at least fail loudly; both want 127.0.0.1:9001.)
+# Each name is listed in full rather than matched by prefix, so this can never
+# reach a tenant's container. Keep this block: it is a no-op on every VM that
+# has already cut over, and the one thing standing between a fresh checkout of
+# an old deploy and a double-replying stack.
+for legacy in "$PROJECT-dashboard-1" "$PROJECT-video-stats-1" "$PROJECT-youtube-comments-1"; do
+  if docker inspect "$legacy" >/dev/null 2>&1; then
+    echo "removing pre-rename container $legacy"
+    docker rm -f "$legacy"
+  fi
+done
+
 docker compose -p "$PROJECT" \
   "${COMPOSE_FILES[@]}" \
   up -d --force-recreate "${BUILD_FLAG[@]+${BUILD_FLAG[@]}}" "${SERVICES[@]}"
@@ -147,7 +168,7 @@ for _ in $(seq 1 12); do
   sleep 5
 done
 curl -sf "$HEALTH_URL" >/dev/null 2>&1 || {
-  echo "main dashboard did NOT become healthy; check: docker compose -p $PROJECT logs dashboard" >&2
+  echo "main dashboard did NOT become healthy; check: docker compose -p $PROJECT logs hindolroad-dashboard" >&2
   exit 1
 }
 
