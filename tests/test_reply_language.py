@@ -63,11 +63,49 @@ class LanguagePolicyConfigTests(unittest.TestCase):
         self.assertIn("Odiya", str(caught.exception))
 
 
+class StyleProfileTests(unittest.TestCase):
+    def test_hindolroad_and_gudiakateni_default_to_devotional(self):
+        self.assertEqual(config._reply_style_profile("", "hindolroad"), "devotional")
+        self.assertEqual(config._reply_style_profile("_2", "gudiakateni"), "devotional")
+        self.assertEqual(config._reply_style_profile("_2", "travel_explorer_satya"), "generic")
+
+    def test_env_overrides_the_default_and_rejects_unknown_values(self):
+        with patch.dict("os.environ", {"REPLY_STYLE_PROFILE_3": "Devotional"}):
+            self.assertEqual(config._reply_style_profile("_3", "food_blog"), "devotional")
+        with patch.dict("os.environ", {"REPLY_STYLE_PROFILE": "generic"}):
+            self.assertEqual(config._reply_style_profile("", "hindolroad"), "generic")
+        with patch.dict("os.environ", {"REPLY_STYLE_PROFILE": "spicy"}):
+            with self.assertRaises(RuntimeError):
+                config._reply_style_profile("", "hindolroad")
+
+    def test_devotional_block_names_the_page_and_carries_the_chant_rules(self):
+        gudia = make_page_config(key="gudiakateni", label="Gudiakateni", reply_style_profile="devotional")
+        with patch.object(config, "PAGES", {**config.PAGES, "gudiakateni": gudia}):
+            block = generate._style_instruction("gudiakateni")
+        self.assertIn("This channel is Gudiakateni.", block)
+        self.assertIn("only 🙏 for devotional chants", block)
+        self.assertIn("ଆମ ଭିଡିଓ ଦେଖିଥିବାରୁ", block)   # the Odia thank-you phrasings to avoid
+        self.assertNotIn("{label}", block)
+
+    def test_generic_profile_has_no_devotional_rules(self):
+        travel = make_page_config(key="travel", label="Travel", reply_style_profile="generic")
+        with patch.object(config, "PAGES", {**config.PAGES, "travel": travel}):
+            block = generate._style_instruction("travel")
+        self.assertIn("Follow the persona's tone", block)
+        self.assertNotIn("devotional chants", block)
+        self.assertNotIn("This channel is", block)
+
+
 class LanguageInstructionTests(unittest.TestCase):
     def test_match_commenter_asks_for_the_commenters_language(self):
         block = generate._style_instruction(config.DEFAULT_PAGE_KEY)
-        self.assertIn("same language AND the same script", block)
+        self.assertIn("identify the language of the COMMENT TEXT ITSELF", block)
         self.assertIn("Kannada to Kannada", block)
+        # The caption's language and the commenter's name must be ruled out
+        # explicitly: a German comment under an Odia caption was answered in
+        # romanized Odia before this line existed.
+        self.assertIn("A German comment under an Odia caption gets\n  a German reply", block)
+        self.assertIn("Latin letters do not mean English and do not mean an Indian language", block)
         self.assertNotIn("either Odia or English", block)
 
     def test_odia_policy_keeps_the_original_hindolroad_rules(self):
@@ -93,9 +131,10 @@ class LanguageInstructionTests(unittest.TestCase):
         without = make_page_config(key="page")
         with_fallback = make_page_config(key="page", reply_fallback_language="Odia")
         with patch.object(config, "PAGES", {**config.PAGES, "page": without}):
-            self.assertNotIn("reply in Odia", generate._style_instruction("page"))
+            self.assertNotIn("Fallback language for comments", generate._style_instruction("page"))
         with patch.object(config, "PAGES", {**config.PAGES, "page": with_fallback}):
-            self.assertIn("reply in Odia", generate._style_instruction("page"))
+            self.assertIn("Fallback language for comments with no identifiable language: Odia",
+                          generate._style_instruction("page"))
 
     def test_every_policy_has_an_instruction_block(self):
         for policy in config.REPLY_LANGUAGE_POLICIES:
@@ -117,8 +156,44 @@ class LanguageInstructionTests(unittest.TestCase):
                 comment_text="ಯಾವಾಗ ಹೋಗಬೇಕು?",
             )
         system = client.chats.created[0]["config"].system_instruction
-        self.assertIn("same language AND the same script", system)
+        self.assertIn("identify the language of the COMMENT TEXT ITSELF", system)
         self.assertIn("Witty travel manager.", system)
+
+    def test_every_page_gets_the_common_persona_rules(self):
+        # A tenant whose persona is the one-line REPLY_PERSONA default used to
+        # get nothing about tone or truthfulness; the model filled the gap by
+        # inventing a hotel name for a travel channel. The floor now applies
+        # to every page, Hindolroad included.
+        for key, persona in (("travel", "You are a friendly, concise travel community manager."),
+                             (config.DEFAULT_PAGE_KEY, config.PAGES[config.DEFAULT_PAGE_KEY].persona)):
+            page = make_page_config(key=key, persona=persona)
+            client = SimpleNamespace(chats=_FakeChats())
+            with patch.object(config, "PAGES", {**config.PAGES, key: page}), \
+                 patch.object(generate, "_get_client", return_value=client), \
+                 patch.object(generate, "load_examples", return_value=[]):
+                generate.draft_reply(platform="youtube", page_key=key, context_title="t",
+                                     author="v", comment_text="Which hotel is this?")
+            system = client.chats.created[0]["config"].system_instruction
+            self.assertIn(persona, system)
+            self.assertIn("Never invent a place name, hotel, restaurant, price, date", system, key)
+            self.assertIn("Never infer gender from a username", system, key)
+            # The persona comes first, the floor directly after it.
+            self.assertLess(system.index(persona), system.index("Rules that apply whatever the persona"))
+
+    def test_model_is_asked_to_name_the_language_before_replying(self):
+        client = SimpleNamespace(chats=_FakeChats())
+        with patch.object(generate, "_get_client", return_value=client), \
+             patch.object(generate, "load_examples", return_value=[]):
+            generate.draft_reply(platform="youtube", context_title="ଆବୁଧାବି ସନ୍ଧ୍ୟା",
+                                 author="v", comment_text="Viel Spaß in Dubai")
+        system = client.chats.created[0]["config"].system_instruction
+        user = client.chats.chat.messages[0]
+        self.assertIn('{"language": "<language of the comment>", "reply": "<public reply>"}', system)
+        self.assertIn("decided by the comment text alone, not by the caption", user)
+
+    def test_language_field_in_the_payload_does_not_leak_into_the_reply(self):
+        self.assertEqual(generate._parse_draft_payload('{"language": "German", "reply": "Danke dir!"}'), "Danke dir!")
+        self.assertEqual(generate._parse_draft_payload('```json\n{"language":"Odia","reply":"ଜୟ ମା"}\n```'), "ଜୟ ମା")
 
 
 class ExamplesIntroTests(unittest.TestCase):
