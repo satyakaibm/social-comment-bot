@@ -78,4 +78,5 @@ class GenerateTests(unittest.TestCase):
         self.assertEqual(reply, "🙏")
         system = client.chats.created[0]["config"].system_instruction
         self.assertIn("witty travel community manager", system)
-        self.assertNotIn("hindolroad / Hindolroad", system)
+        self.assertNotIn("This channel is Hindolroad", system)
+        self.assertNotIn("only 🙏 for devotional chants", system)

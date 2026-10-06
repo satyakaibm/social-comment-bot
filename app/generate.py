@@ -43,15 +43,17 @@ _PLATFORM_LABELS = {
 # the original comment, so the username prefix is unnecessary.
 _MENTION_PLATFORMS = {"instagram"}
 
-# Keyed by page_key -- each page (Facebook/Instagram account) can enforce
-# its own mandatory rules on top of its persona, since two channels (a
-# devotional Odia/English channel vs. a travel channel, say) need different
-# non-negotiable constraints, not just a different tone. Falls back to
-# _GENERIC_STYLE_INSTRUCTION for any page without an entry here.
+# Keyed by config.reply_style_profile -- a page's mandatory rules on top of
+# its persona. Two channels (a devotional Odia page vs. a travel channel) need
+# different non-negotiable constraints, not just a different tone. This used
+# to be keyed by the literal page key "hindolroad", which meant Gudiakateni --
+# the same kind of page, sharing the same example files -- silently got the
+# generic block instead. The devotional block is now a profile any such page
+# can use; {label} is filled with the page's own label.
 _REPLY_STYLE_INSTRUCTIONS: dict[str, str] = {
-    "hindolroad": """
+    "devotional": """
 Mandatory reply style (takes precedence over persona and examples):
-- This channel is hindolroad / Hindolroad.
+- This channel is {label}.
 - Never add generic thanks or appreciation for watching, commenting, sharing,
   supporting the channel, or sharing love/devotion.
 - Do not write sentences such as "Thank you for watching and sharing your devotion with us! ❤️",
@@ -69,7 +71,7 @@ Mandatory reply style (takes precedence over persona and examples):
 """,
 }
 
-_GENERIC_STYLE_INSTRUCTION = """
+_REPLY_STYLE_INSTRUCTIONS["generic"] = """
 Mandatory reply style (takes precedence over persona and examples):
 - Follow the persona's tone and reply format above.
 - Never add generic thanks or appreciation for watching, commenting, sharing,
@@ -84,17 +86,27 @@ Mandatory reply style (takes precedence over persona and examples):
 # config.reply_language_policy -- see config.REPLY_LANGUAGE_POLICIES.
 _LANGUAGE_INSTRUCTIONS: dict[str, str] = {
     "match_commenter": """
-- Reply in the same language AND the same script the commenter used: Odia to an
-  Odia comment, Kannada to Kannada, Tamil to Tamil, Telugu to Telugu, Bengali
-  to Bengali, Marathi to Marathi, Hindi to Hindi, English to English, and the
-  same for any other language the comment is written in.
-- If the comment is romanized -- an Indian language typed in Latin letters, like
-  "jay maa" or "tumba chennagide" -- reply romanized in that same language, not
-  in the native script and not in English.
+- First identify the language of the COMMENT TEXT ITSELF and put its name in
+  the `language` field. Decide it from the comment's words alone: the language
+  of the caption or title, the channel's usual language, and the commenter's
+  name tell you nothing about it. A German comment under an Odia caption gets
+  a German reply.
+- Latin letters do not mean English and do not mean an Indian language.
+  German ("Viel Spaß", "danke", "schön"), French, Spanish, Portuguese,
+  Italian, Indonesian and others are common; answer each in its own language.
+  Call a Latin-script comment a romanized Indian language only when its words
+  are Indian-language words -- "jay maa", "bhari sundar lagila", "tumba
+  chennagide" -- and then reply romanized in that same language, not in the
+  native script and not in English.
+- Then write `reply` in exactly that language and script: Odia to Odia,
+  Kannada to Kannada, Tamil to Tamil, Hindi to Hindi, German to German,
+  English to English, and the same for any other language.
 - Write it the way a native speaker of that language casually writes to a
   friend, not as a textbook translation of an English sentence.
 - One language per reply. Never mix two languages or two scripts in the same
   reply, and never add a translation of your own reply.
+- If the comment has no identifiable language -- only emoji, only punctuation,
+  a bare name -- use the fallback language below if one is given, else English.
 """,
     "odia_or_english": """
 - Write the whole reply in ONE language: either Odia or English. Never mix Odia
@@ -108,22 +120,49 @@ _LANGUAGE_INSTRUCTIONS: dict[str, str] = {
 
 def _style_instruction(page_key: str) -> str:
     """The page's mandatory style block plus its reply-language rules."""
-    base = _REPLY_STYLE_INSTRUCTIONS.get(page_key, _GENERIC_STYLE_INSTRUCTION)
+    profile = config.reply_style_profile(page_key)
+    page = config.PAGES.get(page_key)
+    base = _REPLY_STYLE_INSTRUCTIONS[profile].replace(
+        "{label}", page.label if page else page_key
+    )
     policy = config.reply_language_policy(page_key)
     language = _LANGUAGE_INSTRUCTIONS[policy]
     fallback = config.reply_fallback_language(page_key)
     if fallback:
-        language = (
-            f"{language.rstrip()}\n"
-            f"- If the comment gives you no language to follow -- only emoji, only\n"
-            f"  punctuation, or a name on its own -- reply in {fallback}.\n"
-        )
+        language = f"{language.rstrip()}\n- Fallback language for comments with no identifiable language: {fallback}.\n"
     return f"{base.rstrip()}\n{language.lstrip()}"
 
 
+# Appended to every page's persona. These are the parts of the Hindolroad
+# persona that have nothing to do with devotion -- reading the feeling in a
+# comment, restraint with emoji, not guessing at the person -- plus a rule the
+# original lacked. They used to live only in reply_examples/_reply_persona.txt,
+# so a tenant whose persona was the one-line REPLY_PERSONA default got none of
+# them, and the model filled the gap by inventing hotel names and visit dates
+# for a travel channel. Tenants keep their own persona for flavour (travel,
+# devotional, food); this is the floor beneath all of them.
+_COMMON_PERSONA_RULES = """
+Rules that apply whatever the persona above says:
+- Match the reply to the feeling in the comment first. Warmth for praise and
+  affection, 😄 for a joke, 🎉 for celebration, gentle support for sadness,
+  calm acknowledgement for anger or criticism -- never copy or escalate anger.
+- Keep it to one or two short sentences. Use at most one or two emoji, and
+  only when they fit; never force one into every reply.
+- Never infer gender from a username, name or avatar, and never compliment
+  anyone's appearance.
+- Only state facts that are in the caption, title or the comment itself.
+  Never invent a place name, hotel, restaurant, price, date, route, or whether
+  and when the creator visited somewhere. If a question cannot be answered
+  from what is given, say so briefly and warmly, or ask what they would like
+  to know -- do not guess.
+- Answer a genuine question directly, without a generic thank-you before or
+  after it.
+"""
+
 _OUTPUT_INSTRUCTION = '''
-Respond with JSON only, no markdown:
-{"reply": "<public reply>"}
+Respond with JSON only, no markdown. Name the comment's language first, then
+write the reply in that language:
+{"language": "<language of the comment>", "reply": "<public reply>"}
 '''
 
 
@@ -154,7 +193,7 @@ def draft_reply(
     examples_block = format_for_prompt(load_examples(page_key=page_key), page_key=page_key)
     style_instruction = _style_instruction(page_key)
     system_instruction = (
-        f"{persona}\n\n"
+        f"{persona}\n{_COMMON_PERSONA_RULES}\n"
         f"You are drafting a public reply to a comment on a {label}. "
         "The `reply` field is the public text only: no preamble, no quotes, "
         "no signature."
@@ -168,6 +207,8 @@ def draft_reply(
         f'Commenter: {author}\n'
         f'Comment: "{comment_text}"\n\n'
         "Draft a reply in the same style as the examples when they apply. "
+        "The reply language is decided by the comment text alone, not by the "
+        "caption, the title, or the commenter's name. "
     )
     client = _get_client()
     generation_config = types.GenerateContentConfig(

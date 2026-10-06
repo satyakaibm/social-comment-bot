@@ -264,6 +264,29 @@ def _reply_auto_post_scripts(suffix: str) -> tuple[str, ...]:
     return tuple(names)
 
 
+# Which mandatory reply-style block generate.py applies on top of the persona.
+#   devotional -- the Hindolroad rules: chant/🙏 handling, the Odia and English
+#                 thank-you phrasings that must never appear, direct answers.
+#   generic    -- tone and no-generic-thanks rules only.
+# Hindolroad and Gudiakateni are devotional Odia pages that share one example
+# set, so they default to the same profile without an env entry; any other
+# page is generic unless REPLY_STYLE_PROFILE<suffix> says otherwise.
+REPLY_STYLE_PROFILES = ("devotional", "generic")
+_DEVOTIONAL_PAGE_KEYS = ("hindolroad", "gudiakateni")
+
+
+def _reply_style_profile(suffix: str, key: str) -> str:
+    raw = os.environ.get(f"REPLY_STYLE_PROFILE{suffix}", "").strip().lower()
+    if not raw:
+        return "devotional" if key in _DEVOTIONAL_PAGE_KEYS else "generic"
+    if raw not in REPLY_STYLE_PROFILES:
+        raise RuntimeError(
+            f"REPLY_STYLE_PROFILE{suffix}={raw!r} is not one of "
+            f"{', '.join(REPLY_STYLE_PROFILES)}."
+        )
+    return raw
+
+
 def _reply_language_policy(suffix: str) -> str:
     raw = os.environ.get(f"REPLY_LANGUAGE_POLICY{suffix}", "").strip().lower()
     if not raw:
@@ -310,6 +333,7 @@ class PageConfig:
     # Empty = post every language unreviewed, as before. See
     # _reply_auto_post_scripts.
     reply_auto_post_scripts: tuple[str, ...] = ()
+    reply_style_profile: str = "generic"
 
 
 def _build_page_config(suffix: str) -> "PageConfig | None":
@@ -382,6 +406,7 @@ def _build_page_config(suffix: str) -> "PageConfig | None":
             f"REPLY_FALLBACK_LANGUAGE{suffix}", ""
         ).strip(),
         reply_auto_post_scripts=_reply_auto_post_scripts(suffix),
+        reply_style_profile=_reply_style_profile(suffix, key),
     )
 
 
@@ -422,6 +447,7 @@ if not PAGES:
         reply_language_policy=_reply_language_policy(""),
         reply_fallback_language=os.environ.get("REPLY_FALLBACK_LANGUAGE", "").strip(),
         reply_auto_post_scripts=_reply_auto_post_scripts(""),
+        reply_style_profile=_reply_style_profile("", "hindolroad"),
     )
 
 DEFAULT_PAGE_KEY = next(iter(PAGES))
@@ -449,6 +475,12 @@ def reply_fallback_language(page_key: str) -> str:
     """page_key's fallback reply language, or "" when it has none."""
     page = PAGES.get(page_key or DEFAULT_PAGE_KEY)
     return page.reply_fallback_language if page else ""
+
+
+def reply_style_profile(page_key: str) -> str:
+    """page_key's mandatory style profile; unknown keys are generic."""
+    page = PAGES.get(page_key or DEFAULT_PAGE_KEY)
+    return page.reply_style_profile if page else "generic"
 
 
 def reply_auto_post_scripts(page_key: str) -> tuple[str, ...]:
