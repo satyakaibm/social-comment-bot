@@ -153,6 +153,21 @@ CREATE TABLE IF NOT EXISTS video_stats_history (
     captured_at TEXT NOT NULL
 );
 
+-- Instagram's own hourly follower-online counts (Graph `online_followers`),
+-- the data behind the Instagram app's "Most active times" chart. One row per
+-- (day bucket, UTC hour). bucket_end is Meta's end_time for the day as given
+-- (the bucket spans the 24 hours before it); hour_utc is the 0-23 key inside
+-- that bucket. Not YouTube data, so the 30-day statistics cap does not apply.
+CREATE TABLE IF NOT EXISTS audience_online (
+    platform TEXT NOT NULL,
+    page_key TEXT NOT NULL DEFAULT '',
+    bucket_end TEXT NOT NULL,
+    hour_utc INTEGER NOT NULL,
+    online_count INTEGER NOT NULL,
+    fetched_at TEXT NOT NULL,
+    PRIMARY KEY (platform, page_key, bucket_end, hour_utc)
+);
+
 CREATE TABLE IF NOT EXISTS recommendation_experiments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     recommendation_key TEXT NOT NULL UNIQUE,
@@ -653,6 +668,91 @@ def expire_stale_video_stats(
     )
     return cursor.rowcount
 
+
+
+def _normalize_graph_timestamp(value: str) -> str:
+    """Meta writes `2026-10-01T07:00:00+0000`; SQLite's datetime() returns
+    NULL for a zone without a colon, which silently empties every date
+    filter on the table. Store the ISO form (`+00:00`) instead."""
+    for fmt in ("%Y-%m-%dT%H:%M:%S%z",):
+        try:
+            return datetime.strptime(value, fmt).isoformat()
+        except (TypeError, ValueError):
+            pass
+    return value
+
+
+def upsert_audience_online(
+    conn: sqlite3.Connection, *, platform: str, page_key: str, buckets: list[dict]
+) -> int:
+    """Store hourly follower-online counts. Re-fetching a day overwrites it.
+
+    `buckets` is what meta_client.get_instagram_online_followers returns:
+    [{"bucket_end": <Meta end_time>, "hours": {hour_utc: count}}, ...].
+    Returns the number of hour rows written.
+    """
+    fetched_at = now()
+    written = 0
+    for bucket in buckets:
+        bucket_end = _normalize_graph_timestamp(bucket["bucket_end"])
+        for hour_utc, count in (bucket.get("hours") or {}).items():
+            conn.execute(
+                """INSERT INTO audience_online
+                       (platform, page_key, bucket_end, hour_utc, online_count, fetched_at)
+                   VALUES (?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(platform, page_key, bucket_end, hour_utc)
+                   DO UPDATE SET online_count = excluded.online_count,
+                                 fetched_at = excluded.fetched_at""",
+                (platform, page_key, bucket_end, int(hour_utc), int(count), fetched_at),
+            )
+            written += 1
+    return written
+
+
+def list_audience_online(
+    conn: sqlite3.Connection,
+    *,
+    platform: str,
+    page_key: str | None = None,
+    days: int = 28,
+) -> list[dict]:
+    """Hour rows for the last `days` day buckets, oldest first."""
+    sql = """SELECT platform, page_key, bucket_end, hour_utc, online_count, fetched_at
+               FROM audience_online
+              WHERE platform = ?
+                AND datetime(bucket_end) >= datetime('now', ?)"""
+    params: list = [platform, f"-{max(1, days)} days"]
+    if page_key:
+        if page_key == DEFAULT_PAGE_KEY:
+            sql += " AND page_key IN (?, '')"
+        else:
+            sql += " AND page_key = ?"
+        params.append(page_key)
+    sql += " ORDER BY page_key, bucket_end, hour_utc"
+    return [dict(row) for row in conn.execute(sql, params)]
+
+
+def audience_online_fetched_within(
+    conn: sqlite3.Connection, *, platform: str, page_key: str, hours: int
+) -> bool:
+    """True when this page's online counts were fetched in the last `hours`."""
+    row = conn.execute(
+        """SELECT 1 FROM audience_online
+            WHERE platform = ? AND page_key = ?
+              AND datetime(fetched_at) >= datetime('now', ?)
+            LIMIT 1""",
+        (platform, page_key, f"-{max(1, hours)} hours"),
+    ).fetchone()
+    return row is not None
+
+
+def prune_audience_online(conn: sqlite3.Connection, *, retention_days: int) -> int:
+    cursor = conn.execute(
+        """DELETE FROM audience_online
+            WHERE datetime(bucket_end) < datetime('now', ?)""",
+        (f"-{max(1, retention_days)} days",),
+    )
+    return cursor.rowcount
 
 def list_video_stats_history(
     conn: sqlite3.Connection,

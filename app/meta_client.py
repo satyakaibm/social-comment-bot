@@ -599,6 +599,50 @@ def get_instagram_media_stats(
     }
 
 
+def get_instagram_online_followers(
+    *, page_key: str = config.DEFAULT_PAGE_KEY, days: int = 7, quota_conn=None
+) -> list[dict]:
+    """Instagram's own hourly follower-online counts for the trailing `days`.
+
+    This is the `online_followers` insight -- the data behind the Instagram
+    app's "Most active times" chart -- so what the dashboard shows from it is
+    Instagram's number, not a model of it. Needs instagram_manage_insights
+    (already granted: media insights use it) and an account with at least
+    100 followers. Without since/until Meta returns only the last two days,
+    which are usually still empty: it publishes a day roughly two days after
+    it ends. Each returned bucket is one day; hours are UTC 0-23 keys inside
+    that bucket, and days Meta hasn't published yet come back as {} and are
+    dropped here.
+    """
+    _require_page(page_key, "INSTAGRAM_USER_ID")
+    kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
+    until = int(time.time())
+    data = graph_get(
+        f"{_page(page_key).instagram_user_id}/insights",
+        metric="online_followers",
+        period="lifetime",
+        since=until - max(1, days) * 86400,
+        until=until,
+        page_key=page_key,
+        **kwargs,
+    )
+    buckets = []
+    for item in data.get("data") or []:
+        if item.get("name") != "online_followers":
+            continue
+        for value in item.get("values") or []:
+            hours = value.get("value")
+            if not isinstance(hours, dict) or not hours:
+                continue
+            buckets.append(
+                {
+                    "bucket_end": str(value.get("end_time") or ""),
+                    "hours": {int(hour): int(count) for hour, count in hours.items()},
+                }
+            )
+    return buckets
+
+
 def get_instagram_username(*, page_key: str = config.DEFAULT_PAGE_KEY) -> str:
     if page_key in _ig_username_cache:
         return _ig_username_cache[page_key]
