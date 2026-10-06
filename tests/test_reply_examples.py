@@ -23,14 +23,20 @@ class LoadExamplesTests(unittest.TestCase):
 
         self.assertEqual(pairs, [("Best time to visit?", "Go in winter.")])
 
-    def test_format_for_prompt_keeps_hindolroad_language_rule_off_other_pages(self):
+    def test_format_for_prompt_follows_each_pages_language_policy(self):
+        # The Odia-only line used to be hardcoded to the default page. It now
+        # follows the page's REPLY_LANGUAGE_POLICY, so a page can keep the
+        # strict rule while every other page mirrors the commenter instead.
         examples = [("hello", "🙏")]
-        default_block = reply_examples.format_for_prompt(
-            examples, page_key=config.DEFAULT_PAGE_KEY
+        strict = make_page_config(
+            key="strict", reply_language_policy="odia_or_english"
         )
+        with patch.object(config, "PAGES", {**config.PAGES, "strict": strict}):
+            strict_block = reply_examples.format_for_prompt(examples, page_key="strict")
         other_block = reply_examples.format_for_prompt(examples, page_key="travel")
 
-        self.assertIn("only Odia or only English", default_block)
+        self.assertIn("only Odia or only English", strict_block)
         self.assertNotIn("only Odia or only English", other_block)
+        self.assertIn("never their language", other_block)
         self.assertIn('Comment: "hello"', other_block)
         self.assertIn('Reply: "🙏"', other_block)

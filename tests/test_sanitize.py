@@ -16,8 +16,47 @@ class SanitizeDraftTests(unittest.TestCase):
         text = "ଜୟ ମା' ବାଟ ମଙ୍ଗଳା! ଆମ ଭିଡିଓ ଦେଖିଥିବାରୁ ଏବଂ କମେଣ୍ଟ କରିଥିବାରୁ ଆପଣଙ୍କୁ ଅନେକ ଧନ୍ୟବାଦ।"
         self.assertEqual(sanitize_draft(text), "ଜୟ ମା' ବାଟ ମଙ୍ଗଳା!")
 
-    def test_converts_hindi_jay_to_odia(self):
-        self.assertEqual(sanitize_draft("जय माँ दक्षिणकाली!"), "ଜୟ ମା ଦକ୍ଷିଣକାଳୀ!")
+    def test_odia_policy_converts_a_hindi_draft_to_odia(self):
+        self.assertEqual(
+            sanitize_draft("जय माँ दक्षिणकाली!", policy="odia_or_english"),
+            "ଜୟ ମା ଦକ୍ଷିଣକାଳୀ!",
+        )
+
+    def test_odia_policy_drops_every_other_indic_script(self):
+        # The guarantee odia_or_english exists for: nothing but Odia or Latin
+        # survives, whatever language the draft came back in.
+        self.assertEqual(
+            sanitize_draft("ಧನ್ಯವಾದ Jay Maa", policy="odia_or_english"),
+            "Jay Maa",
+        )
+
+    def test_match_commenter_keeps_a_kannada_reply(self):
+        # Before the language policy existed this returned a bare 🙏: every
+        # Kannada character was deleted as "not Odia" and the empty result hit
+        # sanitize_draft's fallback.
+        text = "ನಿಮ್ಮ ಮಾತು ಬಹಳ ಚೆನ್ನಾಗಿದೆ"
+        self.assertEqual(sanitize_draft(text, policy="match_commenter"), text)
+
+    def test_match_commenter_keeps_a_hindi_reply_as_hindi(self):
+        text = "जय माँ दक्षिणकाली!"
+        self.assertEqual(sanitize_draft(text, policy="match_commenter"), text)
+
+    def test_match_commenter_still_transliterates_a_leak_into_odia(self):
+        # An Odia reply with one Devanagari chant word left in it: the word is
+        # transliterated rather than deleted, so the reply keeps its meaning.
+        self.assertEqual(
+            sanitize_draft("ଜୟ ମା ଦକ୍ଷିଣକାଳୀ जय", policy="match_commenter"),
+            "ଜୟ ମା ଦକ୍ଷିଣକାଳୀ ଜୟ",
+        )
+
+    def test_match_commenter_drops_a_leak_into_a_non_odia_reply(self):
+        # Majority script wins: the Kannada reply stays, the stray Devanagari
+        # chant word goes. There is no Kannada transliteration table, and
+        # mixing two scripts in one public reply is the thing being prevented.
+        self.assertEqual(
+            sanitize_draft("ಧನ್ಯವಾದ जय माँ", policy="match_commenter"),
+            "ಧನ್ಯವಾದ",
+        )
 
     def test_strips_glad_touched_heart_and_enjoyed_video(self):
         self.assertEqual(

@@ -250,9 +250,24 @@ reply: Aarti time is in the video description.
 
 Examples are maintained manually; the bot does not create or append chant examples. `_template.txt` is ignored when loading examples.
 
-On all platforms, the drafting prompt prohibits generic thanks for watching, commenting, supporting, or sharing devotion. For the hindolroad / Hindolroad channel, each reply must be **only Odia or only English** — never Hindi or mixed scripts. The persona takes priority over examples: when configured for emoji-only devotional greetings, drafts use 🙏. Questions receive a direct, brief answer. Existing drafts can be regenerated with `python -m app.cli redraft`.
+On all platforms, the drafting prompt prohibits generic thanks for watching, commenting, supporting, or sharing devotion. The persona takes priority over examples: when configured for emoji-only devotional greetings, drafts use 🙏. Questions receive a direct, brief answer. Existing drafts can be regenerated with `python -m app.cli redraft`.
 
 Optional: `REPLY_EXAMPLES_DIR` in `.env` if you keep the folder somewhere else.
+
+### Reply language
+
+Every page replies in the commenter's own language and script by default — Odia to an Odia comment, Kannada to Kannada, Tamil to Tamil, romanized to romanized — for any language Gemini supports. Three settings control it, each suffixable (`_2`..`_5`) per page:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `REPLY_LANGUAGE_POLICY` | `match_commenter` | `match_commenter` mirrors the commenter's language. `odia_or_english` is the original Hindolroad rule: every reply wholly Odia or wholly English, any other Indic script transliterated to Odia or deleted. |
+| `REPLY_FALLBACK_LANGUAGE` | unset | Language to use when a comment gives nothing to mirror — only emoji, only punctuation, a bare name. Unset leaves the choice to the persona. |
+| `REPLY_AUTO_POST_SCRIPTS` | unset | Scripts allowed to post **without** a human reading the draft. Unset gates nothing. Set it (e.g. `Odia,Latin`) and a draft in any other script is held in `pending_review` for the dashboard instead of auto-posting. `Latin` covers English and anything romanized; names are listed in `app/scripts.py`. Only unreviewed drafts are gated — an approved one always posts. |
+
+Three layers enforce the policy: the mandatory prompt rules (`app/generate.py`'s `_LANGUAGE_INSTRUCTIONS`), the examples preamble (`app/reply_examples.py`), and the sanitizer (`app/sanitize.py`), which keeps one Indic script per reply — the dominant one under `match_commenter`, always Odia under `odia_or_english`.
+
+**Reply quality in a new language.** What makes the Odia replies read naturally is not only the language rule: it is the persona's "write it the way a native speaker casually writes, not a textbook translation" instruction *plus* a folder of Odia examples to imitate. A language with no examples gets the instruction but nothing to imitate, so its drafts start out stiffer. To lift one, add `comment:` / `reply:` pairs in that language to the page's examples folder — the model is told to copy the examples' tone and length but never their language, so a Kannada pair raises Kannada replies without pulling Odia replies toward Kannada. Until a language has been proof-read a few times, `REPLY_AUTO_POST_SCRIPTS` is the way to see its drafts before viewers do.
+
 
 ## Usage
 
