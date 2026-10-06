@@ -57,7 +57,7 @@
     .topbar-actions { display:flex; align-items:center; gap:9px; }
     .profile { position:relative; }
     .profile summary { width:42px; height:42px; display:grid; place-items:center; color:#fff; background:linear-gradient(135deg,var(--navy),var(--teal)); border:2px solid #fff; border-radius:50%; box-shadow:0 0 0 1px var(--line),0 5px 14px rgba(15,42,56,.16); font-size:16px; font-weight:850; cursor:pointer; list-style:none; }
-    .profile summary::-webkit-details-marker { display:none; }
+    .profile summary::-webkit-details-marker { display:none; }.profile summary .profile-photo{width:100%;height:100%;border-radius:50%;object-fit:cover;display:block}
     .profile[open] summary { box-shadow:0 0 0 3px rgba(54,174,180,.18),0 5px 14px rgba(15,42,56,.16); }
     .profile-menu { position:absolute; top:calc(100% + 10px); right:0; width:200px; padding:7px; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 16px 38px rgba(15,42,56,.16); }
     .profile-menu-head { padding:9px 11px 11px; border-bottom:1px solid var(--line); margin-bottom:5px; }
@@ -213,7 +213,7 @@
       <a class="topbar-title" href="/">Social Comment Bot</a>
       <div class="topbar-actions">
         <details class="profile">
-          <summary aria-label="Open My Profile menu" title="My Profile">{{ profile_initial }}</summary>
+          <summary aria-label="Open My Profile menu" title="My Profile">{% if profile_avatar_url %}<img class="profile-photo" src="{{ profile_avatar_url }}" alt="">{% else %}{{ profile_initial }}{% endif %}</summary>
           <div class="profile-menu">
             <div class="profile-menu-head"><span class="profile-menu-title">Account</span><span class="profile-menu-user">{{ dashboard_username }}</span></div>
             <a href="/profile">My Profile</a>

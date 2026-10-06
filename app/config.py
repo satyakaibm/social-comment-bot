@@ -12,6 +12,25 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
+# Profile photos uploaded on /profile. Lives under DATA_DIR so each tenant's
+# bind mount keeps its own, and so it survives image rebuilds like the DB.
+AVATAR_DIR = DATA_DIR / "avatars"
+AVATAR_MAX_BYTES = 1024 * 1024
+
+# Outbound email for profile email verification. All optional: with
+# SMTP_HOST or MAIL_FROM unset the portal cannot send, and /profile says so.
+SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
+SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
+SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "").strip()
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").strip().lower() not in ("0", "false", "no")
+SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").strip().lower() in ("1", "true", "yes")
+SMTP_TIMEOUT_SECONDS = int(os.environ.get("SMTP_TIMEOUT_SECONDS", "20"))
+MAIL_FROM = os.environ.get("MAIL_FROM", "").strip()
+# Verification codes: 6 digits, short-lived, few guesses, limited resends.
+EMAIL_CODE_TTL_MINUTES = int(os.environ.get("EMAIL_CODE_TTL_MINUTES", "15"))
+EMAIL_CODE_MAX_ATTEMPTS = 5
+EMAIL_CODE_RESEND_SECONDS = 60
 DB_PATH = DATA_DIR / "comments.db"
 
 YOUTUBE_OAUTH_CLIENT_ID = os.environ.get("YOUTUBE_OAUTH_CLIENT_ID", "")
