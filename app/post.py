@@ -9,6 +9,7 @@ from requests import RequestException
 from app import config, db, meta_client
 from app.comment_age import is_within_comment_age_limit
 from app.sanitize import remove_leading_mention, sanitize_draft
+from app.scripts import dominant_script
 from app.youtube_client import (
     find_own_reply,
     get_client,
@@ -300,7 +301,34 @@ def post_approved(
                 conn.commit()
                 emit(f"Skipped {platform} comment {row['comment_id']}: your account already replied.")
                 continue
-            reply_text = sanitize_draft(row["draft_reply"] or "")
+            reply_text = sanitize_draft(row["draft_reply"] or "", page_key=meta_page_key)
+            allowed_scripts = config.reply_auto_post_scripts(meta_page_key)
+            if (
+                allowed_scripts
+                and row["status"] == "pending_review"
+                and dominant_script(reply_text) not in allowed_scripts
+            ):
+                # Only unreviewed rows are gated. An `approved` row was read by
+                # a person on the dashboard, which is the whole point of the
+                # gate, so holding it again would strand it forever.
+                script = dominant_script(reply_text)
+                db.update_status(
+                    conn,
+                    row["comment_id"],
+                    "pending_review",
+                    draft_reply=reply_text,
+                    error=(
+                        f"Held for review: this draft is in {script}, which is not in "
+                        f"REPLY_AUTO_POST_SCRIPTS for this page. Approve it on the "
+                        f"dashboard to post it."
+                    ),
+                )
+                conn.commit()
+                emit(
+                    f"Held {platform} comment {row['comment_id']} for review: "
+                    f"{script} draft."
+                )
+                continue
             if platform == "youtube":
                 # Existing queued YouTube drafts may still contain the old
                 # automated @username prefix. Replies are already nested below

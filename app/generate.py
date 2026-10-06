@@ -51,11 +51,7 @@ _MENTION_PLATFORMS = {"instagram"}
 _REPLY_STYLE_INSTRUCTIONS: dict[str, str] = {
     "hindolroad": """
 Mandatory reply style (takes precedence over persona and examples):
-- This channel is hindolroad / Hindolroad. Write the whole reply in ONE language:
-  either Odia or English. Never mix Odia and English in the same reply.
-- Do not use Hindi, Gujarati, Bengali, Telugu, Punjabi, or any other language.
-  Do not mix Devanagari (जय, माँ) into an Odia reply; use Odia (ଜୟ, ମା)
-  or English (Jay Maa).
+- This channel is hindolroad / Hindolroad.
 - Never add generic thanks or appreciation for watching, commenting, sharing,
   supporting the channel, or sharing love/devotion.
 - Do not write sentences such as "Thank you for watching and sharing your devotion with us! ❤️",
@@ -81,6 +77,49 @@ Mandatory reply style (takes precedence over persona and examples):
 - For questions or feedback needing an answer, answer directly and briefly
   without a generic gratitude introduction or ending.
 """
+
+# Appended to whichever style block above applies, so the two concerns stay
+# separate: the blocks above are about tone and format, these are only about
+# which language a reply is written in. Keyed by the page's
+# config.reply_language_policy -- see config.REPLY_LANGUAGE_POLICIES.
+_LANGUAGE_INSTRUCTIONS: dict[str, str] = {
+    "match_commenter": """
+- Reply in the same language AND the same script the commenter used: Odia to an
+  Odia comment, Kannada to Kannada, Tamil to Tamil, Telugu to Telugu, Bengali
+  to Bengali, Marathi to Marathi, Hindi to Hindi, English to English, and the
+  same for any other language the comment is written in.
+- If the comment is romanized -- an Indian language typed in Latin letters, like
+  "jay maa" or "tumba chennagide" -- reply romanized in that same language, not
+  in the native script and not in English.
+- Write it the way a native speaker of that language casually writes to a
+  friend, not as a textbook translation of an English sentence.
+- One language per reply. Never mix two languages or two scripts in the same
+  reply, and never add a translation of your own reply.
+""",
+    "odia_or_english": """
+- Write the whole reply in ONE language: either Odia or English. Never mix Odia
+  and English in the same reply.
+- Do not use Hindi, Gujarati, Bengali, Telugu, Punjabi, or any other language.
+  Do not mix Devanagari (जय, माँ) into an Odia reply; use Odia (ଜୟ, ମା)
+  or English (Jay Maa).
+""",
+}
+
+
+def _style_instruction(page_key: str) -> str:
+    """The page's mandatory style block plus its reply-language rules."""
+    base = _REPLY_STYLE_INSTRUCTIONS.get(page_key, _GENERIC_STYLE_INSTRUCTION)
+    policy = config.reply_language_policy(page_key)
+    language = _LANGUAGE_INSTRUCTIONS[policy]
+    fallback = config.reply_fallback_language(page_key)
+    if fallback:
+        language = (
+            f"{language.rstrip()}\n"
+            f"- If the comment gives you no language to follow -- only emoji, only\n"
+            f"  punctuation, or a name on its own -- reply in {fallback}.\n"
+        )
+    return f"{base.rstrip()}\n{language.lstrip()}"
+
 
 _OUTPUT_INSTRUCTION = '''
 Respond with JSON only, no markdown:
@@ -113,7 +152,7 @@ def draft_reply(
     label = _PLATFORM_LABELS.get(platform, platform)
     persona = config.PAGES[page_key].persona
     examples_block = format_for_prompt(load_examples(page_key=page_key), page_key=page_key)
-    style_instruction = _REPLY_STYLE_INSTRUCTIONS.get(page_key, _GENERIC_STYLE_INSTRUCTION)
+    style_instruction = _style_instruction(page_key)
     system_instruction = (
         f"{persona}\n\n"
         f"You are drafting a public reply to a comment on a {label}. "
@@ -147,7 +186,7 @@ def draft_reply(
             reply = _parse_draft_payload(response.text.strip())
             if platform in _MENTION_PLATFORMS:
                 reply = f"@{author} {reply}"
-            return sanitize_draft(reply)
+            return sanitize_draft(reply, page_key=page_key)
         except errors.ClientError as e:
             if e.code == 429 and attempt < MAX_RATE_LIMIT_RETRIES:
                 delay = _retry_delay_seconds(e)

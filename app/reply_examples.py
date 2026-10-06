@@ -69,12 +69,21 @@ def format_for_prompt(
         "Never add generic thanks for watching, commenting, supporting, or "
         "sharing love/devotion."
     )
-    if page_key == config.DEFAULT_PAGE_KEY:
-        # Hindolroad-specific language policy -- also stated in generate.py's
-        # per-page style instruction, repeated here for extra emphasis in
-        # the examples section of the prompt. Not appropriate for a page
-        # with a different persona/language, so kept default-page-only.
+    # The page's language policy, repeated here for emphasis in the examples
+    # section of the prompt as well as in generate.py's style instruction.
+    # Under match_commenter the examples need the opposite warning from the
+    # one the old Odia-only rule gave: every example file a page has today is
+    # written in that page's main language, and the closest example to a
+    # Kannada comment will be an Odia or English one. Without this line the
+    # model treats the examples' language as part of the style to copy.
+    if config.reply_language_policy(page_key) == "odia_or_english":
         intro += " Use only Odia or only English in each reply, never Hindi or mixed scripts."
+    else:
+        intro += (
+            " Copy the examples' tone, length and format only -- never their"
+            " language. Write every reply in the commenter's own language,"
+            " even when every example is in a different one."
+        )
     lines = [intro, "", "Examples:"]
     for comment, reply in examples:
         lines.append(f'Comment: "{comment}"')

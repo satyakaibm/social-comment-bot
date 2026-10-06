@@ -1,6 +1,8 @@
 import base64
 import os
 from dataclasses import dataclass
+
+from app.scripts import SCRIPT_NAMES
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -209,6 +211,61 @@ def _load_reply_persona(*, suffix: str = "", persona_dir: Path | None = None) ->
     )
 
 
+# How a page decides which language to reply in. Consumed by generate.py (the
+# mandatory prompt rules) and sanitize.py (what it does with mixed scripts).
+#
+#   match_commenter  -- mirror the commenter's own language and script, for any
+#                       language Gemini supports. The default: a viewer who
+#                       writes in Kannada gets a Kannada reply.
+#   odia_or_english  -- the original Hindolroad rule: every reply is wholly in
+#                       Odia or wholly in English, and any other Indic script
+#                       is transliterated to Odia or dropped. Kept as an opt-in
+#                       because it is a far stronger guarantee against Gemini
+#                       leaking Devanagari chant words into an Odia reply --
+#                       the problem sanitize.py's _SCRIPT_FIXES was written for.
+REPLY_LANGUAGE_POLICIES = ("match_commenter", "odia_or_english")
+DEFAULT_REPLY_LANGUAGE_POLICY = "match_commenter"
+
+
+def _reply_auto_post_scripts(suffix: str) -> tuple[str, ...]:
+    """Scripts this page is willing to publish without a human reading first.
+
+    Empty (the default) means no gate: every draft posts exactly as it did
+    before this setting existed. Naming scripts turns it on, and a draft in
+    any other script is held in pending_review for the dashboard instead of
+    being auto-posted -- the safety valve for turning on match_commenter on a
+    channel whose replies have only ever been proof-read in one language.
+    `Latin` covers English and anything romanized; see app/scripts.py.
+    """
+    raw = os.environ.get(f"REPLY_AUTO_POST_SCRIPTS{suffix}", "").strip()
+    if not raw:
+        return ()
+    names = []
+    for value in raw.split(","):
+        name = value.strip().title()
+        if not name:
+            continue
+        if name not in SCRIPT_NAMES:
+            raise RuntimeError(
+                f"REPLY_AUTO_POST_SCRIPTS{suffix} lists unknown script {value.strip()!r}. "
+                f"Known: {', '.join(SCRIPT_NAMES)}."
+            )
+        names.append(name)
+    return tuple(names)
+
+
+def _reply_language_policy(suffix: str) -> str:
+    raw = os.environ.get(f"REPLY_LANGUAGE_POLICY{suffix}", "").strip().lower()
+    if not raw:
+        return DEFAULT_REPLY_LANGUAGE_POLICY
+    if raw not in REPLY_LANGUAGE_POLICIES:
+        raise RuntimeError(
+            f"REPLY_LANGUAGE_POLICY{suffix}={raw!r} is not one of "
+            f"{', '.join(REPLY_LANGUAGE_POLICIES)}."
+        )
+    return raw
+
+
 @dataclass(frozen=True)
 class PageConfig:
     """One Facebook Page + its linked Instagram account: its own credentials,
@@ -233,6 +290,16 @@ class PageConfig:
     youtube_daily_reply_limit: int
     persona: str
     persona_dir: Path
+    # Defaulted so every existing PageConfig(...) call site (and the test
+    # builders) keeps working without naming them.
+    reply_language_policy: str = DEFAULT_REPLY_LANGUAGE_POLICY
+    # Language to fall back on when a comment gives nothing to mirror -- only
+    # emoji, only punctuation, or a script the model can't place. Empty means
+    # "say nothing about it in the prompt" and leaves the persona in charge.
+    reply_fallback_language: str = ""
+    # Empty = post every language unreviewed, as before. See
+    # _reply_auto_post_scripts.
+    reply_auto_post_scripts: tuple[str, ...] = ()
 
 
 def _build_page_config(suffix: str) -> "PageConfig | None":
@@ -300,6 +367,11 @@ def _build_page_config(suffix: str) -> "PageConfig | None":
         ),
         persona=_load_reply_persona(suffix=suffix, persona_dir=persona_dir),
         persona_dir=persona_dir,
+        reply_language_policy=_reply_language_policy(suffix),
+        reply_fallback_language=os.environ.get(
+            f"REPLY_FALLBACK_LANGUAGE{suffix}", ""
+        ).strip(),
+        reply_auto_post_scripts=_reply_auto_post_scripts(suffix),
     )
 
 
@@ -337,6 +409,9 @@ if not PAGES:
         youtube_daily_reply_limit=0,
         persona=_load_reply_persona(),
         persona_dir=REPLY_EXAMPLES_DIR,
+        reply_language_policy=_reply_language_policy(""),
+        reply_fallback_language=os.environ.get("REPLY_FALLBACK_LANGUAGE", "").strip(),
+        reply_auto_post_scripts=_reply_auto_post_scripts(""),
     )
 
 DEFAULT_PAGE_KEY = next(iter(PAGES))
@@ -347,6 +422,29 @@ PAGES_BY_FACEBOOK_ID = {
 PAGES_BY_INSTAGRAM_ID = {
     p.instagram_user_id: p.key for p in PAGES.values() if p.instagram_user_id
 }
+
+
+def reply_language_policy(page_key: str) -> str:
+    """The reply-language policy for page_key, for callers that only have a key.
+
+    Tolerates an unknown or empty key (legacy comment rows store page_key='')
+    the same way _daily_limit_for does, rather than raising on data that
+    predates multi-page support.
+    """
+    page = PAGES.get(page_key or DEFAULT_PAGE_KEY)
+    return page.reply_language_policy if page else DEFAULT_REPLY_LANGUAGE_POLICY
+
+
+def reply_fallback_language(page_key: str) -> str:
+    """page_key's fallback reply language, or "" when it has none."""
+    page = PAGES.get(page_key or DEFAULT_PAGE_KEY)
+    return page.reply_fallback_language if page else ""
+
+
+def reply_auto_post_scripts(page_key: str) -> tuple[str, ...]:
+    """Scripts page_key may auto-post; empty means "no gate"."""
+    page = PAGES.get(page_key or DEFAULT_PAGE_KEY)
+    return page.reply_auto_post_scripts if page else ()
 
 
 def facebook_page_keys() -> list[str]:
