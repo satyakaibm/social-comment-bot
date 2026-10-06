@@ -148,8 +148,17 @@ def audience_timing_focus(
     rows: list[dict],
     engagement_rows: list[dict] | None = None,
     quality_rows: list[dict] | None = None,
+    *,
+    now: "datetime | None" = None,
 ) -> list[dict]:
-    """Find each channel/platform's strongest publishing window in IST.
+    """Find when each channel/platform's existing audience engages, in IST.
+
+    This is a reply-timing signal, not a publish-timing one: it is built
+    from when people commented and when snapshots saw likes/shares/views
+    move, i.e. from the slice of the audience that already interacts.
+    Follower presence -- what the platforms' own "most active times" show
+    -- is a different population; see instagram_online_focus for the one
+    platform that exposes it.
 
     The score blends unique audience demand, comment intent quality, and
     observed view/like/share/comment growth so raw comment volume cannot
@@ -206,11 +215,22 @@ def audience_timing_focus(
             )
         peak_cell = max((score[day][hour], day, hour) for day in range(7) for hour in range(24))
         window_comments = sum(comments[best_day][start_hour + offset] for offset in range(3))
+        window_demand = sum(demand[best_day][start_hour + offset] for offset in range(3))
+        window_engagement = sum(engagement[best_day][start_hour + offset] for offset in range(3))
         confidence = _timing_confidence(
             total_comments=total_comments,
             total_demand=total_demand,
             total_engagement=total_engagement,
             signal_count=len(used_signals),
+            window_demand=window_demand,
+            window_engagement=window_engagement,
+        )
+        # Pooled across weekdays: 7x the evidence per hour, for when any
+        # single weekday is too thin to say anything on its own.
+        pooled_score = [sum(score[day][hour] for day in range(7)) for hour in range(24)]
+        pooled_start, pooled_total = _best_same_day_window(pooled_score)
+        pooled_demand = sum(
+            demand[day][pooled_start + offset] for day in range(7) for offset in range(3)
         )
         weekday_windows = [
             _weekday_publish_window(
@@ -223,10 +243,18 @@ def audience_timing_focus(
             for day in range(7)
         ]
         signal_label = ", ".join(used_signals) if used_signals else "comment volume"
+        next_window = next_engagement_window(weekday_windows, now=now)
         results.append(
             {
                 "page_key": page_key,
                 "platform": platform,
+                "next_window": next_window,
+                "pooled_window": (
+                    f"{_hour_label(pooled_start)}–{_hour_label(pooled_start + 3)} IST"
+                    if pooled_total > 0 else "Insufficient data"
+                ),
+                "pooled_window_demand": int(round(pooled_demand)),
+                "window_demand": int(round(window_demand)),
                 "comment_count": int(total_comments),
                 "unique_authors": int(round(total_demand)),
                 "engagement_score": total_engagement,
@@ -246,13 +274,16 @@ def audience_timing_focus(
                 "weekday_windows": weekday_windows,
                 "peak_count": peak_cell[0],
                 "message": (
-                    f"Keep collecting comments and engagement snapshots before choosing a publish window."
+                    "Keep collecting comments and engagement snapshots before reading "
+                    "anything into this."
                     if window_score <= 0
                     else (
-                        f"The strongest audience window is {WEEKDAYS[best_day]} between "
-                        f"{_hour_label(start_hour)} and {_hour_label(start_hour + 3)} IST, "
-                        f"using {signal_label}. Test publishing or being available to "
-                        "reply then, and use the weekday schedule for same-day times."
+                        f"The people who already engage with you are most active on "
+                        f"{WEEKDAYS[best_day]}s between {_hour_label(start_hour)} and "
+                        f"{_hour_label(start_hour + 3)} IST, from {signal_label}. That is "
+                        "the best time to be around to reply. It is not a measure of "
+                        "when to publish: for that use the Instagram card above, or the "
+                        "platform's own dashboard."
                     )
                 ),
             }
@@ -441,6 +472,56 @@ def _ist_window_label(start_utc: int) -> str:
     return f"{_ist_slot_label(start_utc)}–{_ist_slot_label((start_utc + 3) % 24)} IST"
 
 
+def next_engagement_window(weekday_windows: list[dict], *, now=None) -> dict | None:
+    """The soonest upcoming weekday window with signal, from `now` (IST).
+
+    Searches today first (a window still ahead today, or in progress, wins),
+    then the following days, and finally today's weekday again a week out --
+    so a single-weekday signal always resolves to a real upcoming time rather
+    than a bare weekday name that reads like a date.
+    """
+    now = now or datetime.now(IST)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=IST)
+    now = now.astimezone(IST)
+    today = (now.weekday() + 1) % 7
+    for offset in range(8):
+        entry = weekday_windows[(today + offset) % 7]
+        if not entry.get("has_signal") or entry.get("window_start_hour") is None:
+            continue
+        day = now.date() + timedelta(days=offset)
+        start = datetime(day.year, day.month, day.day, int(entry["window_start_hour"]), tzinfo=IST)
+        end = start + timedelta(hours=3)
+        if end <= now:
+            continue
+        in_progress = start <= now
+        hours_until = max(0.0, (start - now).total_seconds() / 3600)
+        if offset == 0:
+            when = "today"
+        elif offset == 1:
+            when = "tomorrow"
+        else:
+            when = start.strftime("%A %d %b")
+        if in_progress:
+            starts_in = "in progress now"
+        elif hours_until < 1:
+            starts_in = f"in {int(round(hours_until * 60))} min"
+        elif hours_until < 24:
+            starts_in = f"in {int(round(hours_until))} h"
+        else:
+            starts_in = f"in {int(hours_until // 24)} day(s)"
+        return {
+            "when_label": when,
+            "window": entry["window"],
+            "day": entry["day"],
+            "day_index": entry["day_index"],
+            "in_progress": in_progress,
+            "starts_in": starts_in,
+            "confidence": entry.get("confidence", ""),
+        }
+    return None
+
+
 def _group_timing_rows(rows: list[dict]) -> dict[tuple[str, str], list[dict]]:
     groups: dict[tuple[str, str], list[dict]] = defaultdict(list)
     for row in rows:
@@ -463,11 +544,19 @@ def _grid_total(grid: list[list[float]]) -> float:
 
 
 def _timing_engagement_score(row: dict) -> float:
+    """Growth that viewers caused, for timing purposes.
+
+    comment_growth is deliberately left out. It comes from the platform's
+    comment_count, which includes the bot's own replies -- posted seconds
+    after each incoming comment via webhooks -- so it mostly re-measured
+    comment arrival plus the bot's reply timing. Comment arrival is already
+    the demand grid; counting it twice, once inflated, pulled every window
+    toward whenever the bot was busiest.
+    """
     likes = float(row.get("like_growth") or 0)
-    comments = float(row.get("comment_growth") or 0)
     shares = float(row.get("share_growth") or 0)
     views = float(row.get("view_growth") or 0)
-    return likes + (2 * comments) + (3 * shares) + (0.02 * views)
+    return likes + (3 * shares) + (0.02 * views)
 
 
 def _blend_timing_grids(grids: dict[str, list[list[float]]]) -> tuple[list[list[float]], list[str]]:
@@ -496,13 +585,27 @@ def _blend_timing_grids(grids: dict[str, list[list[float]]]) -> tuple[list[list[
     return blended, [labels[name] for name, _weight, _peak, _grid in available]
 
 
+# A window needs this many distinct commenters -- or this much viewer growth
+# -- inside its own three hours before it is more than a guess, whatever the
+# totals across the grid say.
+WINDOW_MIN_DEMAND = 5
+WINDOW_MIN_ENGAGEMENT = 10
+
+
 def _timing_confidence(
     *,
     total_comments: float,
     total_demand: float,
     total_engagement: float,
     signal_count: int,
+    window_demand: float = 0.0,
+    window_engagement: float = 0.0,
 ) -> str:
+    # Grid totals used to be the only input, so 100 comments spread thinly
+    # over 168 cells could rate "high" for a window that itself held two
+    # of them. The window's own evidence gates everything below.
+    if window_demand < WINDOW_MIN_DEMAND and window_engagement < WINDOW_MIN_ENGAGEMENT:
+        return "early"
     if signal_count >= 2 and total_demand >= 40 and total_engagement >= 80:
         return "high"
     if total_comments >= 100 and signal_count >= 2:
