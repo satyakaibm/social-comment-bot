@@ -36,7 +36,7 @@
     {% include "page_back.html" %}
     <div class="form-content">
     {% if not session.get("dashboard_authenticated") %}    <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">{% endif %}
-    <p class="eyebrow">Social Comment Studio</p>
+    <p class="eyebrow">Social Comment Bot</p>
     <h1>Add portal user</h1>
     <p class="copy">Create a login for someone who should review comments. Only signed-in operators can add accounts.</p>
     {% if error %}<p class="message">{{ error }}</p>{% endif %}

@@ -32,7 +32,7 @@
   <main>
     <div class="form-content">
     <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
-    <p class="eyebrow">Social Comment Studio</p>
+    <p class="eyebrow">Social Comment Bot</p>
     <h1>{{ "You’re signed out" if signed_out else "Welcome back" }}</h1>
     {% if configuration_missing %}
       <p class="message">Dashboard login is not configured. Add DASHBOARD_USERNAME and DASHBOARD_PASSWORD_HASH_B64 to the environment.</p>

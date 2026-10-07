@@ -41,7 +41,7 @@
         </section>
         <section class="settings-panel" id="policies" aria-labelledby="policies-title">
           <div class="panel-heading"><div><h2 id="policies-title">Privacy &amp; policies</h2><p>Learn how we handle your data. Opens in a new tab.</p></div></div>
-          {% for path, title, description in [('/privacy', 'Privacy Policy', 'How your information is collected, used, and protected.'), ('/terms', 'Terms of Service', 'Guidelines for using Social Comment Studio.'), ('/datadeletion', 'Data Deletion Instructions', 'How to request removal of your data.')] %}
+          {% for path, title, description in [('/privacy', 'Privacy Policy', 'How your information is collected, used, and protected.'), ('/terms', 'Terms of Service', 'Guidelines for using Social Comment Bot.'), ('/datadeletion', 'Data Deletion Instructions', 'How to request removal of your data.')] %}
           <div class="setting-row"><div><h3>{{ title }}</h3><p>{{ description }}</p></div><a class="settings-button" href="{{ path }}" target="_blank" rel="noopener" aria-label="Read {{ title }} (opens in a new tab)">Read policy <span aria-hidden="true">↗</span></a></div>
           {% endfor %}
         </section>
