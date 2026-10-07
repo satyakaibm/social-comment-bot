@@ -141,10 +141,39 @@ gcloud config set project project-e1de8eb7-3b06-4142-9b3 --quiet
 # comes up. The loop deliberately does not use a shell variable: this command
 # crosses the Jenkins shell, the Cloud SDK container shell, and the VM shell,
 # and an earlier `$ok` flag was expanded by the wrong `set -u` shell.
-gcloud compute ssh social-comment-bot \
-  --zone=us-central1-a --project=project-e1de8eb7-3b06-4142-9b3 --tunnel-through-iap --quiet \
-  --command="cd /opt/social-comment-bot && sudo git pull && sudo ./scripts/rebuild_all_containers.sh && { for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do curl -sf http://localhost:9001/api/health >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1; }" \
-  -- -o StrictHostKeyChecking=no
+# Retried once, and only for one specific failure. Build #105 (2026-10-07)
+# died on the VM with "sudo: a password is required" although nothing had
+# changed: IAM still granted jenkins-deployer roles/compute.osAdminLogin and
+# the VM's sudoers were intact. The serial console showed why --
+# "google_authorized_principals: Failed to validate that OS Login user
+# sa_... has adminLogin permission; got HTTP response code: 404". Google's
+# metadata server flaked the admin check for that one SSH session, so the
+# login succeeded but no /var/google-sudoers.d entry was written, and the
+# first sudo on the VM failed before touching anything. A re-run 13 minutes
+# later passed. Only that exact sudo message triggers the retry: a failed
+# git pull, rebuild, or health check still fails the build on the first
+# attempt, since re-running those would just repeat a real error more
+# slowly. `set +e` plus PIPESTATUS (this runs in the Cloud SDK container's
+# bash, not the VM's shell) keeps the ssh exit code while tee captures the
+# output to grep.
+attempt=1
+while :; do
+  set +e
+  gcloud compute ssh social-comment-bot \
+    --zone=us-central1-a --project=project-e1de8eb7-3b06-4142-9b3 --tunnel-through-iap --quiet \
+    --command="cd /opt/social-comment-bot && sudo git pull && sudo ./scripts/rebuild_all_containers.sh && { for _ in 1 2 3 4 5 6 7 8 9 10 11 12; do curl -sf http://localhost:9001/api/health >/dev/null 2>&1 && exit 0; sleep 5; done; exit 1; }" \
+    -- -o StrictHostKeyChecking=no 2>&1 | tee /tmp/deploy-ssh.log
+  rc=${PIPESTATUS[0]}
+  set -e
+  [ "$rc" -eq 0 ] && break
+  if [ "$attempt" -lt 2 ] && grep -q "sudo: a password is required" /tmp/deploy-ssh.log; then
+    echo "OS Login adminLogin check flaked (sudo had no sudoers entry); retrying the SSH step in 20s (attempt $((attempt + 1))/2)" >&2
+    attempt=$((attempt + 1))
+    sleep 20
+    continue
+  fi
+  exit "$rc"
+done
 DEPLOY
                     '''
                 }
