@@ -70,6 +70,18 @@ class EmailVerificationTests(_ProfileCase):
         self.assertEqual(user["email_code_target"], "admin@example.com")
         self.assertNotIn(self.code_from_mail(), user["email_code_hash"])  # stored hashed
 
+    def test_page_says_where_and_when_the_code_went_and_counts_down_resend(self):
+        page = self.save_email("admin@example.com").data.decode()
+        self.assertIn("Code sent to <strong>admin@example.com</strong> at ", page)
+        self.assertIn(" IST on ", page)
+        self.assertIn("Check the Spam folder", page)
+        self.assertRegex(page, r'id="resend-code" disabled data-wait="\d+">Resend in \d+s</button>')
+
+    def test_send_is_logged_with_recipient_and_host(self):
+        with self.assertLogs("app.dashboard", level="INFO") as logs:
+            self.save_email("admin@example.com")
+        self.assertTrue(any("Verification code sent for admin to admin@example.com" in line for line in logs.output), logs.output)
+
     def test_correct_code_verifies_and_shows_the_green_tick(self):
         self.save_email("admin@example.com")
         page = self.client.post("/profile/email/verify", data={"csrf_token": "tok", "code": self.code_from_mail()})

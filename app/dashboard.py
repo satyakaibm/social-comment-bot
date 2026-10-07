@@ -6,9 +6,10 @@ import re
 import secrets
 import threading
 import time
-from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+
+IST = timezone(timedelta(hours=5, minutes=30))
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode
 
@@ -115,11 +116,16 @@ def email_verification_state(user) -> dict:
     if sent is not None:
         elapsed = (_utcnow() - sent).total_seconds()
         resend_in = max(0, int(config.EMAIL_CODE_RESEND_SECONDS - elapsed))
+    sent_label = ""
+    if pending and sent is not None:
+        sent_label = sent.astimezone(IST).strftime("%H:%M IST on %d %b")
     return {
         "verified": bool(user["email_verified_at"]),
         "pending": pending,
         "can_resend": resend_in == 0,
         "resend_in": resend_in,
+        "sent_label": sent_label,
+        "sent_to": user["email_code_target"] if pending else "",
     }
 
 
@@ -669,6 +675,13 @@ def create_app() -> Flask:
         db.store_email_code(
             conn, user["username"], code_hash=_code_hash(code),
             target_email=user["email"], expires_at=expires_at,
+        )
+        # The SMTP server accepted the message; what happens after that
+        # (spam folder, greylisting) is invisible to us, so leave the one
+        # fact we do know in the log where it can be found later.
+        app.logger.info(
+            "Verification code sent for %s to %s via %s (expires %s)",
+            user["username"], user["email"], config.SMTP_HOST, expires_at,
         )
         return None
 
