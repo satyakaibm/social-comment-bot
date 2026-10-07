@@ -1,6 +1,6 @@
 import pytest
 
-from app import config, db, mailer
+from app import config, db, mailer, query_cache
 
 
 @pytest.fixture(autouse=True)
@@ -21,6 +21,15 @@ def no_real_email(request, monkeypatch):
     sent = []
     monkeypatch.setattr(mailer, "send", lambda **kwargs: sent.append(kwargs))
     yield sent
+
+
+@pytest.fixture(autouse=True)
+def fresh_query_cache():
+    """Analytics results are cached for minutes in production; tests that
+    write rows and then render Momentum/Insights must see their own data."""
+    query_cache.clear()
+    yield
+    query_cache.clear()
 
 
 @pytest.fixture
