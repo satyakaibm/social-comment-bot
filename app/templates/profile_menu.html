@@ -1,0 +1,8 @@
+<details class="profile">
+  <summary aria-label="Open My Profile menu" title="My Profile">{% if profile_avatar_url %}<img class="profile-photo" src="{{ profile_avatar_url }}" alt="">{% else %}{{ profile_initial or session.get('dashboard_username', '')[:1]|upper }}{% endif %}</summary>
+  <div class="profile-menu">
+    <div class="profile-menu-head"><strong class="profile-menu-user">{{ dashboard_username or session.get('dashboard_username', '') }}</strong></div>
+    <a href="/profile">My Profile</a><a href="/settings">Settings</a><a href="/about">Dashboard guide</a><a href="/faq">FAQ</a>
+    <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Log out</button></form>
+  </div>
+</details>

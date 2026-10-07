@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Rebuild the images and recreate EVERY container on the VM -- main instance
+# Rebuild the images and recreate EVERY container in this checkout -- main instance
 # and all tenants -- in one pass.
 #
 #   sudo ./scripts/rebuild_all_containers.sh            # build + recreate all
@@ -38,7 +38,9 @@
 #      keeping a hand-maintained exclusion list that would rot.
 set -euo pipefail
 
-REPO="${BOT_REPO_ROOT:-/opt/social-comment-bot}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO="${BOT_REPO_ROOT:-$(dirname -- "$SCRIPT_DIR")}"
+# BOT_REPO_ROOT can still target a different deployment checkout.
 PROJECT="social-comment-bot"
 HEALTH_URL="http://localhost:9001/api/health"
 
@@ -64,6 +66,10 @@ for arg in "$@"; do
   esac
 done
 
+if [[ ! -f "$REPO/docker-compose.yml" ]]; then
+  echo "No docker-compose.yml found in $REPO. Set BOT_REPO_ROOT to the project folder." >&2
+  exit 1
+fi
 cd "$REPO"
 
 # --- Report what is running now, so drift is visible before and after. ------

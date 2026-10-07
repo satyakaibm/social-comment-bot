@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#0f2a38">
-  <title>About me · Content My Trip</title>
+  <title>Dashboard guide · Content My Trip</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/content-my-trip-icon.png') }}">
   <style>
     :root { --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; --ink:#17252c; --good:#086142; --good-soft:#e9f8f1; --warn:#996010; --warn-soft:#fff6e7; --bad:#98253d; --bad-soft:#fff0f3; }
@@ -14,7 +14,7 @@
     .brand { display:flex; align-items:center; gap:10px; color:var(--navy); font-weight:850; text-decoration:none; }
     .brand img { width:120px; height:40px; object-fit:contain; }
     .back { color:var(--navy); font-size:13px; font-weight:750; text-decoration:none; }
-    .page { max-width:760px; margin:0 auto; padding:40px 24px 80px; }
+    .page { width:100%; max-width:none; margin:0 auto; padding:40px 24px 80px; }
     .eyebrow { display:block; margin-bottom:8px; color:var(--coral); font-size:11px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
     h1 { margin:0 0 10px; color:var(--navy); font-size:30px; letter-spacing:-.03em; }
     .summary { margin:0 0 24px; color:var(--muted); font-size:14px; line-height:1.6; }
@@ -38,20 +38,21 @@
     .pill-warn { color:var(--warn); background:var(--warn-soft); }
     .pill-bad { color:var(--bad); background:var(--bad-soft); }
     .note { margin-top:14px; padding:14px 16px; color:#124054; background:#eef7f8; border:1px solid #cdeaec; border-radius:12px; font-size:13.5px; line-height:1.6; }
-    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px}.mini-table{font-size:12.5px}.mini-table th,.mini-table td{padding:8px} }
+    @media (max-width:620px) { .topbar{padding:0 16px}.page{ width:100%;padding:28px 16px 60px}h1{font-size:25px}.mini-table{font-size:12.5px}.mini-table th,.mini-table td{padding:8px} }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site-header.css') }}">
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
-    <a class="back" href="/">&larr; Back to dashboard</a>
-  </header>
-  <main class="page">
+<body class="account-page account-about">
+  {% include "account_header.html" %}
+  <main class="page" id="account-content">
+    <div class="account-content-inner">
+    {% include "page_back.html" %}
     <span class="eyebrow">Social Comment Studio</span>
-    <h1>About me</h1>
+    <h1>Dashboard guide</h1>
     <p class="summary">
-      A plain-English tour of this dashboard — what everything on the page means, and where
-      the bot behind it actually lives.
+      Learn how to use the dashboard, understand comment statuses, retry failed replies,
+      and manage your account.
     </p>
 
     <ul class="jump">
@@ -194,6 +195,9 @@
         same comment twice.
       </div>
     </section>
+    </div>
   </main>
+{% include "account_footer.html" %}
+<script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
 </body>
 </html>

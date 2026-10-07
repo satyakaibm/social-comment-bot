@@ -14,45 +14,83 @@
     .brand { display:flex; align-items:center; gap:10px; color:var(--navy); font-weight:850; text-decoration:none; }
     .brand img { width:120px; height:40px; object-fit:contain; }
     .back { color:var(--navy); font-size:13px; font-weight:750; text-decoration:none; }
-    .page { max-width:820px; margin:0 auto; padding:40px 24px 80px; }
+    .page { width:100%; max-width:none; margin:0 auto; padding:40px 24px 80px; }
     .eyebrow { display:block; margin-bottom:8px; color:var(--coral); font-size:11px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
     h1 { margin:0 0 10px; color:var(--navy); font-size:30px; letter-spacing:-.03em; }
     .summary { margin:0 0 28px; color:var(--muted); font-size:14px; line-height:1.6; }
     .guide { padding:26px; color:#eaf3f4; background:linear-gradient(155deg,#123c49,#0f2a38 72%); border:1px solid rgba(255,255,255,.08); border-radius:17px; box-shadow:0 12px 28px rgba(15,42,56,.14); }
+    .guide + .guide { margin-top:20px; }
     .guide h2 { margin:0 0 16px; color:#fff; font-size:17px; letter-spacing:-.02em; }
     .guide-list { display:grid; gap:14px; margin:0; }
     .guide-list div { padding-top:14px; border-top:1px solid rgba(255,255,255,.11); }
     .guide-list dt { color:#fff; font-size:13px; font-weight:800; }
     .guide-list dd { margin:5px 0 0; color:rgba(234,243,244,.72); font-size:12px; line-height:1.55; }
-    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px} }
+    @media (max-width:620px) { .topbar{padding:0 16px}.page{ width:100%;padding:28px 16px 60px}h1{font-size:25px} }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site-header.css') }}">
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
-    <a class="back" href="/">&larr; Back to dashboard</a>
-  </header>
-  <main class="page">
+<body class="account-page account-faq">
+  {% include "account_header.html" %}
+  <main class="page" id="account-content">
+    <div class="account-content-inner">
+    {% include "page_back.html" %}
     <span class="eyebrow">Social Comment Studio</span>
     <h1>FAQ</h1>
-    <p class="summary">Definitions for the numbers and statuses shown on the dashboard. The top counts on the dashboard reflect the time range you pick there; the statuses below reflect comments currently saved in the table.</p>
+    <p class="summary">Help with the features available today: managing comments and replies, understanding performance, and looking after your account.</p>
+    <section class="guide" aria-labelledby="workspace-title">
+      <h2 id="workspace-title">Using your workspace</h2>
+      <div class="guide-list">
+        <details class="faq-item"><summary>What can I do in the app today?</summary><p>Monitor comments and automated replies across configured YouTube channels, Facebook pages and Instagram accounts. Use Dashboard to review comment activity, Insights to explore performance, and Momentum to review growth recommendations.</p></details>
+        <details class="faq-item"><summary>How do I find a particular comment?</summary><p>On Dashboard, select a platform or configured channel/page, choose a status, and search by comment text, author, reply or content title. Click a status total to open its matching comments.</p></details>
+        <details class="faq-item"><summary>Where are account options and help?</summary><p>Open the profile icon at the top right for My Profile, Settings, Dashboard guide, FAQ and Logout. Dashboard guide explains the workspace; it is not a personal biography page.</p></details>
+      </div>
+    </section>
     <section class="guide" aria-labelledby="guide-title">
       <h2 id="guide-title">How to read these numbers</h2>
-      <dl class="guide-list">
-        <div><dt>Comments found</dt><dd>New comments the bot saw during the selected time range.</dd></div>
-        <div><dt>Bot replies sent</dt><dd>Comments the bot answered during the selected time range.</dd></div>
-        <div><dt>Answered by you</dt><dd>Comments your own account had answered before the bot checked, so the bot sent no reply for them.</dd></div>
-        <div><dt>Comments taken care of</dt><dd>Bot replies sent plus comments you had answered yourself.</dd></div>
-        <div><dt>Pending review</dt><dd>A reply is drafted and waiting for the automation to process it.</dd></div>
-        <div><dt>Posting</dt><dd>The reply is currently claimed by an active publishing process.</dd></div>
-        <div><dt>Posted</dt><dd>The automation successfully published the reply.</dd></div>
-        <div><dt>Failed</dt><dd>The platform rejected the reply or returned an error; it remains available for retry.</dd></div>
-        <div><dt>Answered by you</dt><dd>An existing reply from your own account was found, so the automation avoided a duplicate. No reply was sent.</dd></div>
-        <div><dt>Rejected</dt><dd>The comment was intentionally excluded, such as when it exceeded the configured age limit, or Meta rejected the reply on every attempt (see META_MAX_POST_ATTEMPTS) and it will not be retried automatically.</dd></div>
-        <div><dt>Why is a status total so much bigger than "Bot replies sent"?</dt><dd>They cover different spans of time. The "Channel activity" numbers follow the 1 Hour / 24 Hours / 7 Day / 30 Days selector above them, while the status totals underneath are all-time counts and ignore that selector. So "Bot replies sent: 6" can sit above an all-time "Answered by you: 130" with nothing wrong — one is the last day, the other is every comment ever.</dd></div>
-        <div><dt>Why do "Bot replies sent" and "Sent replies still saved" sometimes differ?</dt><dd>The bot remembers the total number sent. Old comment details may be removed later to save space, so the saved-record count can be lower than the all-time total.</dd></div>
-      </dl>
+      <div class="guide-list">
+        <details class="faq-item"><summary>What do the Channel activity counts mean?</summary><p>Comments found counts new comments detected during the selected range. Bot replies sent counts replies published during that range. Answered by you counts comments already answered by your account when checked. Comments taken care of combines bot replies and comments you already answered.</p></details>
+        <details class="faq-item"><summary>Why do activity counts and status totals differ?</summary><p>Channel activity follows the 1 Hour, 24 Hours, 7 Day or 30 Days selection. The status totals below it show all-time totals for the selected workspace filters and do not follow that time selector.</p></details>
+        <details class="faq-item"><summary>What does Pending review mean?</summary><p>A reply has been drafted and is waiting for the publishing workflow. This label alone does not mean you need to approve it in the dashboard; processing depends on the configured automation.</p></details>
+        <details class="faq-item"><summary>What do Posting and Posted mean?</summary><p>Posting means a publishing process has claimed the reply. Posted means the platform accepted and published it.</p></details>
+        <details class="faq-item"><summary>What do Failed and Rejected mean?</summary><p>Failed means publishing encountered an error and the reply is available for retry. Rejected means the comment was excluded, for example because it exceeded the configured age limit or reached the Meta posting attempt limit. Rejected replies are not retried automatically.</p></details>
+        <details class="faq-item"><summary>Why is a comment marked Answered by you?</summary><p>The bot found an existing reply from your own account and avoided sending a duplicate. It did not publish a new reply for that comment.</p></details>
+        <details class="faq-item"><summary>Why do Bot replies sent and Sent replies still saved sometimes differ?</summary><p>Activity totals are preserved even when older comment details are removed to save space. The number of saved reply records can therefore be lower than the historical number of replies sent.</p></details>
+      </div>
     </section>
+    <section class="guide" aria-labelledby="replies-title">
+      <h2 id="replies-title">Replies and updates</h2>
+      <div class="guide-list">
+        <details class="faq-item"><summary>Can I edit and retry a failed reply?</summary><p>Yes. Open Failed on Dashboard, edit the draft in the comment row if needed, and select Retry reply. Retry failed replies queues failed replies in bulk. Check the Error column first: retrying does not fix expired credentials, missing permissions or platform limits.</p></details>
+        <details class="faq-item"><summary>Why has a new comment or reply not appeared yet?</summary><p>Comment collection and publishing run in background workers. Their timing depends on workspace configuration and platform availability. A daily drafting cap, API limits or a worker error can delay processing. Settings → System → System status helps you check worker activity.</p></details>
+        <details class="faq-item"><summary>Does the refresh icon fetch new data from the platforms?</summary><p>It refreshes the dashboard view using data already collected by the app. Background workers collect platform data on their own schedules; refreshing the page does not start a new collection cycle.</p></details>
+        <details class="faq-item"><summary>Can I change the reply language or connect another account in Settings?</summary><p>Replies normally follow the commenter’s language and the configured reply persona. Platform connections, credentials, polling schedules and reply rules are managed through deployment configuration; the current Settings page does not provide controls for these options. Ask your workspace administrator to change them.</p></details>
+      </div>
+    </section>
+    <section class="guide" aria-labelledby="insights-title">
+      <h2 id="insights-title">Insights and Momentum</h2>
+      <div class="guide-list">
+        <details class="faq-item"><summary>What period does Insights cover?</summary><p>Insights uses retained performance snapshots for up to the last 30 days. Growth figures describe changes between snapshots in the selected period, rather than the content’s lifetime totals. A newly connected account needs time to collect enough history.</p></details>
+        <details class="faq-item"><summary>Why are some charts or metrics empty?</summary><p>The app may not yet have enough snapshots, or the platform may not supply that metric for the connected account. Collection delays and permission errors can also affect availability. An empty value should not automatically be read as zero.</p></details>
+        <details class="faq-item"><summary>Does Most active mean my followers are online right now?</summary><p>Instagram timing can use audience activity data when available. YouTube and Facebook timing is based on collected engagement evidence. These views help compare activity patterns; they are not a live list of online followers.</p></details>
+        <details class="faq-item"><summary>What does Momentum do?</summary><p>Momentum uses recent retained performance data to suggest growth opportunities and experiments. Review the supporting evidence and confidence before acting. Recommendations do not automatically publish content or guarantee a particular result.</p></details>
+      </div>
+    </section>
+    <section class="guide" aria-labelledby="account-title">
+      <h2 id="account-title">Profile, access and troubleshooting</h2>
+      <div class="guide-list">
+        <details class="faq-item"><summary>What can I change in My Profile?</summary><p>You can update your display name, email, current location, phone number and Facebook, Instagram, YouTube and TikTok page links, upload a PNG, JPEG or WebP profile photo up to 1 MB, or remove your existing photo. Select Save profile to apply changes. The profile icon is shared across the workspace pages.</p></details>
+        <details class="faq-item"><summary>How do I change my password?</summary><p>Open My Profile and select Reset password. Changing your own password requires your current password. The new password must contain at least eight characters, an uppercase letter, a number and a special character. Existing sessions are invalidated after a password change.</p></details>
+        <details class="faq-item"><summary>Why can’t I see the Users tab in Settings?</summary><p>User management is available to administrators. Administrators can add portal users and change member/admin roles. The last administrator cannot be demoted, so the workspace retains an administrator.</p></details>
+        <details class="faq-item"><summary>What if an email verification code does not arrive?</summary><p>Verify the email address and check your spam folder. Email delivery requires the workspace’s mail service to be configured. A verification code expires after 15 minutes; resend is available after 60 seconds. If delivery still fails, contact your workspace administrator.</p></details>
+        <details class="faq-item"><summary>Where can I check whether the app is running?</summary><p>Open Settings → System. System status shows worker heartbeats, webhook queue information, API quota information and database size. Gateway health checks the service endpoint; a healthy endpoint alone does not confirm that every background worker is running.</p></details>
+        <details class="faq-item"><summary>What should I do if a page shows Internal Server Error?</summary><p>Try refreshing once. If it continues, tell your workspace administrator the page address and when it happened so they can inspect the dashboard logs. Avoid repeatedly retrying replies while the error is unresolved.</p></details>
+        <details class="faq-item"><summary>How do I sign out?</summary><p>Open the profile menu and select Logout. You will return to the sign-in page. Logout is kept in the profile menu so it is available consistently across pages.</p></details>
+      </div>
+    </section>
+    </div>
   </main>
+{% include "account_footer.html" %}
+<script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
 </body>
 </html>

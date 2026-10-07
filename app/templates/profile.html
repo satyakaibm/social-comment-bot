@@ -10,7 +10,7 @@
     :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
     * { box-sizing:border-box; }
     body { min-height:100vh; margin:0; padding:32px 20px; color:#17252c; background:radial-gradient(circle at 90% 5%,rgba(255,106,61,.14),transparent 30rem),#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-    main { width:min(760px,100%); margin:auto; }
+    main { width:100%; margin:auto; }
     .brand { display:block; width:190px; height:64px; margin:0 auto 24px; object-fit:contain; }
     .card { padding:34px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.12); }
     .profile-head { display:flex; align-items:center; gap:16px; margin-bottom:28px; }
@@ -24,10 +24,14 @@
     label { display:block; margin:0 0 7px; color:var(--navy); font-size:12px; font-weight:750; }
     input { width:100%; height:46px; padding:0 13px; color:#17252c; background:#f8fafb; border:1px solid var(--line); border-radius:11px; font:inherit; outline:none; }
     input:focus { background:#fff; border-color:#36aeb4; box-shadow:0 0 0 3px rgba(54,174,180,.12); }
+    input:disabled { color:var(--muted); cursor:not-allowed; opacity:1; }
     input[readonly] { color:var(--muted); cursor:not-allowed; }
     .actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .profile-edit-actions { flex-wrap:wrap; }
+    .profile-edit-actions .edit-profile { margin-left:auto; }
     button,.secondary { min-height:44px; padding:0 17px; display:inline-flex; align-items:center; justify-content:center; border-radius:11px; font:inherit; font-size:13px; font-weight:800; text-decoration:none; cursor:pointer; }
     button { color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
     .secondary { color:var(--navy); background:#fff; border:1px solid var(--line); }
     .footer-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:26px; padding-top:20px; border-top:1px solid var(--line); }
     .back { min-width:120px; min-height:46px; padding:0 20px; display:inline-flex; align-items:center; justify-content:center; color:#fff; background:var(--navy); border-radius:12px; box-shadow:0 8px 22px rgba(15,42,56,.2); font-size:15px; font-weight:850; letter-spacing:.08em; text-align:center; text-decoration:none; }
@@ -35,7 +39,26 @@
     .back:hover { background:#173b4c; transform:translateY(-1px); }
     .avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; }
     .avatar { overflow:hidden; }
+    .avatar-edit { position:relative; flex:0 0 auto; width:66px; height:66px; min-height:66px; padding:0; background:transparent; border:0; border-radius:50%; }
+    .avatar-edit .avatar { width:66px; height:66px; }
+    .camera-badge { position:absolute; right:-2px; bottom:-2px; display:grid; place-items:center; width:26px; height:26px; color:#fff; background:var(--navy); border:2px solid #fff; border-radius:50%; }
+    .camera-badge svg { width:14px; height:14px; }
+    .avatar-edit:focus-visible { outline:3px solid #36aeb4; outline-offset:4px; }
+    #profile-form.is-editing input:not([readonly]):not([type=hidden]) { border-color:#36aeb4; background:#fff; }
+
     .section-title { margin:26px 0 10px; color:var(--navy); font-size:13px; font-weight:850; letter-spacing:.06em; text-transform:uppercase; }
+    .profile-email-field { grid-column:1/-1; }
+    .email-input-actions { display:flex; align-items:center; gap:12px; }
+    .email-input-actions input { flex:1; min-width:0; }
+    .email-input-actions button { flex:0 0 auto; min-height:46px; }
+    [hidden] { display:none !important; }
+    @media(max-width:600px) { .email-input-actions{flex-wrap:wrap}.email-input-actions input{flex-basis:100%} }
+    .email-verification-dialog { width:min(480px,calc(100vw - 32px)); padding:26px; border:1px solid var(--line); border-radius:16px; color:#17252c; background:#fff; box-shadow:0 24px 70px rgba(15,42,56,.25); }
+    .email-verification-dialog::backdrop { background:rgba(15,42,56,.5); }
+    .email-verification-dialog h2 { margin:0 0 18px; color:var(--navy); font-size:22px; }
+    .email-verification-dialog .section-title { display:none; }
+    .email-verification-dialog .inline-form { margin-bottom:12px; }
+    .email-verification-dialog .dialog-close { display:flex; margin:18px 0 0 auto; }
     .email-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:8px; }
     .badge { display:inline-flex; align-items:center; gap:6px; padding:5px 10px; border-radius:999px; font-size:11px; font-weight:800; }
     .badge.verified { color:#086142; background:#e9f8f1; border:1px solid #c9ecdd; }
@@ -48,31 +71,48 @@
     .ghost { color:var(--navy); background:#fff; border:1px solid var(--line); }
     .hint { margin:6px 0 0; color:var(--muted); font-size:11px; }
     @media (max-width:600px) { .card{padding:25px 20px}.grid{grid-template-columns:1fr}.actions{align-items:stretch;flex-direction:column}.actions>*{width:100%}.inline-form{width:100%}.inline-form input{flex:1}.footer-actions{flex-direction:column-reverse;align-items:stretch}.footer-actions>*{width:100%} }
+    @media (max-width:600px) { .actions.profile-edit-actions{flex-direction:row;align-items:center}.profile-edit-actions>*{width:auto} }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site-header.css') }}">
 </head>
-<body>
-  <main>
-    <img class="brand" src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
+<body class="account-page account-profile">
+  {% include "account_header.html" %}
+  <main class="page" id="account-content">
+    <div class="account-content-inner">
+    {% include "page_back.html" %}
+    <span class="eyebrow">Your workspace, your identity</span>
     <section class="card">
-      <div class="profile-head"><span class="avatar">{% if user.avatar_path %}<img src="{{ url_for('profile_avatar', username=user.username, v=user.updated_at) }}" alt="">{% else %}{{ user.username[:1]|upper }}{% endif %}</span><div><h1>My Profile</h1><p class="sub">Manage your portal account details and security.</p></div></div>
+      <div class="profile-content">
+      <div class="profile-head"><button type="button" class="avatar-edit" id="edit-avatar" disabled aria-label="Change profile photo" title="Change profile photo"><span class="avatar" id="profile-photo-preview">{% if user.avatar_path %}<img src="{{ url_for('profile_avatar', username=user.username, v=user.updated_at) }}" alt="">{% else %}{{ user.username[:1]|upper }}{% endif %}</span><span class="camera-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h4l2-3h4l2 3h4v13H4z"></path><circle cx="12" cy="13" r="4"></circle></svg></span></button><div><h1>My Profile</h1><p class="sub">Manage your portal account details and security.</p></div></div>
       {% if error %}<p class="message error">{{ error }}</p>{% endif %}
       {% if success %}<p class="message success">{{ success }}</p>{% endif %}
-      <form method="post" id="profile-form" enctype="multipart/form-data">
+      <form method="post" action="/profile" id="profile-form" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="grid">
           <div><label for="username">User ID</label><input id="username" value="{{ user.username }}" readonly></div>
-          <div><label for="display-name">Display name</label><input id="display-name" name="display_name" value="{{ user.display_name or '' }}" maxlength="100" autocomplete="name"></div>
-          <div><label for="email">Email address</label><input id="email" name="email" type="email" value="{{ user.email or '' }}" maxlength="254" autocomplete="email">
-            {% if user.email %}<div class="email-row">
+          <div><label for="display-name">Display name</label><input disabled id="display-name" name="display_name" value="{{ user.display_name or '' }}" maxlength="100" autocomplete="name"></div>
+          <div class="profile-email-field"><label for="email">Email address</label>
+            <div class="email-input-actions">
+              <input disabled id="email" name="email" type="email" value="{{ user.email or '' }}" maxlength="254" autocomplete="email">
+              <button id="changed-email-verification" hidden type="submit" class="small" {% if not mail_configured %}disabled{% endif %}>Send Verification Code</button>
+            </div>
+            {% if user.email %}<div class="email-row" id="saved-email-status">
               {% if verification.verified %}<span class="badge verified"><span class="tick" aria-hidden="true">&#10003;</span>Verified</span>
               {% else %}<span class="badge unverified">Not verified</span>{% endif %}
             </div>{% endif %}
+            <p class="hint" id="changed-email-hint" hidden>{% if mail_configured %}Sending the code saves your new email and other profile changes.{% else %}Email delivery is not configured. Contact your workspace administrator to enable verification.{% endif %}</p>
           </div>
-          <div><label for="avatar-file">Profile photo</label><input type="file" name="avatar" id="avatar-file" accept="image/png,image/jpeg,image/webp">
+          <div><label for="current-location">Current location</label><input disabled id="current-location" name="current_location" value="{{ user.current_location or '' }}" maxlength="150" autocomplete="address-level2" placeholder="City, country"></div>
+          <div><label for="phone-number">Phone number</label><input disabled id="phone-number" name="phone_number" type="tel" value="{{ user.phone_number or '' }}" maxlength="40" autocomplete="tel" placeholder="Include country code"></div>
+          {% for name, label in [('facebook_page_link', 'Facebook Page Link'), ('instagram_page_link', 'Instagram Page Link'), ('youtube_page_link', 'YouTube Page Link'), ('tiktok_page_link', 'TikTok Page Link')] %}
+          <div><label for="{{ name }}">{{ label }}</label><input disabled id="{{ name }}" name="{{ name }}" type="url" value="{{ user[name] or '' }}" maxlength="2048" placeholder="https://"></div>
+          {% endfor %}
+          <div><label for="avatar-file">Profile photo</label><input type="file" name="avatar" id="avatar-file" disabled accept="image/png,image/jpeg,image/webp">
             <p class="hint">PNG, JPEG or WebP, up to 1 MB. Saved with the rest of the form by Save profile; shown in the profile icon on every page.</p>
           </div>
         </div>
-        <div class="actions" style="margin-top:22px"><a class="secondary" href="/profile/password">Reset password</a>{% if user.avatar_path %}<button class="small ghost" type="submit" form="remove-photo-form">Remove photo</button>{% endif %}</div>
+        <div class="profile-edit-actions actions" style="margin-top:22px"><a class="secondary" href="/profile/password">Reset password</a>{% if user.avatar_path %}<button class="small ghost" type="submit" form="remove-photo-form" disabled>Remove photo</button>{% endif %}<button class="secondary edit-profile" type="button" id="edit-profile">Edit Profile</button></div>
       </form>
       {% if user.avatar_path %}
       <form method="post" action="/profile/avatar/remove" id="remove-photo-form">
@@ -81,6 +121,7 @@
       {% endif %}
 
       {% if user.email and not verification.verified %}
+      <div id="saved-email-verification" hidden>
       <p class="section-title">Verify your email</p>
       {% if not mail_configured %}
         <p class="hint">Email verification is not available on this portal yet: the administrator needs to set <code>SMTP_HOST</code> and <code>MAIL_FROM</code> in the instance configuration.</p>
@@ -102,16 +143,123 @@
         </form>
         <p class="hint">A 6-digit code will be sent to {{ user.email }}.</p>
       {% endif %}
+      </div>
       {% endif %}
 
       <div class="footer-actions">
-        <a class="back" href="/">BACK</a>
-        <button type="submit" form="profile-form" class="primary">Save profile</button>
+        <button type="button" class="secondary" id="cancel-profile" disabled>Cancel</button>
+        <button type="submit" form="profile-form" class="primary" disabled>Save profile</button>
+      </div>
       </div>
     </section>
+    </div>
   </main>
+  {% if verification.pending %}
+  <dialog id="email-verification-dialog" class="email-verification-dialog" aria-labelledby="email-dialog-title" data-open-on-load="{{ 'true' if request.method == 'POST' else 'false' }}">
+    <h2 id="email-dialog-title">Verify your email</h2>
+    <div id="email-dialog-content"></div>
+    <button type="button" class="secondary dialog-close" id="close-email-dialog">Close</button>
+  </dialog>
+  {% endif %}
   <script>
     (function () {
+      var form = document.getElementById('profile-form');
+      var photo = document.getElementById('avatar-file');
+      var previewUrl;
+      var editButton = document.getElementById('edit-profile');
+      var cancelButton = document.getElementById('cancel-profile');
+      var saveButton = document.querySelector('button[form="profile-form"]');
+      var editableFields = form.querySelectorAll('input[name]:not([type="hidden"])');
+      var photoButton = document.getElementById('edit-avatar');
+      var removePhotoButton = document.querySelector('button[form="remove-photo-form"]');
+      var emailField = document.getElementById('email');
+      var savedEmail = {{ (user.email or '')|tojson }};
+      var emailPrompt = document.getElementById('changed-email-verification');
+      var savedVerification = document.getElementById('saved-email-verification');
+      var savedStatus = document.getElementById('saved-email-status');
+      function updateEmailFlow() {
+        var changed = emailField.value.trim().toLowerCase() !== savedEmail.trim().toLowerCase();
+        emailPrompt.hidden = !form.classList.contains('is-editing') || !changed || !emailField.value.trim();
+        document.getElementById('changed-email-hint').hidden = emailPrompt.hidden;
+        if (savedVerification) {
+          savedVerification.hidden = changed || !form.classList.contains('is-editing');
+          savedVerification.querySelectorAll('input[name="code"]').forEach(function (field) {
+            field.disabled = savedVerification.hidden;
+          });
+        }
+        if (savedStatus) savedStatus.hidden = changed;
+      }
+      emailField.addEventListener('input', updateEmailFlow);
+      function setEditing(editing) {
+        form.classList.toggle('is-editing', editing);
+        editableFields.forEach(function (field) {
+          field.disabled = !editing;
+        });
+        photoButton.disabled = !editing;
+        if (removePhotoButton) removePhotoButton.disabled = !editing;
+        saveButton.disabled = !editing;
+        cancelButton.disabled = !editing;
+        editButton.disabled = editing;
+        updateEmailFlow();
+      }
+      setEditing({{ 'true' if request.method == 'POST' and (verification.pending or request.path.startswith('/profile/email/') or error) else 'false' }});
+      form.addEventListener('submit', function (event) {
+        if (!form.classList.contains('is-editing')) event.preventDefault();
+      });
+      cancelButton.addEventListener('click', function () {
+        window.location.assign('/profile');
+      });
+      document.getElementById('edit-avatar').addEventListener('click', function () {
+        setEditing(true);
+        photo.click();
+      });
+      photo.addEventListener('change', function () {
+        photo.setCustomValidity('');
+        var file = photo.files[0];
+        if (!file) return;
+        if (file.size > 1024 * 1024 || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+          photo.value = '';
+          photo.setCustomValidity('Select a PNG, JPEG or WebP image of 1 MB or smaller.');
+          photo.reportValidity();
+          return;
+        }
+        photo.setCustomValidity('');
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(file);
+        var image = document.createElement('img');
+        image.src = previewUrl;
+        image.alt = 'Selected profile photo preview';
+        document.getElementById('profile-photo-preview').replaceChildren(image);
+        setEditing(true);
+      });
+      document.getElementById('edit-profile').addEventListener('click', function () {
+        setEditing(true);
+        var field = document.getElementById('display-name');
+        field.focus();
+        field.select();
+      });
+      function setupVerificationDialog() {
+      var dialog = document.getElementById('email-verification-dialog');
+      if (dialog && savedVerification) {
+        var originalParent = savedVerification.parentNode;
+        var originalNext = savedVerification.nextSibling;
+        function openVerification() {
+          setEditing(true);
+          savedVerification.hidden = false;
+          document.getElementById('email-dialog-content').appendChild(savedVerification);
+          dialog.showModal();
+          var codeField = dialog.querySelector('input[name="code"]');
+          if (codeField) codeField.focus();
+        }
+        dialog.addEventListener('close', function () {
+          originalParent.insertBefore(savedVerification, originalNext);
+        });
+        document.getElementById('close-email-dialog').addEventListener('click', function () { dialog.close(); });
+        if (dialog.dataset.openOnLoad === 'true') openVerification();
+      }
+      }
+      setupVerificationDialog();
+      function startResendCountdown() {
       // Count the resend cool-down down on the button itself, then enable it.
       var resend = document.getElementById('resend-code');
       if (resend && resend.disabled) {
@@ -122,7 +270,52 @@
           else { resend.textContent = 'Resend in ' + left + 's'; }
         }, 1000);
       }
+      }
+      startResendCountdown();
+      form.addEventListener('submit', async function (event) {
+        if (event.submitter !== emailPrompt) return;
+        event.preventDefault();
+        var data = new FormData(form);
+        emailPrompt.disabled = true;
+        emailPrompt.textContent = 'Sending…';
+        var hint = document.getElementById('changed-email-hint');
+        try {
+          var response = await fetch('/profile', { method:'POST', body:data });
+          var page = new DOMParser().parseFromString(await response.text(), 'text/html');
+          var verification = page.getElementById('saved-email-verification');
+          var newDialog = page.getElementById('email-verification-dialog');
+          var problem = page.querySelector('.message.error');
+          if (!response.ok || problem || !verification || !newDialog) {
+            hint.textContent = problem ? problem.textContent : 'Could not send the code. Please try again.';
+            hint.hidden = false;
+            return;
+          }
+          var oldDialog = document.getElementById('email-verification-dialog');
+          if (oldDialog) oldDialog.remove();
+          if (savedVerification) savedVerification.remove();
+          savedVerification = verification;
+          form.insertAdjacentElement('afterend', savedVerification);
+          document.body.appendChild(newDialog);
+          var newStatus = page.getElementById('saved-email-status');
+          if (savedStatus) savedStatus.remove();
+          savedStatus = newStatus;
+          if (savedStatus) emailField.closest('.profile-email-field').appendChild(savedStatus);
+          savedEmail = emailField.value.trim();
+          photo.value = '';
+          setEditing(true);
+          setupVerificationDialog();
+          startResendCountdown();
+        } catch (error) {
+          hint.textContent = 'Could not send the code. Check your connection and try again.';
+          hint.hidden = false;
+        } finally {
+          emailPrompt.disabled = false;
+          emailPrompt.textContent = 'Send Verification Code';
+        }
+      });
     })();
   </script>
+{% include "account_footer.html" %}
+<script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
 </body>
 </html>

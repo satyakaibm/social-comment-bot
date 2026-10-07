@@ -10,7 +10,7 @@
     :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
     * { box-sizing:border-box; }
     body { min-height:100vh; margin:0; display:grid; place-items:center; padding:24px; color:#17252c; background:radial-gradient(circle at 90% 5%,rgba(255,106,61,.14),transparent 30rem),radial-gradient(circle at 4% 90%,rgba(54,174,180,.12),transparent 28rem),#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-    main { width:min(450px,100%); padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
+    main { width:100%; padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
     img { display:block; width:190px; height:64px; margin:0 auto 25px; object-fit:contain; }
     .eyebrow { margin:0 0 8px; color:var(--coral); font-size:11px; font-weight:800; letter-spacing:.15em; text-transform:uppercase; }
     h1 { margin:0; color:var(--navy); font-size:30px; letter-spacing:-.035em; }
@@ -23,11 +23,19 @@
     .hint { margin:7px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
     .login-link { margin:18px 0 0; color:var(--muted); font-size:13px; text-align:center; }
     .login-link a { color:var(--navy); font-weight:800; text-decoration:none; }
+    .form-content { width:100%; max-width:560px; min-width:0; margin-inline:auto; }
+    .form-content input, .form-content select { max-width:100%; }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site-header.css') }}">
 </head>
-<body>
-  <main>
-    <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
+<body{% if session.get("dashboard_authenticated") %} class="account-page"{% endif %}>
+  {% if session.get("dashboard_authenticated") %}{% include "account_header.html" %}{% endif %}
+  <main class="page" id="account-content">
+    {% set back_fallback = "/settings" %}
+    {% include "page_back.html" %}
+    <div class="form-content">
+    {% if not session.get("dashboard_authenticated") %}    <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">{% endif %}
     <p class="eyebrow">Social Comment Studio</p>
     <h1>Add portal user</h1>
     <p class="copy">Create a login for someone who should review comments. Only signed-in operators can add accounts.</p>
@@ -44,7 +52,9 @@
       <input id="confirm-password" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required>
       <button type="submit">Create account</button>
     </form>
-    <p class="login-link"><a href="/settings">Back to settings</a></p>
+
+      </div>
   </main>
+<script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
 </body>
 </html>

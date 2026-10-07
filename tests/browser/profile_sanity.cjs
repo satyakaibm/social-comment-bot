@@ -1,0 +1,80 @@
+const assert = require('node:assert/strict');
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage({viewport:{width:1440,height:900}});
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    const base = process.argv[2];
+    await page.goto(base + '/login');
+    await page.locator('input[name="username"]').fill('admin');
+    await page.locator('input[name="password"]').fill('test-password');
+    await page.locator('button[type="submit"]').click();
+    await page.waitForURL(base + '/');
+    await page.goto(base + '/profile');
+    for (const id of ['display-name','email','current-location','phone-number','facebook_page_link','instagram_page_link','youtube_page_link','tiktok_page_link','avatar-file']) {
+      assert(await page.locator('#' + id).isDisabled(), id + ' starts disabled');
+    }
+    assert(await page.getByRole('button',{name:'Cancel',exact:true}).isDisabled());
+    assert(await page.getByRole('button',{name:'Save profile',exact:true}).isDisabled());
+    await page.getByRole('button',{name:'Edit Profile',exact:true}).click();
+    await page.locator('#current-location').fill('Unsaved city');
+    await page.locator('#avatar-file').setInputFiles({name:'avatar.png',mimeType:'image/png',buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aav8AAAAASUVORK5CYII=','base64')});
+    assert((await page.locator('#profile-photo-preview img').getAttribute('src')).startsWith('blob:'));
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    await page.waitForLoadState();
+    assert.equal(await page.locator('#current-location').inputValue(), '');
+    assert.equal(await page.locator('#profile-photo-preview img').count(),0);
+    assert(await page.locator('#email').isDisabled());
+    await page.getByRole('button',{name:'Edit Profile',exact:true}).click();
+    await page.locator('#email').fill('updated@example.test');
+    const send = page.getByRole('button',{name:'Send Verification Code',exact:true});
+    assert(await send.isVisible());
+    const beforeSendUrl = page.url();
+    await send.click();
+    const dialog = page.getByRole('dialog', {name:'Verify your email'});
+    await dialog.waitFor({state:'visible'});
+    assert.equal(page.url(),beforeSendUrl,'Sending code does not navigate');
+    assert.equal(await page.locator('#email').isDisabled(), false);
+    assert.equal(await page.getByRole('button',{name:'Save profile',exact:true}).isDisabled(), false);
+    assert(await dialog.getByRole('button',{name:'Verify',exact:true}).isVisible());
+    assert(await dialog.locator('#resend-code').isVisible());
+    await page.waitForFunction(() => !document.getElementById('resend-code').disabled);
+    await dialog.locator('#resend-code').click();
+    await page.getByRole('dialog',{name:'Verify your email'}).waitFor({state:'visible'});
+    assert.equal(await page.locator('#email').isDisabled(),false,'Resending keeps edit mode');
+    const code = await page.evaluate(async () => (await fetch('/test-mail')).json());
+    await dialog.getByRole('textbox',{name:'6-digit verification code'}).fill('000000' === code.code ? '111111' : '000000');
+    await dialog.getByRole('button',{name:'Verify',exact:true}).click();
+    await page.getByRole('dialog').waitFor({state:'visible'});
+    assert(await page.locator('.message.error').isVisible());
+    await page.getByRole('textbox',{name:'6-digit verification code'}).fill(code.code);
+    await page.getByRole('button',{name:'Verify',exact:true}).click();
+    await page.getByText('Email address verified.',{exact:true}).waitFor();
+    assert.equal(await page.locator('#email').isDisabled(), false);
+    await page.getByRole('button',{name:'Save profile',exact:true}).click();
+    await page.waitForLoadState();
+    assert(await page.locator('#email').isDisabled());
+    await page.goto(base + '/settings');
+    assert.equal(await page.locator('.settings-sections a[href="/profile/password"]').count(), 0);
+    assert.equal(await page.locator('.settings-tabs a[href="#account"]').count(), 0);
+    for (const path of ['/profile','/settings','/about','/faq','/status','/health']) {
+      const response = await page.goto(base + path);
+      assert.equal(response.status(), 200, path);
+      assert(await page.getByRole('link',{name:'Back to Dashboard',exact:true}).isVisible());
+      assert.equal(await page.locator('[data-page-back]').count(), 0);
+      assert(await page.locator('.workspace-header .profile').isVisible());
+    }
+    await page.setViewportSize({width:390,height:844});
+    await page.goto(base + '/profile');
+    await page.getByRole('button',{name:'Edit Profile',exact:true}).click();
+    await page.locator('#email').fill('mobile@example.test');
+    assert(await page.getByRole('button',{name:'Send Verification Code',exact:true}).isVisible());
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),'No horizontal overflow on mobile');
+    await page.locator('#email').press('Backspace');
+    assert.equal(page.url(),base + '/profile','Backspace edits input without leaving page');
+    assert.deepEqual(errors, []);
+    console.log('Browser sanity passed: read/edit/cancel, send/verify, settings and shared pages.');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

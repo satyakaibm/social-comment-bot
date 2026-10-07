@@ -350,6 +350,9 @@ def init_db() -> None:
         user_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(dashboard_users)")
         }
+        for column in ("current_location", "phone_number", "social_page_link", "facebook_page_link", "instagram_page_link", "youtube_page_link", "tiktok_page_link"):
+            if column not in user_columns:
+                conn.execute(f"ALTER TABLE dashboard_users ADD COLUMN {column} TEXT")
         if "display_name" not in user_columns:
             conn.execute("ALTER TABLE dashboard_users ADD COLUMN display_name TEXT")
         if "email" not in user_columns:
@@ -1411,7 +1414,7 @@ def create_dashboard_user(
 
 def get_dashboard_user(conn: sqlite3.Connection, username: str):
     return conn.execute(
-        """SELECT id, username, display_name, email, password_hash, version,
+        """SELECT id, username, display_name, email, current_location, phone_number, social_page_link, facebook_page_link, instagram_page_link, youtube_page_link, tiktok_page_link, password_hash, version,
                   is_admin, created_at, updated_at, email_verified_at, avatar_path,
                   email_code_hash, email_code_target, email_code_expires_at,
                   email_code_sent_at, email_code_attempts
@@ -1474,7 +1477,9 @@ def update_dashboard_user_password(
 
 
 def update_dashboard_user_profile(
-    conn: sqlite3.Connection, username: str, *, display_name: str, email: str
+    conn: sqlite3.Connection, username: str, *, display_name: str, email: str,
+    current_location: str = "", phone_number: str = "", social_page_link: str = "",
+    facebook_page_link: str = "", instagram_page_link: str = "", youtube_page_link: str = "", tiktok_page_link: str = ""
 ) -> bool:
     """Save display name and email. A changed email drops its verified state
     and any code in flight for the old address; an unchanged one keeps both."""
@@ -1488,22 +1493,22 @@ def update_dashboard_user_profile(
             conn.execute(
                 """
                 UPDATE dashboard_users
-                SET display_name = ?, email = ?, updated_at = ?,
+                SET display_name = ?, email = ?, current_location = ?, phone_number = ?, social_page_link = ?, facebook_page_link = ?, instagram_page_link = ?, youtube_page_link = ?, tiktok_page_link = ?, updated_at = ?,
                     email_verified_at = NULL, email_code_hash = NULL,
                     email_code_target = NULL, email_code_expires_at = NULL,
                     email_code_sent_at = NULL, email_code_attempts = 0
                 WHERE username = ? COLLATE NOCASE
                 """,
-                (display_name or None, email or None, now(), username.strip()),
+                (display_name or None, email or None, current_location or None, phone_number or None, social_page_link or None, facebook_page_link or None, instagram_page_link or None, youtube_page_link or None, tiktok_page_link or None, now(), username.strip()),
             )
         else:
             conn.execute(
                 """
                 UPDATE dashboard_users
-                SET display_name = ?, email = ?, updated_at = ?
+                SET display_name = ?, email = ?, current_location = ?, phone_number = ?, social_page_link = ?, facebook_page_link = ?, instagram_page_link = ?, youtube_page_link = ?, tiktok_page_link = ?, updated_at = ?
                 WHERE username = ? COLLATE NOCASE
                 """,
-                (display_name or None, email or None, now(), username.strip()),
+                (display_name or None, email or None, current_location or None, phone_number or None, social_page_link or None, facebook_page_link or None, instagram_page_link or None, youtube_page_link or None, tiktok_page_link or None, now(), username.strip()),
             )
     except sqlite3.IntegrityError:
         return False

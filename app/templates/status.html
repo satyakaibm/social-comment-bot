@@ -14,7 +14,7 @@
     .brand { display:flex; align-items:center; gap:10px; color:var(--navy); font-weight:850; text-decoration:none; }
     .brand img { width:120px; height:40px; object-fit:contain; }
     .back { color:var(--navy); font-size:13px; font-weight:750; text-decoration:none; }
-    .page { max-width:860px; margin:0 auto; padding:40px 24px 80px; }
+    .page { width:100%; max-width:none; margin:0 auto; padding:40px 24px 80px; }
     .eyebrow { display:block; margin-bottom:8px; color:var(--coral); font-size:11px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
     h1 { margin:0 0 10px; color:var(--navy); font-size:30px; letter-spacing:-.03em; }
     .summary { margin:0 0 28px; color:var(--muted); font-size:14px; line-height:1.6; }
@@ -43,15 +43,19 @@
     .quota-values span { display:block; margin-top:3px; color:var(--muted); font-size:10px; font-weight:700; text-transform:uppercase; }
     .empty { padding:20px; color:var(--muted); font-size:13px; text-align:center; background:#fff; border:1px solid var(--line); border-radius:14px; }
     @media (max-width:700px) { .stat-grid,.quota-grid{grid-template-columns:1fr 1fr} }
-    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px}.stat-grid,.quota-grid{grid-template-columns:1fr} }
+    @media (max-width:620px) { .topbar{padding:0 16px}.page{ width:100%;padding:28px 16px 60px}h1{font-size:25px}.stat-grid,.quota-grid{grid-template-columns:1fr} }
+    .status-content { margin-inline:auto; width:100%; max-width:1280px; min-width:0; }
+    .status-content input, .status-content select { max-width:100%; }
   </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site-header.css') }}">
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
-    <a class="back" href="/settings">&larr; Back to settings</a>
-  </header>
-  <main class="page">
+<body{% if session.get("dashboard_authenticated") %} class="account-page"{% endif %}>
+  {% if session.get("dashboard_authenticated") %}{% include "account_header.html" %}{% endif %}
+  <main class="page" id="account-content">
+    {% set back_fallback = "/settings" %}
+    {% include "page_back.html" %}
+    <div class="status-content">
     <span class="eyebrow">Social Comment Studio</span>
     <h1>System status</h1>
     <p class="summary">Whether each background worker is still running, quota headroom per channel, and the webhook queue's backlog -- everything that used to need a manual SSH check.</p>
@@ -110,6 +114,8 @@
     <div class="stat-grid">
       <div class="stat"><p class="stat-value">{{ db_size_mb if db_size_mb is not none else "—" }}{% if db_size_mb is not none %} MB{% endif %}</p><p class="stat-label">comments.db size</p></div>
     </div>
+      </div>
   </main>
+<script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
 </body>
 </html>
