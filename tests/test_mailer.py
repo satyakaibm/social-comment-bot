@@ -71,6 +71,41 @@ class MailerTests(unittest.TestCase):
         self.assertIn(b"Subject: Your verification code", server.data)
         self.assertIn(b"code is: 123456", server.data)
 
+    def test_flask_mail_names_are_accepted_and_display_name_gets_the_mailbox(self):
+        import importlib
+        from app import config as cfg
+        env = {
+            "MAIL_SERVER": "smtp.gmail.com", "MAIL_PORT": "587",
+            "MAIL_USERNAME": "contentmytrip@gmail.com", "MAIL_PASSWORD": "app-pw",
+            "MAIL_FROM": "Content My Trip", "MAIL_USE_TLS": "true", "MAIL_USE_SSL": "false",
+        }
+        with patch.dict("os.environ", env, clear=False):
+            for name in ("SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_USE_TLS", "SMTP_USE_SSL"):
+                __import__("os").environ.pop(name, None)
+            importlib.reload(cfg)
+            try:
+                self.assertEqual(cfg.SMTP_HOST, "smtp.gmail.com")
+                self.assertEqual(cfg.SMTP_PORT, 587)
+                self.assertEqual(cfg.SMTP_USERNAME, "contentmytrip@gmail.com")
+                self.assertEqual(cfg.SMTP_PASSWORD, "app-pw")
+                self.assertTrue(cfg.SMTP_USE_TLS)
+                self.assertFalse(cfg.SMTP_USE_SSL)
+                self.assertEqual(cfg.MAIL_FROM, "Content My Trip <contentmytrip@gmail.com>")
+                self.assertTrue(mailer.configured())
+            finally:
+                pass
+        importlib.reload(cfg)
+
+    def test_smtp_names_win_over_aliases(self):
+        import importlib
+        from app import config as cfg
+        with patch.dict("os.environ", {"SMTP_HOST": "relay.example.test", "MAIL_SERVER": "smtp.gmail.com",
+                                       "MAIL_FROM": "portal@example.test"}):
+            importlib.reload(cfg)
+            self.assertEqual(cfg.SMTP_HOST, "relay.example.test")
+            self.assertEqual(cfg.MAIL_FROM, "portal@example.test")
+        importlib.reload(cfg)
+
     def test_unconfigured_is_a_clear_error_not_a_connection_attempt(self):
         with patch.multiple(config, SMTP_HOST="", MAIL_FROM=""):
             self.assertFalse(mailer.configured())

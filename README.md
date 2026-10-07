@@ -216,7 +216,7 @@ SMTP_PASSWORD=app-password
 MAIL_FROM=you@gmail.com
 ```
 
-Until `SMTP_HOST` and `MAIL_FROM` are set, the page says verification is unavailable rather than failing. Tenants are separate containers with their own `.env`, so each needs its own settings (they can share one mailbox).
+The Flask-Mail names are accepted as aliases (`MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_USE_TLS`, `MAIL_USE_SSL`; `SMTP_*` wins if both are set), and `MAIL_FROM` may be a bare address, `Name <address>`, or just a display name -- a display name alone is paired with the login mailbox. Until a host and a from-address are set, the page says verification is unavailable rather than failing. Tenants are separate containers with their own `.env`, so each needs its own settings (they can share one mailbox).
 
 Users can also upload a profile photo (PNG, JPEG or WebP, 1 MB max, identified by file signature rather than filename) which replaces the initial-letter badge in the header on every page. Files live in `data/avatars/` -- per tenant, alongside the database -- and are served only to signed-in users.
 
