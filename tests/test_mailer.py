@@ -79,9 +79,11 @@ class MailerTests(unittest.TestCase):
             "MAIL_USERNAME": "contentmytrip@gmail.com", "MAIL_PASSWORD": "app-pw",
             "MAIL_FROM": "Content My Trip", "MAIL_USE_TLS": "true", "MAIL_USE_SSL": "false",
         }
+        # Empty strings rather than pops: config re-reads .env on reload and a
+        # popped key would quietly come back from the developer's own file.
+        env.update({name: "" for name in ("SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME",
+                                          "SMTP_PASSWORD", "SMTP_USE_TLS", "SMTP_USE_SSL")})
         with patch.dict("os.environ", env, clear=False):
-            for name in ("SMTP_HOST", "SMTP_PORT", "SMTP_USERNAME", "SMTP_PASSWORD", "SMTP_USE_TLS", "SMTP_USE_SSL"):
-                __import__("os").environ.pop(name, None)
             importlib.reload(cfg)
             try:
                 self.assertEqual(cfg.SMTP_HOST, "smtp.gmail.com")
@@ -105,8 +107,8 @@ class MailerTests(unittest.TestCase):
             self.assertEqual(cfg.SMTP_HOST, "smtp.gmail.com")
             self.assertEqual(cfg.MAIL_FROM, "portal@example.test")
         # SMTP_* alone still works for anyone who configured it that way.
-        with patch.dict("os.environ", {"SMTP_HOST": "relay.example.test", "MAIL_FROM": "portal@example.test"}):
-            __import__("os").environ.pop("MAIL_SERVER", None)
+        with patch.dict("os.environ", {"SMTP_HOST": "relay.example.test", "MAIL_FROM": "portal@example.test",
+                                       "MAIL_SERVER": ""}):
             importlib.reload(cfg)
             self.assertEqual(cfg.SMTP_HOST, "relay.example.test")
         importlib.reload(cfg)

@@ -103,8 +103,8 @@
       <div class="photo-row">
         <form class="inline-form" method="post" action="/profile/avatar" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="file" name="avatar" accept="image/png,image/jpeg,image/webp" required>
-          <button class="small" type="submit">Upload</button>
+          <input type="file" name="avatar" id="avatar-file" accept="image/png,image/jpeg,image/webp" required>
+          <button class="small ghost" type="submit" id="avatar-upload" disabled>Upload photo</button>
         </form>
         {% if user.avatar_path %}
         <form class="inline-form" method="post" action="/profile/avatar/remove">
@@ -117,5 +117,13 @@
     </section>
     <a class="back" href="/">BACK</a>
   </main>
+  <script>
+    // The photo form is separate from "Save profile"; keep its button inert
+    // until a file is chosen so the two cannot be mistaken for each other.
+    (function () {
+      var file = document.getElementById('avatar-file'), button = document.getElementById('avatar-upload');
+      if (file && button) { file.addEventListener('change', function () { button.disabled = !file.files.length; }); }
+    })();
+  </script>
 </body>
 </html>
