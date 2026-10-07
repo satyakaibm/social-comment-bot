@@ -161,7 +161,7 @@
     <button type="button" class="secondary dialog-close" id="close-email-dialog">Close</button>
   </dialog>
   {% endif %}
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (function () {
       var form = document.getElementById('profile-form');
       var photo = document.getElementById('avatar-file');

@@ -50,7 +50,7 @@
     </div>
   </main>
 {% include "account_footer.html" %}
-<script>
+<script nonce="{{ csp_nonce() }}">
 (() => {
   const navigation = document.querySelector('.settings-tabs');
   const tabs = Array.from(navigation.querySelectorAll('a'));

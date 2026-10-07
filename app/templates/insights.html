@@ -145,7 +145,7 @@ the three; change all three together. --- */
       {% else %}<div class="empty"><div class="empty-icon">↗</div><strong>No engagement data yet</strong>Stats will appear automatically after the next refresh.</div>{% endif %}
     </section>
   </main>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     document.querySelectorAll('details.channels-select').forEach((details)=>{const summary=details.querySelector('summary'),menu=details.querySelector('.channels-menu');const positionMenu=()=>{const rect=summary.getBoundingClientRect();menu.style.top=`${rect.bottom+8}px`;menu.style.left=`${Math.min(rect.left,window.innerWidth-226)}px`};details.addEventListener('toggle',()=>{if(details.open)positionMenu()});window.addEventListener('scroll',()=>{if(details.open)positionMenu()},true);window.addEventListener('resize',()=>{if(details.open)positionMenu()});document.addEventListener('click',(event)=>{if(details.open&&!details.contains(event.target))details.removeAttribute('open')})});
     document.querySelectorAll('.fan-period-button').forEach((button)=>{button.addEventListener('click',()=>{const period=button.dataset.period;document.querySelectorAll('.fan-period-button').forEach((item)=>{const selected=item===button;item.classList.toggle('active',selected);item.setAttribute('aria-pressed',String(selected))});document.querySelectorAll('[data-fan-period]').forEach((list)=>{list.hidden=list.dataset.fanPeriod!==period})})});
   </script>
