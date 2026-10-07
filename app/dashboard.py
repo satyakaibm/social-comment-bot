@@ -168,7 +168,22 @@ def _csrf_token() -> str:
 
 
 def _safe_next(target: str) -> str:
-    return target if target.startswith("/") and not target.startswith("//") else "/"
+    """Return ``target`` only if it is a same-origin absolute path, else "/".
+
+    The old check only refused a leading "//". Browsers normalise backslashes
+    in a Location header to forward slashes, so ``/\\evil.com`` is followed as
+    ``//evil.com``, a scheme-relative off-site redirect, even though urlsplit
+    sees no netloc in it. Reject backslashes and control characters outright,
+    then confirm the remainder still parses with no scheme or host.
+    """
+    if not target.startswith("/") or target.startswith("//"):
+        return "/"
+    if "\\" in target or any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in target):
+        return "/"
+    parts = urlsplit(target)
+    if parts.scheme or parts.netloc:
+        return "/"
+    return target
 
 
 def _client_ip() -> str:
