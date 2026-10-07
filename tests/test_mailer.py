@@ -96,14 +96,19 @@ class MailerTests(unittest.TestCase):
                 pass
         importlib.reload(cfg)
 
-    def test_smtp_names_win_over_aliases(self):
+    def test_mail_names_are_canonical_and_win_over_the_smtp_aliases(self):
         import importlib
         from app import config as cfg
         with patch.dict("os.environ", {"SMTP_HOST": "relay.example.test", "MAIL_SERVER": "smtp.gmail.com",
                                        "MAIL_FROM": "portal@example.test"}):
             importlib.reload(cfg)
-            self.assertEqual(cfg.SMTP_HOST, "relay.example.test")
+            self.assertEqual(cfg.SMTP_HOST, "smtp.gmail.com")
             self.assertEqual(cfg.MAIL_FROM, "portal@example.test")
+        # SMTP_* alone still works for anyone who configured it that way.
+        with patch.dict("os.environ", {"SMTP_HOST": "relay.example.test", "MAIL_FROM": "portal@example.test"}):
+            __import__("os").environ.pop("MAIL_SERVER", None)
+            importlib.reload(cfg)
+            self.assertEqual(cfg.SMTP_HOST, "relay.example.test")
         importlib.reload(cfg)
 
     def test_unconfigured_is_a_clear_error_not_a_connection_attempt(self):

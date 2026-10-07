@@ -19,11 +19,11 @@ AVATAR_MAX_BYTES = 1024 * 1024
 
 # Outbound email for profile email verification. All optional: with
 # SMTP_HOST or MAIL_FROM unset the portal cannot send, and /profile says so.
-# Each setting also accepts the Flask-Mail name (MAIL_SERVER, MAIL_PORT,
-# MAIL_USERNAME, MAIL_PASSWORD, MAIL_USE_TLS, MAIL_USE_SSL): that convention
-# is what people reach for when adding mail to a Flask app, and the first
-# production rollout was written that way in all three .env files before the
-# SMTP_* names were noticed. The SMTP_* name wins when both are present.
+# The settings use the Flask-Mail names (MAIL_SERVER, MAIL_PORT,
+# MAIL_USERNAME, MAIL_PASSWORD, MAIL_USE_TLS, MAIL_USE_SSL) so every project
+# of ours reads the same way as Content My Trip's .env. The SMTP_* names
+# that PR #130 shipped with are still accepted as aliases; MAIL_* wins when
+# both are present.
 
 
 def _mail_setting(primary: str, alias: str, default: str = "") -> str:
@@ -38,12 +38,12 @@ def _mail_flag(primary: str, alias: str, default: bool) -> bool:
     return raw in ("1", "true", "yes", "on")
 
 
-SMTP_HOST = _mail_setting("SMTP_HOST", "MAIL_SERVER")
-SMTP_PORT = int(_mail_setting("SMTP_PORT", "MAIL_PORT", "587"))
-SMTP_USERNAME = _mail_setting("SMTP_USERNAME", "MAIL_USERNAME")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD") or os.environ.get("MAIL_PASSWORD", "")
-SMTP_USE_TLS = _mail_flag("SMTP_USE_TLS", "MAIL_USE_TLS", True)
-SMTP_USE_SSL = _mail_flag("SMTP_USE_SSL", "MAIL_USE_SSL", False)
+SMTP_HOST = _mail_setting("MAIL_SERVER", "SMTP_HOST")
+SMTP_PORT = int(_mail_setting("MAIL_PORT", "SMTP_PORT", "587"))
+SMTP_USERNAME = _mail_setting("MAIL_USERNAME", "SMTP_USERNAME")
+SMTP_PASSWORD = os.environ.get("MAIL_PASSWORD") or os.environ.get("SMTP_PASSWORD", "")
+SMTP_USE_TLS = _mail_flag("MAIL_USE_TLS", "SMTP_USE_TLS", True)
+SMTP_USE_SSL = _mail_flag("MAIL_USE_SSL", "SMTP_USE_SSL", False)
 SMTP_TIMEOUT_SECONDS = int(os.environ.get("SMTP_TIMEOUT_SECONDS", "20"))
 # MAIL_FROM may be a bare address, a full "Name <address>", or just a display
 # name. A display name on its own (no "@") is paired with the login mailbox,
