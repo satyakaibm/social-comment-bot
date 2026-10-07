@@ -442,7 +442,7 @@ def create_app() -> Flask:
         return render_template(
             "profile.html", user=auth, verification=email_verification_state(auth),
             mail_configured=mailer.configured(),
-            error="That file is too large. Profile photos must be 1 MB or smaller.",
+            error="That photo is too large. Profile photos must be 1 MB or smaller.",
         ), 413
 
     @app.route("/favicon.ico")
@@ -685,6 +685,26 @@ def create_app() -> Flask:
         )
         return None
 
+    def _store_avatar(auth, data: bytes) -> str | None:
+        """Validate and write a profile photo; returns an error message or None."""
+        if len(data) > config.AVATAR_MAX_BYTES:
+            return "That photo is too large. Profile photos must be 1 MB or smaller."
+        sniffed = _sniff_image(data)
+        if sniffed is None:
+            return "The photo must be a PNG, JPEG or WebP image."
+        ext, _mimetype = sniffed
+        config.AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+        filename = f"{auth['id']}.{ext}"
+        # Remove any previous photo with a different extension before
+        # writing, so one user never has two files on disk.
+        for stale in config.AVATAR_DIR.glob(f"{auth['id']}.*"):
+            if stale.name != filename:
+                stale.unlink(missing_ok=True)
+        (config.AVATAR_DIR / filename).write_bytes(data)
+        with request_db() as conn:
+            db.set_dashboard_user_avatar(conn, auth["username"], filename)
+        return None
+
     @app.route("/profile", methods=("GET", "POST"))
     def profile():
         auth = dashboard_auth()
@@ -698,6 +718,16 @@ def create_app() -> Flask:
                 return _render_profile(submitted_user, 400, error="Display name cannot exceed 100 characters.")
             if email and (len(email) > 254 or not EMAIL_PATTERN.fullmatch(email)):
                 return _render_profile(submitted_user, 400, error="Enter a valid email address.")
+            # One form saves everything: a photo is optional and travels in
+            # the same request, so there is no second submit button to
+            # mistake for Save. A missing or empty file field is simply
+            # "no new photo".
+            upload = request.files.get("avatar")
+            photo = upload.read(config.AVATAR_MAX_BYTES + 1) if upload is not None and upload.filename else b""
+            if photo:
+                problem = _store_avatar(auth, photo)
+                if problem:
+                    return _render_profile(submitted_user, 400, error=problem)
             email_changed = (auth["email"] or "").strip().casefold() != email.casefold()
             with request_db() as conn:
                 if db.dashboard_email_registered(
@@ -729,7 +759,10 @@ def create_app() -> Flask:
                     auth, 200,
                     success=f"Profile details updated. We sent a 6-digit code to {email} -- enter it below to verify the address.",
                 )
-            return _render_profile(auth, 200, success="Profile details updated.")
+            return _render_profile(
+                auth, 200,
+                success="Profile details and photo updated." if photo else "Profile details updated.",
+            )
         return _render_profile(auth)
 
     @app.post("/profile/email/send-code")
@@ -773,34 +806,6 @@ def create_app() -> Flask:
             db.mark_email_verified(conn, auth["username"])
             auth = db.get_dashboard_user(conn, auth["username"])
         return _render_profile(auth, 200, success="Email address verified.")
-
-    @app.post("/profile/avatar")
-    def profile_upload_avatar():
-        auth = dashboard_auth()
-        if not _csrf_ok():
-            return _render_profile(auth, 400, error="Your session expired. Please try again.")
-        upload = request.files.get("avatar")
-        if upload is None or not upload.filename:
-            return _render_profile(auth, 400, error="Choose an image file first.")
-        data = upload.read(config.AVATAR_MAX_BYTES + 1)
-        if len(data) > config.AVATAR_MAX_BYTES:
-            return _render_profile(auth, 400, error="That file is too large. Profile photos must be 1 MB or smaller.")
-        sniffed = _sniff_image(data)
-        if sniffed is None:
-            return _render_profile(auth, 400, error="Use a PNG, JPEG or WebP image.")
-        ext, _mimetype = sniffed
-        config.AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-        filename = f"{auth['id']}.{ext}"
-        # Remove any previous photo with a different extension before
-        # writing, so one user never has two files on disk.
-        for stale in config.AVATAR_DIR.glob(f"{auth['id']}.*"):
-            if stale.name != filename:
-                stale.unlink(missing_ok=True)
-        (config.AVATAR_DIR / filename).write_bytes(data)
-        with request_db() as conn:
-            db.set_dashboard_user_avatar(conn, auth["username"], filename)
-            auth = db.get_dashboard_user(conn, auth["username"])
-        return _render_profile(auth, 200, success="Profile photo updated.")
 
     @app.post("/profile/avatar/remove")
     def profile_remove_avatar():

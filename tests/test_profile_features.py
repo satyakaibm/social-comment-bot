@@ -178,13 +178,15 @@ class NoRealEmailGuardTests(_ProfileCase):
 
 class AvatarTests(_ProfileCase):
     def upload(self, data, filename="me.png"):
-        return self.client.post("/profile/avatar", data={"csrf_token": "tok", "avatar": (io.BytesIO(data), filename)},
+        # The photo rides along with the ordinary profile save.
+        return self.client.post("/profile", data={"csrf_token": "tok", "display_name": "Admin", "email": "",
+                                                  "avatar": (io.BytesIO(data), filename)},
                                 content_type="multipart/form-data")
 
     def test_png_upload_is_stored_served_and_shown_in_the_header(self):
         page = self.upload(PNG)
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b"Profile photo updated", page.data)
+        self.assertIn(b"Profile details and photo updated", page.data)
         user = self.user()
         self.assertEqual(user["avatar_path"], f"{user['id']}.png")
         self.assertTrue((config.AVATAR_DIR / user["avatar_path"]).is_file())
@@ -201,7 +203,7 @@ class AvatarTests(_ProfileCase):
     def test_format_is_sniffed_not_trusted_from_the_filename(self):
         page = self.upload(b"<svg xmlns='http://www.w3.org/2000/svg'></svg>", filename="logo.png")
         self.assertEqual(page.status_code, 400)
-        self.assertIn(b"Use a PNG, JPEG or WebP image", page.data)
+        self.assertIn(b"must be a PNG, JPEG or WebP image", page.data)
         self.assertIsNone(self.user()["avatar_path"])
         self.assertEqual(self.upload(JPEG, filename="whatever.bin").status_code, 200)
         self.assertEqual(self.user()["avatar_path"].rsplit(".", 1)[1], "jpg")
@@ -232,19 +234,35 @@ class AvatarTests(_ProfileCase):
         response = anonymous.get("/profile/avatar/admin")
         self.assertIn(response.status_code, (302, 401, 403))
 
-    def test_upload_button_is_secondary_and_inert_until_a_file_is_chosen(self):
+    def test_one_form_saves_everything_and_there_is_no_upload_button(self):
         page = self.client.get("/profile").data.decode()
-        self.assertIn('id="avatar-upload" disabled>Upload photo</button>', page)
-        self.assertIn('class="small ghost" type="submit" id="avatar-upload"', page)
-        # Exactly one primary (orange) submit on the page: Save profile, which
-        # sits in the card footer beside BACK yet submits the profile form.
+        self.assertIn('<form method="post" id="profile-form" enctype="multipart/form-data">', page)
+        self.assertIn('name="avatar" id="avatar-file"', page)
+        self.assertNotIn("Upload photo", page)
+        self.assertNotIn("Choose an image", page)
+        self.assertNotIn("Account created", page)
         self.assertEqual(page.count('<button type="submit" form="profile-form" class="primary">Save profile</button>'), 1)
-        self.assertIn('<form method="post" id="profile-form">', page)
         footer = page[page.index('class="footer-actions"'):]
         self.assertLess(footer.index('href="/">BACK</a>'), footer.index('Save profile'))
+        # Saving without choosing a file is simply a save -- never an error.
+        saved = self.client.post("/profile", data={"csrf_token": "tok", "display_name": "Admin", "email": ""},
+                                 content_type="multipart/form-data")
+        self.assertEqual(saved.status_code, 200)
+        self.assertIn(b"Profile details updated.", saved.data)
+        self.assertNotIn(b"Choose an image", saved.data)
+        self.assertIsNone(self.user()["avatar_path"])
+
+    def test_bad_photo_does_not_save_the_other_fields(self):
+        page = self.upload(b"not an image")
+        self.assertEqual(page.status_code, 400)
+        self.assertIsNone(self.user()["display_name"])
+
+    def test_old_upload_route_is_gone(self):
+        self.assertEqual(self.client.post("/profile/avatar", data={"csrf_token": "tok"}).status_code, 404)
 
     def test_upload_requires_csrf(self):
-        page = self.client.post("/profile/avatar", data={"csrf_token": "bad", "avatar": (io.BytesIO(PNG), "me.png")},
+        page = self.client.post("/profile", data={"csrf_token": "bad", "display_name": "x", "email": "",
+                                                  "avatar": (io.BytesIO(PNG), "me.png")},
                                 content_type="multipart/form-data")
         self.assertEqual(page.status_code, 400)
         self.assertIsNone(self.user()["avatar_path"])

@@ -218,7 +218,7 @@ MAIL_FROM=Content My Trip   # a display name is paired with MAIL_USERNAME; a ful
 
 These are the same variable names Content My Trip uses (the Flask-Mail convention); the `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_USE_TLS`/`SMTP_USE_SSL` names are accepted as aliases, with `MAIL_*` winning if both are set. Until a server and a from-address are set, the page says verification is unavailable rather than failing. Tenants are separate containers with their own `.env`, so each needs its own settings (they can share one mailbox).
 
-Users can also upload a profile photo (PNG, JPEG or WebP, 1 MB max, identified by file signature rather than filename) which replaces the initial-letter badge in the header on every page. Files live in `data/avatars/` -- per tenant, alongside the database -- and are served only to signed-in users.
+The same form takes an optional profile photo (PNG, JPEG or WebP, 1 MB max, identified by file signature rather than filename), saved together with the other fields by **Save profile**; it replaces the initial-letter badge in the header on every page. Files live in `data/avatars/` -- per tenant, alongside the database -- and are served only to signed-in users.
 
 ### Statistics retention (YouTube Developer Policy III.E.4)
 
