@@ -1,4 +1,7 @@
-Flask>=3.0
-gunicorn>=23.0
-python-dotenv>=1.0
-razorpay>=1.4
+# Pinned for the same reason as the root requirements.txt: identical installs
+# on every build, deliberate upgrades only. Flask/gunicorn/python-dotenv match
+# the root file so both images carry one version of each.
+Flask==3.1.3
+gunicorn==26.2.0
+python-dotenv==1.2.4
+razorpay==2.0.1
