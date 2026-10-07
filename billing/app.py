@@ -7,6 +7,7 @@ import time
 from flask import Flask, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash
 
+from app import security_headers
 from billing import config, db, razorpay_client, tenant_ops
 
 LOGIN_ATTEMPTS = 5
@@ -54,6 +55,10 @@ def create_app() -> Flask:
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=config.BILLING_COOKIE_SECURE,
+    )
+    # No inline scripts in billing/templates, so script-src is just 'self'.
+    security_headers.install(
+        app, hsts=config.BILLING_COOKIE_SECURE, inline_scripts=False
     )
     app.jinja_env.globals["csrf_token"] = _csrf_token
     db.init_db()

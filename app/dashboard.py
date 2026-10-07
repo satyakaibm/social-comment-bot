@@ -19,7 +19,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import mailer
 from werkzeug.serving import make_server
 
-from app import analytics, config, db
+from app import analytics, config, db, security_headers
 from app.password_policy import PASSWORD_HINT, password_meets_policy
 from app.post import post_approved
 from app.webhook import register_meta_routes, start_event_worker
@@ -363,6 +363,11 @@ def create_app() -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_SECURE=config.DASHBOARD_COOKIE_SECURE,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=config.DASHBOARD_SESSION_HOURS),
+    )
+    # The templates' inline <script> blocks each carry nonce="{{ csp_nonce() }}";
+    # tests/test_security_headers.py fails if a bare <script> slips back in.
+    security_headers.install(
+        app, hsts=config.DASHBOARD_COOKIE_SECURE, inline_scripts=True
     )
     @app.template_filter("status_label")
     def status_label(status: str) -> str:

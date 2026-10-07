@@ -349,7 +349,7 @@
       <div class="footer-bottom"><span>&copy; {{ current_year }} Content My Trip. All rights reserved.</span><span>Capture. Curate. Publish.</span></div>
     </div>
   </footer>
-  <script>
+  <script nonce="{{ csp_nonce() }}">
     (() => {
       const button = document.getElementById('auto-refresh');
       const storageKey = 'comment-dashboard-auto-refresh';
