@@ -185,6 +185,11 @@ DASHBOARD_PASSWORD_HASH = (
     else os.environ.get("DASHBOARD_PASSWORD_HASH", "")
 )
 DASHBOARD_SESSION_HOURS = int(os.environ.get("DASHBOARD_SESSION_HOURS", "12"))
+# How long the dashboard reuses the results of its heavy Insights/Momentum
+# analytics queries (seconds). The data behind them changes only when the
+# stats pollers write a snapshot, every 30 minutes by default, so a 10-minute
+# reuse window is invisible to readers. 0 disables the cache.
+ANALYTICS_CACHE_SECONDS = int(os.environ.get("ANALYTICS_CACHE_SECONDS", "600"))
 # Local HTTP only. Production (HTTPS / Cloudflare Tunnel) must leave this unset
 # so the process refuses a default session secret, insecure cookies, or an
 # unencrypted comments database.

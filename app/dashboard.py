@@ -19,7 +19,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from app import mailer
 from werkzeug.serving import make_server
 
-from app import analytics, config, db, security_headers
+from app import analytics, config, db, query_cache, security_headers
 from app.password_policy import PASSWORD_HINT, password_meets_policy
 from app.post import post_approved
 from app.webhook import register_meta_routes, start_event_worker
@@ -277,6 +277,15 @@ def _video_stats_row(row: dict) -> dict:
     page = config.PAGES.get(item["page_key"])
     item["page_label"] = page.label if page else ""
     return item
+
+
+def _cached_rows(name: str, compute, *parts):
+    """Reuse a heavy analytics query result for config.ANALYTICS_CACHE_SECONDS.
+
+    The key carries db.DB_PATH so a tenant (or a test) never reads another
+    database's rows, plus every filter that changes the result.
+    """
+    return query_cache.cached((name, str(db.DB_PATH), *parts), compute)
 
 
 def _quota_cards(conn, platform: str, page_key: str = "") -> list[dict]:
@@ -1058,11 +1067,15 @@ def create_app() -> Flask:
             try:
                 video_stats = [
                     _video_stats_row(row)
-                    for row in db.video_stats_growth(
-                        conn,
-                        horizon=db.VIDEO_STATS_WINDOWS[window][1],
-                        platform=platform or None,
-                        page_key=page_key or None,
+                    for row in _cached_rows(
+                        "growth",
+                        lambda: db.video_stats_growth(
+                            conn,
+                            horizon=db.VIDEO_STATS_WINDOWS[window][1],
+                            platform=platform or None,
+                            page_key=page_key or None,
+                        ),
+                        window, platform, page_key,
                     )
                 ]
             except Exception as exc:
@@ -1165,16 +1178,24 @@ def create_app() -> Flask:
             try:
                 growth_24h = [
                     _video_stats_row(row)
-                    for row in db.video_stats_growth(
-                        conn, horizon=timedelta(hours=24),
-                        platform=platform or None, page_key=page_key or None,
+                    for row in _cached_rows(
+                        "growth",
+                        lambda: db.video_stats_growth(
+                            conn, horizon=timedelta(hours=24),
+                            platform=platform or None, page_key=page_key or None,
+                        ),
+                        "24h", platform, page_key,
                     )
                 ]
                 growth_7d = [
                     _video_stats_row(row)
-                    for row in db.video_stats_growth(
-                        conn, horizon=timedelta(days=7),
-                        platform=platform or None, page_key=page_key or None,
+                    for row in _cached_rows(
+                        "growth",
+                        lambda: db.video_stats_growth(
+                            conn, horizon=timedelta(days=7),
+                            platform=platform or None, page_key=page_key or None,
+                        ),
+                        "7d", platform, page_key,
                     )
                 ]
             except Exception as exc:
@@ -1191,21 +1212,36 @@ def create_app() -> Flask:
             # pruned at that same boundary. Keeping the three momentum
             # horizons equal to the retention window stops the page claiming
             # a depth of evidence the database no longer holds.
-            activity_rows = db.audience_activity(
-                conn, horizon=MOMENTUM_HORIZON,
-                platform=platform or None, page_key=page_key or None,
-            )
-            try:
-                engagement_rows = db.engagement_activity(
+            # Cached: these three aggregate the full 30-day history/comment
+            # tables and engagement_activity alone is ~4s on production
+            # data -- see app/query_cache.py.
+            activity_rows = _cached_rows(
+                "audience_activity",
+                lambda: db.audience_activity(
                     conn, horizon=MOMENTUM_HORIZON,
                     platform=platform or None, page_key=page_key or None,
+                ),
+                platform, page_key,
+            )
+            try:
+                engagement_rows = _cached_rows(
+                    "engagement_activity",
+                    lambda: db.engagement_activity(
+                        conn, horizon=MOMENTUM_HORIZON,
+                        platform=platform or None, page_key=page_key or None,
+                    ),
+                    platform, page_key,
                 )
             except Exception as exc:
                 engagement_rows = []
                 app.logger.exception("Engagement timing query failed: %s", exc)
-            intent_rows = db.comment_text_sample(
-                conn, horizon=MOMENTUM_HORIZON,
-                platform=platform or None, page_key=page_key or None,
+            intent_rows = _cached_rows(
+                "comment_text_sample",
+                lambda: db.comment_text_sample(
+                    conn, horizon=MOMENTUM_HORIZON,
+                    platform=platform or None, page_key=page_key or None,
+                ),
+                platform, page_key,
             )
             experiments = db.list_recommendation_experiments(
                 conn, platform=platform or None, page_key=page_key or None

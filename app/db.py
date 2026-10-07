@@ -428,6 +428,12 @@ def init_db() -> None:
             """CREATE INDEX IF NOT EXISTS idx_video_stats_history_lookup
                ON video_stats_history(platform, page_key, video_id, captured_at)"""
         )
+        # Per-video time order, so video_stats_growth() can seek each video's
+        # first/last snapshot inside a window instead of scanning the window.
+        conn.execute(
+            """CREATE INDEX IF NOT EXISTS idx_video_stats_history_video_time
+               ON video_stats_history(platform, video_id, captured_at, id)"""
+        )
         _migrate_seen_comments(conn)
         sync_seen_stats_from_comments(conn)
 
@@ -806,40 +812,54 @@ def video_stats_growth(
 ) -> list[dict]:
     """Return first-to-last metric deltas inside a real historical window.
 
-    Two real costs stacked here and caused Momentum's original outage: the
-    date filter used to be wrapped in datetime(), which can't use an index
-    and forces a full scan; and "eligible" was referenced three times
-    (bounds, oldest, newest) with no MATERIALIZED hint, so SQLite silently
-    re-ran that full scan three times per call. Measured on production
-    data: ~2.15s per call before, ~0.0002s after -- fine in isolation
-    either way, but under real concurrent requests on a 2-vCPU box (each
-    with its own SQLCipher connection independently re-decrypting the same
-    pages) that difference compounded into requests taking 100+ seconds.
+    Shape of the work matters more than the SQL here. The previous version
+    materialised every history row inside the window and grouped it: fine
+    at a few thousand rows, but 30-minute snapshots of ~220 videos retained
+    for 30 days is ~330k rows, and the 7-day and 30-day windows cover most
+    of them, so no index on captured_at could shrink that scan (measured:
+    1.2s and 1.9s per call on a production-sized copy, and Insights plus
+    Momentum call this three times per page).
+
+    Now the video list comes from video_stats (one row per tracked video,
+    written by the same upsert that appends each history row), and for each
+    video three correlated subqueries seek the window's first row, last row
+    and row count through idx_video_stats_history_video_time. ~220 videos
+    x 3 index seeks replaces one 330k-row scan: 0.2s for every window on
+    the same copy. A video with history but no video_stats row (only
+    possible after a manual delete) is not reported; sample_count >= 2
+    still drops anything measured once.
     """
     reference_time = reference_time or datetime.now(timezone.utc)
     cutoff = (reference_time - horizon).isoformat()
     sql = """
-        WITH eligible AS MATERIALIZED (
-            SELECT * FROM video_stats_history
-            WHERE captured_at >= ?
+        WITH tracked AS (
+            SELECT platform, video_id FROM video_stats WHERE 1=1
     """
-    params: list = [cutoff]
+    params: dict = {"cutoff": cutoff}
     if platform:
-        sql += " AND platform = ?"
-        params.append(platform)
+        sql += " AND platform = :platform"
+        params["platform"] = platform
     if page_key:
         if page_key == DEFAULT_PAGE_KEY:
-            sql += " AND page_key IN (?, '')"
+            sql += " AND page_key IN (:page_key, '')"
         else:
-            sql += " AND page_key = ?"
-        params.append(page_key)
+            sql += " AND page_key = :page_key"
+        params["page_key"] = page_key
     sql += """
         ), bounds AS (
-            SELECT platform, video_id, MIN(id) AS first_id, MAX(id) AS last_id,
-                   COUNT(*) AS sample_count
-            FROM eligible
-            GROUP BY platform, video_id
-            HAVING COUNT(*) >= 2
+            SELECT t.platform, t.video_id,
+                   (SELECT h.id FROM video_stats_history h
+                     WHERE h.platform = t.platform AND h.video_id = t.video_id
+                       AND h.captured_at >= :cutoff
+                     ORDER BY h.captured_at, h.id LIMIT 1) AS first_id,
+                   (SELECT h.id FROM video_stats_history h
+                     WHERE h.platform = t.platform AND h.video_id = t.video_id
+                       AND h.captured_at >= :cutoff
+                     ORDER BY h.captured_at DESC, h.id DESC LIMIT 1) AS last_id,
+                   (SELECT COUNT(*) FROM video_stats_history h
+                     WHERE h.platform = t.platform AND h.video_id = t.video_id
+                       AND h.captured_at >= :cutoff) AS sample_count
+            FROM tracked t
         )
         SELECT newest.platform, newest.video_id, newest.page_key,
                newest.video_title, bounds.sample_count,
@@ -856,8 +876,9 @@ def video_stats_growth(
                CASE WHEN oldest.share_count IS NOT NULL AND newest.share_count IS NOT NULL
                     THEN MAX(0, newest.share_count - oldest.share_count) END AS share_growth
         FROM bounds
-        JOIN eligible oldest ON oldest.id = bounds.first_id
-        JOIN eligible newest ON newest.id = bounds.last_id
+        JOIN video_stats_history oldest ON oldest.id = bounds.first_id
+        JOIN video_stats_history newest ON newest.id = bounds.last_id
+        WHERE bounds.sample_count >= 2
         ORDER BY newest.platform, newest.page_key, newest.video_id
     """
     return [dict(row) for row in conn.execute(sql, params)]
