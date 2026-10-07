@@ -25,9 +25,6 @@
     input { width:100%; height:46px; padding:0 13px; color:#17252c; background:#f8fafb; border:1px solid var(--line); border-radius:11px; font:inherit; outline:none; }
     input:focus { background:#fff; border-color:#36aeb4; box-shadow:0 0 0 3px rgba(54,174,180,.12); }
     input[readonly] { color:var(--muted); cursor:not-allowed; }
-    .details { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:24px 0; padding:18px; background:#f8fafb; border:1px solid var(--line); border-radius:14px; }
-    .detail-label { display:block; color:var(--muted); font-size:10px; font-weight:750; text-transform:uppercase; }
-    .detail-value { display:block; margin-top:5px; font-size:12px; word-break:break-word; }
     .actions { display:flex; align-items:center; justify-content:space-between; gap:12px; }
     button,.secondary { min-height:44px; padding:0 17px; display:inline-flex; align-items:center; justify-content:center; border-radius:11px; font:inherit; font-size:13px; font-weight:800; text-decoration:none; cursor:pointer; }
     button { color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; }
@@ -51,7 +48,7 @@
     .photo-row { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
     .photo-row input[type=file] { height:auto; padding:9px; font-size:12px; letter-spacing:0; text-align:left; width:auto; }
     .hint { margin:6px 0 0; color:var(--muted); font-size:11px; }
-    @media (max-width:600px) { .card{padding:25px 20px}.grid,.details{grid-template-columns:1fr}.actions{align-items:stretch;flex-direction:column}.actions>*{width:100%}.inline-form{width:100%}.inline-form input{flex:1}.footer-actions{flex-direction:column-reverse;align-items:stretch}.footer-actions>*{width:100%} }
+    @media (max-width:600px) { .card{padding:25px 20px}.grid{grid-template-columns:1fr}.actions{align-items:stretch;flex-direction:column}.actions>*{width:100%}.inline-form{width:100%}.inline-form input{flex:1}.footer-actions{flex-direction:column-reverse;align-items:stretch}.footer-actions>*{width:100%} }
   </style>
 </head>
 <body>
@@ -73,8 +70,7 @@
             </div>{% endif %}
           </div>
         </div>
-        <div class="details"><div><span class="detail-label">Account created</span><span class="detail-value">{{ user.created_at }}</span></div><div><span class="detail-label">Last updated</span><span class="detail-value">{{ user.updated_at }}</span></div></div>
-        <div class="actions"><a class="secondary" href="/profile/password">Reset password</a></div>
+        <div class="actions" style="margin-top:22px"><a class="secondary" href="/profile/password">Reset password</a></div>
       </form>
 
       {% if user.email and not verification.verified %}
