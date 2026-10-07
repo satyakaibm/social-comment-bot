@@ -154,6 +154,12 @@ META_POST_RETRY_DELAY_SECONDS = float(
 # failed this many times so it cannot keep tripping PUBLISH_ERROR_LIMIT and
 # crowding out comments that can still succeed.
 META_MAX_POST_ATTEMPTS = int(os.environ.get("META_MAX_POST_ATTEMPTS", "5"))
+# Same idea for YouTube, where it matters more: a rejected comments.insert is
+# still billed the full 50 quota units. Errors that can never succeed
+# (deleted comment, replies disabled on the thread -- see
+# youtube_client.PERMANENT_REPLY_FAILURE_REASONS) are rejected on the first
+# attempt; anything else gets this many tries.
+YOUTUBE_MAX_POST_ATTEMPTS = int(os.environ.get("YOUTUBE_MAX_POST_ATTEMPTS", "3"))
 # A comment checked during this same poll or webhook delivery does not need a
 # second identical remote check immediately before its first post. Failed and
 # interrupted attempts never use this shortcut.

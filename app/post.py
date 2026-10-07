@@ -15,6 +15,7 @@ from app.youtube_client import (
     get_client,
     get_my_channel_id,
     get_video_channel_ids,
+    is_permanent_reply_failure,
     is_quota_exceeded,
     execute,
 )
@@ -399,9 +400,26 @@ def post_approved(
                         "pending for the next cycle."
                     )
                     break
-                db.update_status(conn, row["comment_id"], "failed", error=str(e)[:1000])
+                # A failed insert is billed the full 50 units, so a row that
+                # cannot succeed must not be retried every cycle: reject
+                # permanent errors at once and cap the rest, the same way
+                # record_publish_failure already does for Meta.
+                permanent = is_permanent_reply_failure(e)
+                result_status = db.record_publish_failure(
+                    conn,
+                    row["comment_id"],
+                    str(e),
+                    max_attempts=1 if permanent else config.YOUTUBE_MAX_POST_ATTEMPTS,
+                )
                 conn.commit()
-                emit(f"Failed to post reply to YouTube comment {row['comment_id']}: {e}")
+                if result_status == "rejected":
+                    emit(
+                        f"Gave up on YouTube comment {row['comment_id']}"
+                        f"{' (permanent error)' if permanent else f' after {config.YOUTUBE_MAX_POST_ATTEMPTS} failed attempts'}; "
+                        f"it will no longer be retried automatically: {e}"
+                    )
+                else:
+                    emit(f"Failed to post reply to YouTube comment {row['comment_id']}: {e}")
             except meta_client.GraphAPIError as e:
                 result_status = db.record_publish_failure(
                     conn,
