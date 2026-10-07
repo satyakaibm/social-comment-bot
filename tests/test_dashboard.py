@@ -80,7 +80,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'<div class="topbar">', page.data)
         self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page.data)
         self.assertNotIn(b'class="service-nav"', page.data)
-        self.assertIn(b"Social Comment Studio", page.data)
+        self.assertIn(b"Social Comment Bot", page.data)
         self.assertNotIn(b"Gateway operational", page.data)
         self.assertIn(b'<footer class="site-footer">', page.data)
         self.assertIn(b"Capture. Curate. Publish.", page.data)
