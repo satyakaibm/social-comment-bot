@@ -36,6 +36,45 @@ def execute(
         )
 
 
+# comments.insert errors that will fail identically on every retry. Each
+# retry still costs the full 50 units (YouTube charges a rejected write like
+# a successful one), so one such row left in 'failed' burned ~2.4k units a
+# day at 30-minute polling -- the single largest consumer of this project's
+# 10k daily quota until it was found on 2026-10-07, when two rows (a deleted
+# comment, and a thread with canReply=false) had been retried every cycle
+# since 2026-09-24 and 2026-10-05.
+PERMANENT_REPLY_FAILURE_REASONS = frozenset({
+    "parentCommentNotFound",  # the comment was deleted
+    "commentNotFound",
+    "operationNotSupported",  # canReply=false: replies are off for this thread
+    "commentsDisabled",
+    "videoNotFound",
+    "forbidden",
+})
+
+
+def _error_reasons(error: Exception) -> set[str]:
+    reasons: set[str] = set()
+    for detail in getattr(error, "error_details", []) or []:
+        if isinstance(detail, dict) and detail.get("reason"):
+            reasons.add(str(detail["reason"]))
+    if not reasons:
+        content = getattr(error, "content", b"")
+        if isinstance(content, bytes):
+            content = content.decode("utf-8", errors="replace")
+        reasons.update(
+            reason
+            for reason in PERMANENT_REPLY_FAILURE_REASONS | {"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"}
+            if reason in str(content)
+        )
+    return reasons
+
+
+def is_permanent_reply_failure(error: Exception) -> bool:
+    """Return whether a YouTube reply error can never succeed on retry."""
+    return bool(_error_reasons(error) & PERMANENT_REPLY_FAILURE_REASONS)
+
+
 def is_quota_exceeded(error: Exception) -> bool:
     """Return whether a YouTube API error reports exhausted daily quota."""
     quota_reasons = {"quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"}
