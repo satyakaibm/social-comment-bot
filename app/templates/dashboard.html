@@ -61,12 +61,12 @@
     .profile[open] summary { box-shadow:0 0 0 3px rgba(54,174,180,.18),0 5px 14px rgba(15,42,56,.16); }
     .profile-menu { position:absolute; top:calc(100% + 10px); right:0; width:200px; padding:7px; background:#fff; border:1px solid var(--line); border-radius:12px; box-shadow:0 16px 38px rgba(15,42,56,.16); }
     .profile-menu-head { padding:9px 11px 11px; border-bottom:1px solid var(--line); margin-bottom:5px; }
-    .profile-menu-title { display:block; color:var(--navy); font-size:12px; font-weight:800; }
-    .profile-menu-user { display:block; margin-top:3px; overflow:hidden; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+
+    .profile-menu-user { display:block; overflow:hidden; color:var(--navy); font-size:13px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
     .profile-menu a,.profile-menu button { width:100%; min-height:38px; padding:0 11px; display:flex; align-items:center; color:var(--ink); background:transparent; border:0; border-radius:8px; box-shadow:none; font-size:12px; font-weight:700; text-align:left; text-decoration:none; }
     .profile-menu a:hover,.profile-menu button:hover { color:var(--navy); background:#f3f7f8; transform:none; }
     .profile-menu form { margin:0; }
-    .page { width:100%; max-width:1920px; margin:0 auto; padding:clamp(22px,2.2vw,42px) clamp(16px,2.2vw,42px) 52px; flex:1; }
+    .page { width:100%; max-width:none; margin:0 auto; padding:clamp(22px,2.2vw,42px) clamp(16px,2.2vw,42px) 52px; flex:1; }
     /* --- Workspace banner. These rules are deliberately identical in
        dashboard.html, insights.html and momentum.html. Each page inlines its
        own <style>, so editing the banner in one file alone silently diverges
@@ -185,7 +185,7 @@
     .pager { display:flex; align-items:center; justify-content:center; gap:18px; margin-top:20px; color:var(--muted); font-size:13px; }
     .pager a { padding:8px 12px; color:var(--navy); background:#fff; border:1px solid var(--line); border-radius:9px; font-weight:700; text-decoration:none; }
     .site-footer { margin-top:20px; color:#f7efe4; background:linear-gradient(180deg,var(--footer-start),var(--footer-end)); }
-    .footer-panel { width:100%; max-width:1920px; margin:0 auto; padding:38px clamp(16px,2.2vw,42px) 20px; }
+    .footer-panel { width:100%; max-width:none; margin:0 auto; padding:38px clamp(16px,2.2vw,42px) 20px; }
     .footer-main { display:grid; grid-template-columns:minmax(280px,1.6fr) repeat(2,minmax(150px,.55fr)); gap:42px; align-items:start; }
     .footer-brand img { display:block; width:170px; height:64px; margin-bottom:12px; object-fit:contain; object-position:left center; filter:drop-shadow(0 3px 8px rgba(0,0,0,.18)); }
     .footer-kicker { display:block; margin-bottom:8px; color:#d9a441; font-size:11px; font-weight:800; letter-spacing:.13em; text-transform:uppercase; }
@@ -200,32 +200,16 @@
     @media (max-width:1280px) { .grid-wrap{height:55vh} }
     @media (max-width:980px) { .topbar{padding:0 22px}.toolbar{align-items:stretch;flex-direction:column}form.search{width:100%}.grid-wrap{height:58vh}.footer-main{grid-template-columns:1.4fr 1fr 1fr;gap:28px} }
     @media (max-width:780px) { .activity-head{align-items:stretch;flex-direction:column}.activity-platforms,.range-scroll{width:100%}.activity-values{grid-template-columns:repeat(2,1fr);row-gap:18px}.footer-main{grid-template-columns:1fr 1fr}.footer-brand{grid-column:1/-1} }
-    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.page{padding:20px 14px 38px}.hero{min-height:0;padding:19px 17px}.hero-content{align-items:flex-start;flex-direction:column}.hero-actions{align-self:stretch;justify-content:flex-start}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
+    @media (max-width:620px) { .topbar{height:66px;padding:0 16px}.brand img{width:96px;height:44px}.topbar-title{font-size:20px}.profile summary{width:40px;height:40px}.page{ width:100%;padding:20px 14px 38px}.hero{min-height:0;padding:19px 17px}.hero-content{align-items:flex-start;flex-direction:column}.hero-actions{align-self:stretch;justify-content:flex-start}.activity{padding:16px}.activity-head{margin-bottom:20px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.stat{min-height:88px;padding:15px}.stat-value{font-size:23px}.toolbar{padding:12px}form.search button{padding:0 12px}.grid-wrap{height:60vh;border-radius:0 0 13px 13px}table.db{min-width:1420px}.pager{gap:10px}.footer-panel{ width:100%;padding:30px 16px 18px}.footer-main{grid-template-columns:1fr;gap:24px}.footer-brand{grid-column:auto}.footer-bottom{align-items:flex-start;flex-direction:column}.profile-menu{max-width:calc(100vw - 28px)} }
     @media (max-width:390px) { .activity-platform{padding:8px 10px}.range-button{padding:0 10px}.stat-label{font-size:9px}.search{flex-direction:column}.search button{width:100%}.grid-wrap{height:56vh} }
     @media (prefers-reduced-motion:reduce) { *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important} }
+    .stats,.activity-values{max-width:1600px;margin-inline:auto}
   </style>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site-header.css') }}">
 </head>
 <body class="theme-{{ platform or 'all' }}">
   <a class="skip-link" href="#main-content">Skip to main content</a>
-  <header class="site-header">
-    <div class="topbar">
-      <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
-      <a class="topbar-title" href="/">Social Comment Bot</a>
-      <div class="topbar-actions">
-        <details class="profile">
-          <summary aria-label="Open My Profile menu" title="My Profile">{% if profile_avatar_url %}<img class="profile-photo" src="{{ profile_avatar_url }}" alt="">{% else %}{{ profile_initial }}{% endif %}</summary>
-          <div class="profile-menu">
-            <div class="profile-menu-head"><span class="profile-menu-title">Account</span><span class="profile-menu-user">{{ dashboard_username }}</span></div>
-            <a href="/profile">My Profile</a>
-            <a href="/about">About me</a>
-            <a href="/faq">FAQ</a>
-            <a href="/settings">Settings</a>
-            <form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">Log out</button></form>
-          </div>
-        </details>
-      </div>
-    </div>
-  </header>
+  {% include "site_header.html" %}
   <main class="page" id="main-content" tabindex="-1">
     <section class="hero">
       <div class="hero-content">
@@ -359,7 +343,7 @@
         </nav>
         <nav aria-label="Footer account navigation">
           <h2 class="footer-title">Account</h2>
-          <ul class="footer-links"><li><a href="/profile">My Profile</a></li><li><a href="/about">About me</a></li><li><a href="/faq">FAQ</a></li><li><a href="/settings">Settings</a></li><li><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="min-height:0;padding:0;color:rgba(247,239,228,.72);background:transparent;box-shadow:none;font-size:12px;">Log out</button></form></li></ul>
+          <ul class="footer-links"><li><a href="/profile">My Profile</a></li><li><a href="/about">Dashboard guide</a></li><li><a href="/faq">FAQ</a></li><li><a href="/settings">Settings</a></li><li><form method="post" action="/logout"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" style="min-height:0;padding:0;color:rgba(247,239,228,.72);background:transparent;box-shadow:none;font-size:12px;">Log out</button></form></li></ul>
         </nav>
       </div>
       <div class="footer-bottom"><span>&copy; {{ current_year }} Content My Trip. All rights reserved.</span><span>Capture. Curate. Publish.</span></div>

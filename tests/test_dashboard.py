@@ -76,7 +76,7 @@ class DashboardTests(unittest.TestCase):
     def test_pending_review_tab_is_shown(self):
         page = self.client.get("/")
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b'<header class="site-header">', page.data)
+        self.assertIn(b'<header class="site-header workspace-header">', page.data)
         self.assertIn(b'<div class="topbar">', page.data)
         self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page.data)
         self.assertNotIn(b'class="service-nav"', page.data)
@@ -133,7 +133,8 @@ class DashboardTests(unittest.TestCase):
     def test_settings_page_lists_policy_links(self):
         page = self.client.get("/settings")
         self.assertEqual(page.status_code, 200)
-        self.assertIn(b'href="/profile/password"', page.data)
+        self.assertNotIn(b'href="/profile/password"', page.data)
+        self.assertNotIn(b'Account &amp; security', page.data)
         self.assertIn(b'href="/signup"', page.data)
         self.assertIn(b'href="/privacy"', page.data)
         self.assertIn(b'href="/terms"', page.data)
@@ -399,9 +400,9 @@ class DashboardTests(unittest.TestCase):
         page = self.client.get("/health")
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"Gateway is healthy", page.data)
-        self.assertIn(b'aria-label="Back to Comment Dashboard"', page.data)
-        self.assertIn(b"event.key === 'Backspace'", page.data)
-        self.assertIn(b"window.location.assign('/')", page.data)
+        self.assertIn(b'data-back-fallback="/settings"', page.data)
+        self.assertIn(b'/static/js/page-navigation.js', page.data)
+        self.assertIn(b'aria-label="Open My Profile menu"', page.data)
         self.assertEqual(self.client.get("/api/health").json, {"status": "ok"})
 
     def test_dashboard_requires_login_and_accepts_valid_credentials(self):
@@ -508,6 +509,9 @@ class DashboardTests(unittest.TestCase):
         response = self.client.post("/logout", data={"csrf_token": "token"})
         self.assertEqual(response.status_code, 302)
         self.assertIn("/login", response.headers["Location"])
+        signed_out = self.client.get(response.headers["Location"])
+        self.assertIn("You’re signed out", signed_out.data.decode())
+        self.assertIn(b'name="password"', signed_out.data)
         self.assertEqual(self.client.get("/").status_code, 302)
 
     def test_profile_menu_resets_password_and_invalidates_sessions(self):
@@ -515,7 +519,7 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'aria-label="Open My Profile menu"', page.data)
         self.assertIn(b'title="My Profile">A</summary>', page.data)
         self.assertIn(b"My Profile", page.data)
-        self.assertIn(b'class="profile-menu-user">admin</span>', page.data)
+        self.assertIn(b'class="profile-menu-user">admin</strong>', page.data)
         self.assertIn(b'href="/settings"', page.data)
         self.assertIn(b"Log out", page.data)
 
@@ -523,7 +527,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(profile_page.status_code, 200)
         self.assertIn(b"Manage your portal account details", profile_page.data)
         self.assertIn(b'value="admin" readonly', profile_page.data)
-        self.assertIn(b'<a class="back" href="/">BACK</a>', profile_page.data)
+        self.assertIn(b'data-back-fallback', profile_page.data)
+        self.assertLess(profile_page.data.index(b'data-back-fallback'), profile_page.data.index(b'id="profile-form"'))
         self.assertNotIn(b"Back to dashboard", profile_page.data)
         with self.client.session_transaction() as auth_session:
             auth_session["csrf_token"] = "profile-token"
@@ -832,6 +837,8 @@ class DashboardTests(unittest.TestCase):
         self.assertIn(b'href="/momentum"', page.data)
         self.assertIn(b"Aarti", page.data)
 
+    @patch.object(config, "YOUTUBE_VIDEO_STATS_REFRESH_MINUTES", 30)
+    @patch.object(config, "META_VIDEO_STATS_REFRESH_MINUTES", 30)
     def test_insights_shows_platform_specific_refresh_cadence(self):
         all_platforms = self.client.get("/insights")
         youtube = self.client.get("/insights?platform=youtube")
@@ -916,7 +923,7 @@ class DashboardTests(unittest.TestCase):
         momentum = self.client.get("/momentum").data
 
         for page in (dashboard, insights, momentum):
-            self.assertIn(b'class="site-header"', page)
+            self.assertIn(b'class="site-header workspace-header"', page)
             self.assertIn(b'class="topbar-title" href="/">Social Comment Bot</a>', page)
             self.assertIn(b'aria-label="Open My Profile menu"', page)
             self.assertIn(b'content-my-trip-logo.svg', page)

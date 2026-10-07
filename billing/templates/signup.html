@@ -8,7 +8,7 @@
     :root { --navy:#0f2a38; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
     * { box-sizing:border-box; }
     body { min-height:100vh; margin:0; display:grid; place-items:center; padding:24px; color:#17252c; background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-    main { width:min(430px,100%); padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
+    main { width:100%; padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
     h1 { margin:0; color:var(--navy); font-size:26px; letter-spacing:-.03em; }
     .copy { margin:10px 0 25px; color:var(--muted); font-size:14px; line-height:1.55; }
     label { display:block; margin:15px 0 7px; color:var(--navy); font-size:12px; font-weight:750; }
@@ -17,10 +17,13 @@
     .hint { margin:6px 0 0; color:var(--muted); font-size:12px; }
     button { width:100%; height:46px; margin-top:22px; color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; border-radius:11px; font:inherit; font-weight:800; cursor:pointer; }
     .message { padding:11px 13px; margin:18px 0 0; color:#98253d; background:#fff0f3; border:1px solid #f5ccd5; border-radius:10px; font-size:13px; line-height:1.45; }
+    .form-content { width:100%; max-width:560px; min-width:0; margin-inline:auto; }
+    .form-content input, .form-content select { max-width:100%; }
   </style>
 </head>
 <body>
   <main>
+    <div class="form-content">
     <h1>Start your subscription</h1>
     <p class="copy">You'll be redirected to Razorpay to authorize your recurring payment. We'll reach out by email to connect your Facebook/Instagram/YouTube accounts once payment goes through.</p>
     {% if error %}<p class="message">{{ error }}</p>{% endif %}
@@ -35,6 +38,7 @@
       <p class="hint">Lowercase letters, digits, hyphens. This becomes part of your bot's URL.</p>
       <button type="submit">Continue to payment</button>
     </form>
+      </div>
   </main>
 </body>
 </html>

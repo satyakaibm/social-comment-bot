@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 IST = timezone(timedelta(hours=5, minutes=30))
 from zoneinfo import ZoneInfo
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -518,6 +518,7 @@ def create_app() -> Flask:
             "login.html",
             next=_safe_next(request.args.get("next", "/")),
             password_changed=request.args.get("password_changed") == "1",
+            signed_out=request.args.get("signed_out") == "1",
             registered=request.args.get("registered") == "1",
         )
 
@@ -711,13 +712,35 @@ def create_app() -> Flask:
         if request.method == "POST":
             display_name = request.form.get("display_name", "").strip()
             email = request.form.get("email", "").strip()
-            submitted_user = {**dict(auth), "display_name": display_name, "email": email}
+            details = {name: request.form.get(name, auth[name] or "").strip()
+                       for name in ("current_location", "phone_number", "facebook_page_link", "instagram_page_link", "youtube_page_link", "tiktok_page_link")}
+            submitted_user = {**dict(auth), "display_name": display_name, "email": email, **details}
             if not _csrf_ok():
                 return _render_profile(submitted_user, 400, error="Your session expired. Please try again.")
             if len(display_name) > 100:
                 return _render_profile(submitted_user, 400, error="Display name cannot exceed 100 characters.")
             if email and (len(email) > 254 or not EMAIL_PATTERN.fullmatch(email)):
                 return _render_profile(submitted_user, 400, error="Enter a valid email address.")
+            labels = {
+                "current_location": (150, "Current location"),
+                "phone_number": (40, "Phone number"),
+                "facebook_page_link": (2048, "Facebook page link"),
+                "instagram_page_link": (2048, "Instagram page link"),
+                "youtube_page_link": (2048, "YouTube page link"),
+                "tiktok_page_link": (2048, "TikTok page link"),
+            }
+            for name, (limit, label) in labels.items():
+                value = details[name]
+                if len(value) > limit:
+                    return _render_profile(submitted_user, 400, error=f"{label} cannot exceed {limit} characters.")
+                if name.endswith("_link") and value:
+                    try:
+                        link = urlsplit(value)
+                        valid_link = link.scheme in ("http", "https") and bool(link.hostname) and not link.username and not link.password
+                    except ValueError:
+                        valid_link = False
+                    if not valid_link:
+                        return _render_profile(submitted_user, 400, error=f"Enter a valid {label.lower()} starting with https:// or http://.")
             # One form saves everything: a photo is optional and travels in
             # the same request, so there is no second submit button to
             # mistake for Save. A missing or empty file field is simply
@@ -738,7 +761,7 @@ def create_app() -> Flask:
                         error="This email address is already registered to another account.",
                     )
                 updated = db.update_dashboard_user_profile(
-                    conn, session["dashboard_username"], display_name=display_name, email=email,
+                    conn, session["dashboard_username"], display_name=display_name, email=email, **details,
                 )
                 if not updated:
                     return _render_profile(
@@ -842,7 +865,7 @@ def create_app() -> Flask:
         ):
             return "Invalid request", 400
         session.clear()
-        return redirect(url_for("login"))
+        return redirect(url_for("login", signed_out="1"))
 
     app.jinja_env.globals["csrf_token"] = _csrf_token
     app.jinja_env.globals["password_hint"] = PASSWORD_HINT
@@ -1356,6 +1379,7 @@ def create_app() -> Flask:
             is_admin=is_admin,
             portal_users=portal_users,
             own_username=session.get("dashboard_username", ""),
+            settings_user=auth,
         )
 
     @app.post("/settings/admin")

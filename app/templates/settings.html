@@ -6,111 +6,98 @@
   <meta name="theme-color" content="#0f2a38">
   <title>Settings · Content My Trip</title>
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/content-my-trip-icon.png') }}">
-  <style>
-    :root { --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; --ink:#17252c; }
-    * { box-sizing:border-box; }
-    body { margin:0; color:var(--ink); background:#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-    .topbar { height:74px; padding:0 26px; display:flex; align-items:center; justify-content:space-between; background:#fff; border-bottom:1px solid var(--line); }
-    .brand { display:flex; align-items:center; gap:10px; color:var(--navy); font-weight:850; text-decoration:none; }
-    .brand img { width:120px; height:40px; object-fit:contain; }
-    .back { color:var(--navy); font-size:13px; font-weight:750; text-decoration:none; }
-    .page { max-width:640px; margin:0 auto; padding:40px 24px 80px; }
-    .eyebrow { display:block; margin-bottom:8px; color:var(--coral); font-size:11px; font-weight:850; letter-spacing:.13em; text-transform:uppercase; }
-    h1 { margin:0 0 10px; color:var(--navy); font-size:30px; letter-spacing:-.03em; }
-    .summary { margin:0 0 28px; color:var(--muted); font-size:14px; line-height:1.6; }
-    .links { display:grid; gap:12px; }
-    .link-card { display:flex; align-items:center; justify-content:space-between; padding:18px 20px; color:var(--ink); background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 5px 18px rgba(15,42,56,.035); text-decoration:none; transition:.15s ease; }
-    .link-card:hover { border-color:#b9c9d1; box-shadow:0 10px 24px rgba(15,42,56,.08); transform:translateY(-1px); }
-    .link-card-title { display:block; color:var(--navy); font-size:15px; font-weight:800; }
-    .link-card-url { display:block; margin-top:4px; color:var(--muted); font-size:12px; }
-    .link-card-arrow { color:var(--coral); font-size:18px; }
-    .section-label { display:block; margin:28px 0 12px; color:var(--muted); font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
-    .section-label:first-of-type { margin-top:0; }
-    .flash { padding:11px 13px; margin:0 0 18px; border-radius:10px; font-size:13px; }
-    .flash.ok { color:#086142; background:#e9f8f1; border:1px solid #c9ecdd; }
-    .flash.error { color:#98253d; background:#fff0f3; border:1px solid #f5ccd5; }
-    .user-row { gap:14px; }
-    .user-row form { flex:0 0 auto; margin:0; }
-    .role-badge { display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; vertical-align:middle; }
-    .role-badge.is-admin { color:#086142; background:#e9f8f1; }
-    .role-badge.is-member { color:var(--muted); background:#eef1f3; }
-    .role-toggle { min-height:38px; padding:0 14px; color:var(--navy); background:#f4f7f8; border:1px solid var(--line); border-radius:9px; font:inherit; font-size:12px; font-weight:750; cursor:pointer; }
-    .role-toggle:hover { border-color:#b9c9d1; background:#eef2f3; }
-    .role-toggle.is-danger { color:#98253d; }
-    @media (max-width:620px) { .topbar{padding:0 16px}.page{padding:28px 16px 60px}h1{font-size:25px} .user-row{flex-direction:column;align-items:flex-start}.user-row form{width:100%}.role-toggle{width:100%} }
-  </style>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/account.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/settings.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/site-header.css') }}">
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip"></a>
-    <a class="back" href="/">&larr; Back to dashboard</a>
-  </header>
-  <main class="page">
-    <span class="eyebrow">Social Comment Studio</span>
-    <h1>Settings</h1>
-    <p class="summary">Account settings, plus the public policy pages used for Meta App Review.</p>
-    {% if user_created %}<p class="summary" style="color:#086142">Portal user created. They can sign in from the login page.</p>{% endif %}
-    {% for category, message in get_flashed_messages(with_categories=true) %}<p class="flash {{ category }}">{{ message }}</p>{% endfor %}
-
-    <span class="section-label">Account</span>
-    <div class="links">
-      <a class="link-card" href="/profile/password">
-        <span><span class="link-card-title">Reset password</span><span class="link-card-url">/profile/password</span></span>
-        <span class="link-card-arrow" aria-hidden="true">&#8594;</span>
-      </a>
-      <a class="link-card" href="/signup">
-        <span><span class="link-card-title">Add portal user</span><span class="link-card-url">Create a login for another operator</span></span>
-        <span class="link-card-arrow" aria-hidden="true">&#8594;</span>
-      </a>
-    </div>
-
-    {% if is_admin %}
-    <span class="section-label">Portal users</span>
-    <div class="links">
-      {% for user in portal_users %}
-      <div class="link-card user-row">
-        <span>
-          <span class="link-card-title">{{ user.display_name or user.username }}<span class="role-badge {{ 'is-admin' if user.is_admin else 'is-member' }}">{{ 'Admin' if user.is_admin else 'Member' }}</span></span>
-          <span class="link-card-url">{{ user.username }}</span>
-        </span>
-        <form method="post" action="/settings/admin">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="target_username" value="{{ user.username }}">
-          <input type="hidden" name="action" value="{{ 'demote' if user.is_admin else 'promote' }}">
-          <button type="submit" class="role-toggle{{ ' is-danger' if user.is_admin else '' }}">{{ 'Remove admin' if user.is_admin else 'Make admin' }}</button>
-        </form>
+<body class="account-page account-settings">
+  {% include "account_header.html" %}
+  <main class="page" id="account-content">
+    <div class="account-content-inner">
+    {% include "page_back.html" %}
+    <div class="settings-heading"><h1>Settings</h1><p class="summary">Manage workspace access, system status and policies.</p></div>
+    {% if user_created %}<p class="flash ok" role="status">Portal user created. They can sign in from the login page.</p>{% endif %}
+    {% for category, message in get_flashed_messages(with_categories=true) %}<p class="flash {{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">{{ message }}</p>{% endfor %}
+    <div class="settings-layout">
+      <nav class="settings-tabs" aria-label="Settings sections">
+        {% if is_admin %}<a href="#team">Users <span class="tab-count">{{ portal_users|length }}</span></a>{% endif %}
+        <a href="#system">System</a>
+        <a href="#policies">Policies</a>
+      </nav>
+      <div class="settings-sections">
+        {% if is_admin %}
+        <section class="settings-panel" id="team" aria-labelledby="team-title">
+          <div class="panel-heading"><div><h2 id="team-title">Workspace access</h2><p>Manage portal users and administrator access.</p></div><a class="settings-button primary-action" href="/signup">+ Add portal user</a></div>
+          <div class="team-labels"><span>Portal users · {{ portal_users|length }}</span><span>Role &amp; access</span></div>
+          {% for user in portal_users %}
+          <div class="setting-row member-row"><div class="member-identity"><span class="member-avatar" aria-hidden="true">{{ (user.display_name or user.username)[:1]|upper }}</span><div><h3>{{ user.display_name or user.username }}{% if user.username == own_username %}<span class="you-label">You</span>{% endif %}</h3><p>{{ user.username }}</p></div></div><div class="member-access"><span class="role-badge {{ 'is-admin' if user.is_admin else 'is-member' }}">{{ 'Admin' if user.is_admin else 'Member' }}</span><form method="post" action="/settings/admin"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="target_username" value="{{ user.username }}"><input type="hidden" name="action" value="{{ 'demote' if user.is_admin else 'promote' }}"><button type="submit" class="settings-button{{ ' is-danger' if user.is_admin else '' }}">{{ 'Remove admin' if user.is_admin else 'Make admin' }}</button></form></div></div>
+          {% else %}<p class="empty-team">No portal users to display.</p>{% endfor %}
+        </section>
+        {% endif %}
+        <section class="settings-panel" id="system" aria-labelledby="system-title">
+          <div class="panel-heading"><div><h2 id="system-title">System &amp; connections</h2><p>Monitor the services behind your workspace.</p></div></div>
+          <div class="setting-row"><div><h3>System Status</h3><p>Review worker health, API quota, and the webhook queue.</p></div><a class="settings-button" href="/status">View status <span aria-hidden="true">↗</span></a></div>
+          <div class="setting-row"><div><h3>Gateway Health</h3><p>Check the gateway that receives Facebook and Instagram comments.</p></div><a class="settings-button" href="/health">Check gateway <span aria-hidden="true">↗</span></a></div>
+        </section>
+        <section class="settings-panel" id="policies" aria-labelledby="policies-title">
+          <div class="panel-heading"><div><h2 id="policies-title">Privacy &amp; policies</h2><p>Learn how we handle your data. Opens in a new tab.</p></div></div>
+          {% for path, title, description in [('/privacy', 'Privacy Policy', 'How your information is collected, used, and protected.'), ('/terms', 'Terms of Service', 'Guidelines for using Social Comment Studio.'), ('/datadeletion', 'Data Deletion Instructions', 'How to request removal of your data.')] %}
+          <div class="setting-row"><div><h3>{{ title }}</h3><p>{{ description }}</p></div><a class="settings-button" href="{{ path }}" target="_blank" rel="noopener" aria-label="Read {{ title }} (opens in a new tab)">Read policy <span aria-hidden="true">↗</span></a></div>
+          {% endfor %}
+        </section>
       </div>
-      {% endfor %}
     </div>
-    {% endif %}
-
-    <span class="section-label">System</span>
-    <div class="links">
-      <a class="link-card" href="/status">
-        <span><span class="link-card-title">System Status</span><span class="link-card-url">Worker health, quota, webhook queue</span></span>
-        <span class="link-card-arrow" aria-hidden="true">&#8594;</span>
-      </a>
-      <a class="link-card" href="/health">
-        <span><span class="link-card-title">Gateway Health</span><span class="link-card-url">/health</span></span>
-        <span class="link-card-arrow" aria-hidden="true">&#8594;</span>
-      </a>
-    </div>
-
-    <span class="section-label">Policies</span>
-    <div class="links">
-      <a class="link-card" href="/privacy" target="_blank" rel="noopener">
-        <span><span class="link-card-title">Privacy Policy</span><span class="link-card-url">/privacy</span></span>
-        <span class="link-card-arrow" aria-hidden="true">&#8599;</span>
-      </a>
-      <a class="link-card" href="/terms" target="_blank" rel="noopener">
-        <span><span class="link-card-title">Terms of Service</span><span class="link-card-url">/terms</span></span>
-        <span class="link-card-arrow" aria-hidden="true">&#8599;</span>
-      </a>
-      <a class="link-card" href="/datadeletion" target="_blank" rel="noopener">
-        <span><span class="link-card-title">Data Deletion Instructions</span><span class="link-card-url">/datadeletion</span></span>
-        <span class="link-card-arrow" aria-hidden="true">&#8599;</span>
-      </a>
     </div>
   </main>
+{% include "account_footer.html" %}
+<script>
+(() => {
+  const navigation = document.querySelector('.settings-tabs');
+  const tabs = Array.from(navigation.querySelectorAll('a'));
+  const panels = tabs.map(tab => document.getElementById(tab.hash.slice(1)));
+  navigation.setAttribute('role', 'tablist');
+  tabs.forEach((tab, index) => {
+    tab.id = 'tab-' + panels[index].id;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', panels[index].id);
+    panels[index].setAttribute('role', 'tabpanel');
+    panels[index].setAttribute('aria-labelledby', tab.id);
+    panels[index].tabIndex = 0;
+  });
+  function select(index, focus = false) {
+    tabs.forEach((tab, i) => {
+      tab.setAttribute('aria-selected', String(i === index));
+      tab.tabIndex = i === index ? 0 : -1;
+      panels[i].hidden = i !== index;
+    });
+    if (focus) tabs[index].focus();
+  }
+  function fromHash() {
+    const index = tabs.findIndex(tab => tab.hash === location.hash);
+    select(index < 0 ? 0 : index);
+  }
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', event => {
+      event.preventDefault();
+      history.replaceState(null, '', tab.hash);
+      select(index);
+    });
+    tab.addEventListener('keydown', event => {
+      let next;
+      if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+      if (event.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === 'Home') next = 0;
+      if (event.key === 'End') next = tabs.length - 1;
+      if (next === undefined) return;
+      event.preventDefault();
+      history.replaceState(null, '', tabs[next].hash);
+      select(next, true);
+    });
+  });
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
+})();
+</script>
+<script src="{{ url_for('static', filename='js/page-navigation.js') }}" defer></script>
 </body>
 </html>

@@ -62,6 +62,11 @@ class EmailVerificationTests(_ProfileCase):
         self.assertEqual(page.status_code, 200)
         self.assertIn(b"We sent a 6-digit code to admin@example.com", page.data)
         self.assertIn(b"Not verified", page.data)
+        self.assertIn(b"Send Verification Code", page.data)
+        self.assertIn(b'id="email-verification-dialog"', page.data)
+        self.assertIn(b'data-open-on-load="true"', page.data)
+        self.assertIn(b'<input name="code"', page.data)
+        self.assertNotIn(b'<input disabled name="code"', page.data)
         self.assertNotIn(b">Verified<", page.data)
         self.assertEqual(self.sent[-1]["to"], "admin@example.com")
         self.assertRegex(self.code_from_mail(), r"^\d{6}$")
@@ -236,14 +241,14 @@ class AvatarTests(_ProfileCase):
 
     def test_one_form_saves_everything_and_there_is_no_upload_button(self):
         page = self.client.get("/profile").data.decode()
-        self.assertIn('<form method="post" id="profile-form" enctype="multipart/form-data">', page)
+        self.assertIn('<form method="post" action="/profile" id="profile-form" enctype="multipart/form-data">', page)
         self.assertIn('name="avatar" id="avatar-file"', page)
         self.assertNotIn("Upload photo", page)
         self.assertNotIn("Choose an image", page)
         self.assertNotIn("Account created", page)
-        self.assertEqual(page.count('<button type="submit" form="profile-form" class="primary">Save profile</button>'), 1)
-        footer = page[page.index('class="footer-actions"'):]
-        self.assertLess(footer.index('href="/">BACK</a>'), footer.index('Save profile'))
+        self.assertEqual(page.count('<button type="submit" form="profile-form" class="primary" disabled>Save profile</button>'), 1)
+        self.assertLess(page.index('data-back-fallback'), page.index('id="profile-form"'))
+        self.assertIn('aria-label="Open My Profile menu"', page)
         # Saving without choosing a file is simply a save -- never an error.
         saved = self.client.post("/profile", data={"csrf_token": "tok", "display_name": "Admin", "email": ""},
                                  content_type="multipart/form-data")
@@ -270,3 +275,68 @@ class AvatarTests(_ProfileCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProfileDetailsTests(_ProfileCase):
+    def test_details_are_saved_displayed_and_can_be_cleared(self):
+        details = {"current_location": "Kolkata, India", "phone_number": "+91 98765 43210",
+                   "facebook_page_link": "https://www.facebook.com/example/",
+                   "instagram_page_link": "https://www.instagram.com/example/",
+                   "youtube_page_link": "https://www.youtube.com/@example",
+                   "tiktok_page_link": "https://www.tiktok.com/@example"}
+        response = self.client.post('/profile', data={"csrf_token": "tok", **details})
+        self.assertEqual(response.status_code, 200)
+        for name, value in details.items():
+            self.assertEqual(self.user()[name], value)
+            self.assertIn(value.encode(), self.client.get('/profile').data)
+        self.client.post('/profile', data={"csrf_token": "tok", **dict.fromkeys(details, "")})
+        for name in details:
+            self.assertIsNone(self.user()[name])
+
+    def test_invalid_link_does_not_save_details(self):
+        response = self.client.post('/profile', data={"csrf_token": "tok",
+            "current_location": "Kolkata", "instagram_page_link": "javascript:alert(1)"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIsNone(self.user()['current_location'])
+
+    def test_existing_database_gets_columns_without_losing_users(self):
+        with db.connect() as conn:
+            for name in ('current_location', 'phone_number', 'facebook_page_link', 'instagram_page_link', 'youtube_page_link', 'tiktok_page_link'):
+                conn.execute(f'ALTER TABLE dashboard_users DROP COLUMN {name}')
+            conn.commit()
+        db.init_db()
+        self.assertEqual(self.user()['username'], 'admin')
+        self.assertIsNone(self.user()['current_location'])
+
+    def test_all_link_fields_reject_unsafe_values_without_partial_save(self):
+        for name in ('facebook_page_link', 'instagram_page_link', 'youtube_page_link', 'tiktok_page_link'):
+            with self.subTest(field=name):
+                result = self.client.post('/profile', data={'csrf_token': 'tok',
+                    'current_location': 'Should not save', name: 'javascript:alert(1)'})
+                self.assertEqual(result.status_code, 400)
+                self.assertIsNone(self.user()[name])
+                self.assertIsNone(self.user()['current_location'])
+
+    def test_detail_limits_and_csrf_protect_saved_profile(self):
+        for name, limit in [('current_location',150), ('phone_number',40),
+                            ('facebook_page_link',2048), ('instagram_page_link',2048),
+                            ('youtube_page_link',2048), ('tiktok_page_link',2048)]:
+            with self.subTest(field=name):
+                result = self.client.post('/profile', data={'csrf_token':'tok', name:'x' * (limit + 1)})
+                self.assertEqual(result.status_code,400)
+                self.assertIsNone(self.user()[name])
+        result = self.client.post('/profile', data={'csrf_token':'wrong','current_location':'Unauthorized'})
+        self.assertEqual(result.status_code,400)
+        self.assertIsNone(self.user()['current_location'])
+
+    def test_verification_then_profile_save_uses_correct_endpoint(self):
+        self.save_email('new@example.com')
+        result = self.client.post('/profile/email/verify', data={'csrf_token':'tok','code':self.code_from_mail()})
+        self.assertEqual(result.status_code,200)
+        self.assertIn(b'action="/profile" id="profile-form"',result.data)
+        result = self.client.post('/profile', data={'csrf_token':'tok','email':'new@example.com',
+            'current_location':'Kolkata','facebook_page_link':'https://facebook.com/example'})
+        self.assertEqual(result.status_code,200)
+        self.assertIsNotNone(self.user()['email_verified_at'])
+        self.assertEqual(self.user()['current_location'],'Kolkata')
+        self.assertEqual(len(self.sent),1)

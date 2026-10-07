@@ -86,6 +86,26 @@ pip install -r requirements-dev.txt
 python -m pytest
 ```
 
+The default suite includes unit tests and Flask/database integration tests. To include
+billing tests, run `python -m pytest tests billing/tests` after installing
+`billing/requirements.txt` as well.
+
+The optional browser sanity test exercises the actual profile JavaScript: read/edit
+mode, Cancel (including photo previews), email send/verify with incorrect-code recovery,
+profile saving after verification, shared navigation, Settings and mobile layout. It
+starts an isolated local server with a temporary database and fake email delivery;
+it does not use your running dashboard or platform accounts.
+
+```bash
+npm install --prefix tests/browser
+npx --prefix tests/browser playwright install chromium
+CMT_BROWSER_TESTS=1 python -m pytest tests/test_browser_profile.py -q
+```
+
+Set `CMT_BROWSER_TESTS=1` on the combined pytest command to include browser checks
+with the rest of the suite. Node.js and Chromium must be available; `CMT_NODE` can
+select a specific Node executable. The browser test is skipped by default.
+
 Jenkins runs the same suite inside `Dockerfile.test` on every push (`docker build
 -f Dockerfile.test`). Add a failing test with the change it protects; keep
 network and credentials out of the suite.

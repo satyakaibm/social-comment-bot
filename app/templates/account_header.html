@@ -1,0 +1,7 @@
+<a class="skip-link" href="#account-content">Skip to content</a>
+{% include "site_header.html" %}
+<nav class="account-nav" aria-label="Account navigation">
+{% for path, label in [('/profile', 'My Profile'), ('/settings', 'Settings'), ('/about', 'Dashboard guide'), ('/faq', 'FAQ')] %}
+<a href="{{ path }}" {% if request.path == path %}aria-current="page"{% endif %}>{{ label }}</a>
+{% endfor %}
+</nav>

@@ -10,7 +10,7 @@
     :root { --navy:#0f2a38; --navy-soft:#173b4c; --coral:#ff6a3d; --muted:#667984; --line:#dce4e8; }
     * { box-sizing:border-box; }
     body { min-height:100vh; margin:0; display:grid; place-items:center; padding:24px; color:#17252c; background:radial-gradient(circle at 90% 5%,rgba(255,106,61,.14),transparent 30rem),radial-gradient(circle at 4% 90%,rgba(54,174,180,.12),transparent 28rem),#f5f7f8; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
-    main { width:min(430px,100%); padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
+    main { width:100%; padding:35px; background:#fff; border:1px solid var(--line); border-radius:24px; box-shadow:0 24px 70px rgba(15,42,56,.14); }
     img { display:block; width:190px; height:64px; margin:0 auto 25px; object-fit:contain; }
     .eyebrow { margin:0 0 8px; color:var(--coral); font-size:11px; font-weight:800; letter-spacing:.15em; text-transform:uppercase; }
     h1 { margin:0; color:var(--navy); font-size:30px; letter-spacing:-.035em; }
@@ -24,17 +24,20 @@
     .signup-link a { color:var(--navy); font-weight:800; text-decoration:none; }
     .legal-links { margin:14px 0 0; color:var(--muted); font-size:12px; text-align:center; }
     .legal-links a { color:var(--muted); text-decoration:underline; }
+    .form-content { width:100%; max-width:520px; min-width:0; margin-inline:auto; }
+    .form-content input, .form-content select { max-width:100%; }
   </style>
 </head>
 <body>
   <main>
+    <div class="form-content">
     <img src="{{ url_for('static', filename='images/content-my-trip-logo.svg') }}" alt="Content My Trip">
     <p class="eyebrow">Social Comment Studio</p>
-    <h1>Welcome back</h1>
+    <h1>{{ "You’re signed out" if signed_out else "Welcome back" }}</h1>
     {% if configuration_missing %}
       <p class="message">Dashboard login is not configured. Add DASHBOARD_USERNAME and DASHBOARD_PASSWORD_HASH_B64 to the environment.</p>
     {% else %}
-      <p class="copy">Sign in to review comment activity and automated replies.</p>
+      <p class="copy">{% if signed_out %}You’ve securely left the studio. Sign in whenever you’re ready to reconnect with your community.{% else %}Sign in to review comment activity and automated replies.{% endif %}</p>
       {% if password_changed %}<p class="message" style="color:#086142;background:#e9f8f1;border-color:#c9ecdd">Password updated. Sign in with your new password.</p>{% endif %}
       {% if registered %}<p class="message" style="color:#086142;background:#e9f8f1;border-color:#c9ecdd">Account created. Sign in with your new credentials.</p>{% endif %}
       {% if error %}<p class="message">{{ error }}</p>{% endif %}
@@ -49,6 +52,7 @@
       </form>
       <p class="legal-links"><a href="/privacy">Privacy Policy</a> &middot; <a href="/terms">Terms of Service</a></p>
     {% endif %}
+      </div>
   </main>
 </body>
 </html>
