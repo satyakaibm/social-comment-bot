@@ -7,7 +7,13 @@ import threading
 import unittest
 from unittest.mock import patch
 
+import pytest
+
 from app import config, mailer
+
+# This module is the one place the real smtplib path runs (against the fake
+# server below), so it opts out of conftest's send stub.
+pytestmark = pytest.mark.real_mail
 
 
 class _FakeSMTP(threading.Thread):

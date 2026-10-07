@@ -152,6 +152,18 @@ class EmailVerificationTests(_ProfileCase):
         self.assertIsNone(self.user()["email_verified_at"])
 
 
+class NoRealEmailGuardTests(_ProfileCase):
+    def test_suite_wide_stub_blocks_smtp_even_with_credentials_configured(self):
+        import smtplib
+        from unittest.mock import patch as _patch
+        self.addCleanup(_patch.stopall)
+        for attr in ("SMTP", "SMTP_SSL"):
+            _patch.object(smtplib, attr, side_effect=AssertionError("real SMTP reached")).start()
+        with _patch.object(config, "SMTP_HOST", "smtp.gmail.com"), _patch.object(config, "MAIL_FROM", "x@gmail.com"):
+            page = self.save_email("admin@example.com")
+        self.assertIn(b"We sent a 6-digit code", page.data)
+
+
 class AvatarTests(_ProfileCase):
     def upload(self, data, filename="me.png"):
         return self.client.post("/profile/avatar", data={"csrf_token": "tok", "avatar": (io.BytesIO(data), filename)},
