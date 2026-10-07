@@ -19,14 +19,44 @@ AVATAR_MAX_BYTES = 1024 * 1024
 
 # Outbound email for profile email verification. All optional: with
 # SMTP_HOST or MAIL_FROM unset the portal cannot send, and /profile says so.
-SMTP_HOST = os.environ.get("SMTP_HOST", "").strip()
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-SMTP_USERNAME = os.environ.get("SMTP_USERNAME", "").strip()
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
-SMTP_USE_TLS = os.environ.get("SMTP_USE_TLS", "true").strip().lower() not in ("0", "false", "no")
-SMTP_USE_SSL = os.environ.get("SMTP_USE_SSL", "false").strip().lower() in ("1", "true", "yes")
+# The settings use the Flask-Mail names (MAIL_SERVER, MAIL_PORT,
+# MAIL_USERNAME, MAIL_PASSWORD, MAIL_USE_TLS, MAIL_USE_SSL) so every project
+# of ours reads the same way as Content My Trip's .env. The SMTP_* names
+# that PR #130 shipped with are still accepted as aliases; MAIL_* wins when
+# both are present.
+
+
+def _mail_setting(primary: str, alias: str, default: str = "") -> str:
+    value = os.environ.get(primary, "").strip()
+    return value or os.environ.get(alias, "").strip() or default
+
+
+def _mail_flag(primary: str, alias: str, default: bool) -> bool:
+    raw = _mail_setting(primary, alias).lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
+SMTP_HOST = _mail_setting("MAIL_SERVER", "SMTP_HOST")
+SMTP_PORT = int(_mail_setting("MAIL_PORT", "SMTP_PORT", "587"))
+SMTP_USERNAME = _mail_setting("MAIL_USERNAME", "SMTP_USERNAME")
+SMTP_PASSWORD = os.environ.get("MAIL_PASSWORD") or os.environ.get("SMTP_PASSWORD", "")
+SMTP_USE_TLS = _mail_flag("MAIL_USE_TLS", "SMTP_USE_TLS", True)
+SMTP_USE_SSL = _mail_flag("MAIL_USE_SSL", "SMTP_USE_SSL", False)
 SMTP_TIMEOUT_SECONDS = int(os.environ.get("SMTP_TIMEOUT_SECONDS", "20"))
-MAIL_FROM = os.environ.get("MAIL_FROM", "").strip()
+# MAIL_FROM may be a bare address, a full "Name <address>", or just a display
+# name. A display name on its own (no "@") is paired with the login mailbox,
+# which is the address most providers insist the mail comes from anyway --
+# so MAIL_FROM="Content My Trip" with MAIL_USERNAME=x@gmail.com sends as
+# "Content My Trip <x@gmail.com>".
+_mail_from_raw = os.environ.get("MAIL_FROM", "").strip()
+if _mail_from_raw and "@" not in _mail_from_raw and "@" in SMTP_USERNAME:
+    MAIL_FROM = f"{_mail_from_raw} <{SMTP_USERNAME}>"
+elif not _mail_from_raw and "@" in SMTP_USERNAME:
+    MAIL_FROM = SMTP_USERNAME
+else:
+    MAIL_FROM = _mail_from_raw
 # Verification codes: 6 digits, short-lived, few guesses, limited resends.
 EMAIL_CODE_TTL_MINUTES = int(os.environ.get("EMAIL_CODE_TTL_MINUTES", "15"))
 EMAIL_CODE_MAX_ATTEMPTS = 5

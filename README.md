@@ -209,14 +209,14 @@ YouTube polling and publishing run in the dedicated `hindolroad-youtube-comments
 On **My Profile**, saving a new email address marks it *Not verified* and emails a 6-digit code (15-minute expiry, 5 guesses, one resend per minute); entering it shows a green **Verified** tick. The portal has no mail provider built in, so sending needs SMTP settings in each instance's `.env` -- any mailbox with SMTP works (a Gmail app password, Amazon SES, Brevo...):
 
 ```bash
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587            # 465 with SMTP_USE_SSL=true, or 25/587 with STARTTLS (default)
-SMTP_USERNAME=you@gmail.com
-SMTP_PASSWORD=app-password
-MAIL_FROM=you@gmail.com
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587            # 465 with MAIL_USE_SSL=true, or 25/587 with STARTTLS (MAIL_USE_TLS, default)
+MAIL_USERNAME=you@gmail.com
+MAIL_PASSWORD=app-password
+MAIL_FROM=Content My Trip   # a display name is paired with MAIL_USERNAME; a full address or "Name <address>" also works
 ```
 
-Until `SMTP_HOST` and `MAIL_FROM` are set, the page says verification is unavailable rather than failing. Tenants are separate containers with their own `.env`, so each needs its own settings (they can share one mailbox).
+These are the same variable names Content My Trip uses (the Flask-Mail convention); the `SMTP_HOST`/`SMTP_PORT`/`SMTP_USERNAME`/`SMTP_PASSWORD`/`SMTP_USE_TLS`/`SMTP_USE_SSL` names are accepted as aliases, with `MAIL_*` winning if both are set. Until a server and a from-address are set, the page says verification is unavailable rather than failing. Tenants are separate containers with their own `.env`, so each needs its own settings (they can share one mailbox).
 
 Users can also upload a profile photo (PNG, JPEG or WebP, 1 MB max, identified by file signature rather than filename) which replaces the initial-letter badge in the header on every page. Files live in `data/avatars/` -- per tenant, alongside the database -- and are served only to signed-in users.
 

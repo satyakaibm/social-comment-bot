@@ -32,7 +32,9 @@
     button,.secondary { min-height:44px; padding:0 17px; display:inline-flex; align-items:center; justify-content:center; border-radius:11px; font:inherit; font-size:13px; font-weight:800; text-decoration:none; cursor:pointer; }
     button { color:#fff; background:linear-gradient(135deg,var(--coral),#f04e43); border:0; }
     .secondary { color:var(--navy); background:#fff; border:1px solid var(--line); }
-    .back { width:max-content; min-width:120px; min-height:46px; margin:22px auto 0; padding:0 20px; display:flex; align-items:center; justify-content:center; color:#fff; background:var(--navy); border-radius:12px; box-shadow:0 8px 22px rgba(15,42,56,.2); font-size:15px; font-weight:850; letter-spacing:.08em; text-align:center; text-decoration:none; }
+    .footer-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:26px; padding-top:20px; border-top:1px solid var(--line); }
+    .back { min-width:120px; min-height:46px; padding:0 20px; display:inline-flex; align-items:center; justify-content:center; color:#fff; background:var(--navy); border-radius:12px; box-shadow:0 8px 22px rgba(15,42,56,.2); font-size:15px; font-weight:850; letter-spacing:.08em; text-align:center; text-decoration:none; }
+    .footer-actions .primary { min-height:46px; padding:0 22px; font-size:14px; }
     .back:hover { background:#173b4c; transform:translateY(-1px); }
     .avatar img { width:100%; height:100%; border-radius:50%; object-fit:cover; display:block; }
     .avatar { overflow:hidden; }
@@ -49,7 +51,7 @@
     .photo-row { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
     .photo-row input[type=file] { height:auto; padding:9px; font-size:12px; letter-spacing:0; text-align:left; width:auto; }
     .hint { margin:6px 0 0; color:var(--muted); font-size:11px; }
-    @media (max-width:600px) { .card{padding:25px 20px}.grid,.details{grid-template-columns:1fr}.actions{align-items:stretch;flex-direction:column}.actions>*{width:100%}.inline-form{width:100%}.inline-form input{flex:1} }
+    @media (max-width:600px) { .card{padding:25px 20px}.grid,.details{grid-template-columns:1fr}.actions{align-items:stretch;flex-direction:column}.actions>*{width:100%}.inline-form{width:100%}.inline-form input{flex:1}.footer-actions{flex-direction:column-reverse;align-items:stretch}.footer-actions>*{width:100%} }
   </style>
 </head>
 <body>
@@ -59,7 +61,7 @@
       <div class="profile-head"><span class="avatar">{% if user.avatar_path %}<img src="{{ url_for('profile_avatar', username=user.username, v=user.updated_at) }}" alt="">{% else %}{{ user.username[:1]|upper }}{% endif %}</span><div><h1>My Profile</h1><p class="sub">Manage your portal account details and security.</p></div></div>
       {% if error %}<p class="message error">{{ error }}</p>{% endif %}
       {% if success %}<p class="message success">{{ success }}</p>{% endif %}
-      <form method="post">
+      <form method="post" id="profile-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="grid">
           <div><label for="username">User ID</label><input id="username" value="{{ user.username }}" readonly></div>
@@ -72,7 +74,7 @@
           </div>
         </div>
         <div class="details"><div><span class="detail-label">Account created</span><span class="detail-value">{{ user.created_at }}</span></div><div><span class="detail-label">Last updated</span><span class="detail-value">{{ user.updated_at }}</span></div></div>
-        <div class="actions"><a class="secondary" href="/profile/password">Reset password</a><button type="submit">Save profile</button></div>
+        <div class="actions"><a class="secondary" href="/profile/password">Reset password</a></div>
       </form>
 
       {% if user.email and not verification.verified %}
@@ -103,8 +105,8 @@
       <div class="photo-row">
         <form class="inline-form" method="post" action="/profile/avatar" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="file" name="avatar" accept="image/png,image/jpeg,image/webp" required>
-          <button class="small" type="submit">Upload</button>
+          <input type="file" name="avatar" id="avatar-file" accept="image/png,image/jpeg,image/webp" required>
+          <button class="small ghost" type="submit" id="avatar-upload" disabled>Upload photo</button>
         </form>
         {% if user.avatar_path %}
         <form class="inline-form" method="post" action="/profile/avatar/remove">
@@ -114,8 +116,19 @@
         {% endif %}
       </div>
       <p class="hint">PNG, JPEG or WebP, up to 1 MB. Shown in the profile icon on every page.</p>
+      <div class="footer-actions">
+        <a class="back" href="/">BACK</a>
+        <button type="submit" form="profile-form" class="primary">Save profile</button>
+      </div>
     </section>
-    <a class="back" href="/">BACK</a>
   </main>
+  <script>
+    // The photo form is separate from "Save profile"; keep its button inert
+    // until a file is chosen so the two cannot be mistaken for each other.
+    (function () {
+      var file = document.getElementById('avatar-file'), button = document.getElementById('avatar-upload');
+      if (file && button) { file.addEventListener('change', function () { button.disabled = !file.files.length; }); }
+    })();
+  </script>
 </body>
 </html>

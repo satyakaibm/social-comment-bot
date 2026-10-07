@@ -208,6 +208,17 @@ class AvatarTests(_ProfileCase):
         response = anonymous.get("/profile/avatar/admin")
         self.assertIn(response.status_code, (302, 401, 403))
 
+    def test_upload_button_is_secondary_and_inert_until_a_file_is_chosen(self):
+        page = self.client.get("/profile").data.decode()
+        self.assertIn('id="avatar-upload" disabled>Upload photo</button>', page)
+        self.assertIn('class="small ghost" type="submit" id="avatar-upload"', page)
+        # Exactly one primary (orange) submit on the page: Save profile, which
+        # sits in the card footer beside BACK yet submits the profile form.
+        self.assertEqual(page.count('<button type="submit" form="profile-form" class="primary">Save profile</button>'), 1)
+        self.assertIn('<form method="post" id="profile-form">', page)
+        footer = page[page.index('class="footer-actions"'):]
+        self.assertLess(footer.index('href="/">BACK</a>'), footer.index('Save profile'))
+
     def test_upload_requires_csrf(self):
         page = self.client.post("/profile/avatar", data={"csrf_token": "bad", "avatar": (io.BytesIO(PNG), "me.png")},
                                 content_type="multipart/form-data")
