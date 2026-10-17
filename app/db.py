@@ -136,6 +136,10 @@ CREATE TABLE IF NOT EXISTS video_stats (
     like_count INTEGER,
     share_count INTEGER,
     comment_count INTEGER,
+    reach INTEGER,
+    saved INTEGER,
+    follows INTEGER,
+    profile_visits INTEGER,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (platform, video_id)
 );
@@ -150,6 +154,10 @@ CREATE TABLE IF NOT EXISTS video_stats_history (
     like_count INTEGER,
     share_count INTEGER,
     comment_count INTEGER,
+    reach INTEGER,
+    saved INTEGER,
+    follows INTEGER,
+    profile_visits INTEGER,
     captured_at TEXT NOT NULL
 );
 
@@ -434,6 +442,13 @@ def init_db() -> None:
         # forced a full table scan (83k+ rows in seen_comments) each time.
         conn.execute("CREATE INDEX IF NOT EXISTS idx_comments_created_at ON comments(created_at)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_seen_comments_created_at ON seen_comments(created_at)")
+        # Instagram media insights (reach, saves, follows, profile visits)
+        # ride on the same rows as the like/view counts.
+        for table in ("video_stats", "video_stats_history"):
+            present = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+            for column in ("reach", "saved", "follows", "profile_visits"):
+                if column not in present:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} INTEGER")
         stats_columns = {
             row["name"] for row in conn.execute("PRAGMA table_info(video_stats)")
         }
@@ -619,13 +634,22 @@ def upsert_video_stats(
     share_count: int | None,
     comment_count: int | None,
     view_count: int | None = None,
+    reach: int | None = None,
+    saved: int | None = None,
+    follows: int | None = None,
+    profile_visits: int | None = None,
 ) -> None:
     captured_at = now()
+    values = (
+        platform, video_id, page_key, video_title, view_count, like_count,
+        share_count, comment_count, reach, saved, follows, profile_visits,
+    )
     conn.execute(
         """INSERT INTO video_stats
                (platform, video_id, page_key, video_title, view_count,
-                like_count, share_count, comment_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                like_count, share_count, comment_count, reach, saved, follows,
+                profile_visits, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(platform, video_id) DO UPDATE SET
                page_key = excluded.page_key,
                video_title = excluded.video_title,
@@ -633,35 +657,20 @@ def upsert_video_stats(
                like_count = excluded.like_count,
                share_count = excluded.share_count,
                comment_count = excluded.comment_count,
+               reach = excluded.reach,
+               saved = excluded.saved,
+               follows = excluded.follows,
+               profile_visits = excluded.profile_visits,
                updated_at = excluded.updated_at""",
-        (
-            platform,
-            video_id,
-            page_key,
-            video_title,
-            view_count,
-            like_count,
-            share_count,
-            comment_count,
-            captured_at,
-        ),
+        (*values, captured_at),
     )
     conn.execute(
         """INSERT INTO video_stats_history
                (platform, video_id, page_key, video_title, view_count,
-                like_count, share_count, comment_count, captured_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            platform,
-            video_id,
-            page_key,
-            video_title,
-            view_count,
-            like_count,
-            share_count,
-            comment_count,
-            captured_at,
-        ),
+                like_count, share_count, comment_count, reach, saved, follows,
+                profile_visits, captured_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (*values, captured_at),
     )
 
 
@@ -699,12 +708,20 @@ def expire_stale_video_stats(
               SET view_count = NULL,
                   like_count = NULL,
                   share_count = NULL,
-                  comment_count = NULL
+                  comment_count = NULL,
+                  reach = NULL,
+                  saved = NULL,
+                  follows = NULL,
+                  profile_visits = NULL
             WHERE datetime(updated_at) < datetime('now', ?)
               AND (view_count IS NOT NULL
                    OR like_count IS NOT NULL
                    OR share_count IS NOT NULL
-                   OR comment_count IS NOT NULL)""",
+                   OR comment_count IS NOT NULL
+                   OR reach IS NOT NULL
+                   OR saved IS NOT NULL
+                   OR follows IS NOT NULL
+                   OR profile_visits IS NOT NULL)""",
         (f"-{max(1, retention_days)} days",),
     )
     return cursor.rowcount

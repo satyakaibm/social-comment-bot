@@ -108,6 +108,10 @@ def _refresh_instagram(conn) -> int:
             like_count=stats.get("like_count"),
             share_count=stats.get("share_count"),
             comment_count=stats.get("comment_count"),
+            reach=stats.get("reach"),
+            saved=stats.get("saved"),
+            follows=stats.get("follows"),
+            profile_visits=stats.get("profile_visits"),
         )
         conn.commit()
         updated += 1

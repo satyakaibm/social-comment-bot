@@ -100,6 +100,20 @@ class GrowthChartsTests(unittest.TestCase):
             _history(conn, platform="youtube", video_id="yt-slow", title="Temple walk", start=5000, per_day=5, likes_per_day=1)
             _history(conn, platform="youtube", video_id="yt-dead", title="Old vlog", start=800, per_day=0, likes_per_day=0)
             _history(conn, platform="instagram", video_id="ig-reel", title="Street food reel", start=300, per_day=120, likes_per_day=20)
+            # Insight columns on the reel's existing latest row (no new history
+            # row, so its growth numbers stay as _history wrote them), plus two
+            # media that only have insights.
+            conn.execute(
+                "UPDATE video_stats SET reach = 4000, saved = 160, follows = 30, profile_visits = 120 "
+                "WHERE platform = 'instagram' AND video_id = 'ig-reel'"
+            )
+            for video_id, title, reach, saved, follows, visits in (
+                ("ig-photo", "Konark photo", 4500, 12, 2, 40),
+                ("ig-small", "Tiny post", 40, 3, None, None),
+            ):
+                db.upsert_video_stats(conn, platform="instagram", video_id=video_id, page_key=config.DEFAULT_PAGE_KEY,
+                                      video_title=title, view_count=None, like_count=100, share_count=5,
+                                      comment_count=2, reach=reach, saved=saved, follows=follows, profile_visits=visits)
             texts = [
                 ("How do I reach Puri from Bhubaneswar?", "posted"),
                 ("Please make a video on Konark", "posted"),
@@ -195,6 +209,11 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertGreaterEqual(int(weeks["returning"].sum()), 1)
         fans = data["superfans"].set_index("commenter")
         self.assertGreaterEqual(fans.loc["viewer0", "comments"], 3)
+        media = data["ig_media"].set_index("video_id")
+        self.assertEqual(list(media.index), ["ig-photo", "ig-reel", "ig-small"])   # widest reach first
+        self.assertEqual(media.loc["ig-reel", "saves_per_1k"], 40.0)
+        self.assertEqual(media.loc["ig-reel", "follows_per_1k"], 7.5)
+        self.assertTrue(media["follows_per_1k"].isna().loc["ig-small"])
         summary = data["follower_summary"].set_index("platform")
         self.assertEqual(summary.loc["youtube", "latest"], 10_480)
         self.assertEqual(summary.loc["youtube", "gain_30d"], 480)
@@ -228,6 +247,11 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertIn("repeat commenters on youtube", plan)
         self.assertIn("How new uploads are tracking", titles)
         self.assertIn("Is a community forming?", titles)
+        self.assertIn("Instagram reach and saves", titles)
+        reach = " ".join(next(f["points"] for f in result["findings"] if f["title"] == "Instagram reach and saves"))
+        self.assertIn("Reach without keep", reach)            # Konark photo: widest reach, 2.7 saves/1k vs median 21
+        self.assertIn("20% of visitors followed", reach)        # 32 follows / 160 profile visits
+        self.assertIn("Make the next two reels in the style of Street food reel", plan)
         self.assertEqual(titles[0], "Audience size")
         audience = " ".join(result["findings"][0]["points"])
         self.assertIn("10,480 subscribers", audience)
@@ -280,6 +304,7 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertIn("/momentum/charts/lifecycle.png", html)
         self.assertIn("/momentum/charts/community.png", html)
         self.assertIn("/momentum/charts/followers.png", html)
+        self.assertIn("/momentum/charts/instagram_reach.png", html)
 
     def test_disabled_flag_hides_section_and_route(self):
         with patch.object(config, "GROWTH_CHARTS_ENABLED", False):

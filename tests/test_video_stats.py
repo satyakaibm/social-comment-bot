@@ -341,46 +341,86 @@ class MetaStatsTests(unittest.TestCase):
             stats = meta_client.get_facebook_post_stats("post1")
         self.assertIsNone(stats["view_count"])
 
+    def setUp(self):
+        # The tier floor is per-process memory of which insight metrics Meta
+        # accepted; one test's walk-down must not shape the next test's calls.
+        meta_client._insight_tier_floor.clear()
+
     def test_get_instagram_media_stats_parses_counts(self):
-        with patch.object(
-            meta_client, "graph_get",
-            return_value={"like_count": 4, "comments_count": 1, "media_type": "IMAGE"},
-        ) as graph_get:
+        responses = [
+            {"like_count": 4, "comments_count": 1, "media_type": "IMAGE"},
+            {"data": [
+                {"name": "reach", "values": [{"value": 900}]},
+                {"name": "saved", "values": [{"value": 12}]},
+                {"name": "follows", "values": [{"value": 3}]},
+                {"name": "profile_visits", "values": [{"value": 20}]},
+            ]},
+        ]
+        with patch.object(meta_client, "graph_get", side_effect=responses) as graph_get:
             stats = meta_client.get_instagram_media_stats("media1", page_key="p")
         self.assertEqual(
             stats,
-            {"like_count": 4, "comment_count": 1, "view_count": None, "share_count": None},
+            {"like_count": 4, "comment_count": 1, "view_count": None, "share_count": None,
+             "reach": 900, "saved": 12, "follows": 3, "profile_visits": 20},
         )
-        graph_get.assert_called_once_with(
+        graph_get.assert_any_call(
             "media1",
             fields="like_count,comments_count,media_type,media_product_type",
             page_key="p",
+        )
+        graph_get.assert_any_call(
+            "media1/insights", metric="reach,saved,follows,profile_visits", page_key="p"
         )
 
     def test_get_instagram_media_stats_fetches_views_for_video_media(self):
         responses = [
             {"like_count": 4, "comments_count": 1, "media_type": "VIDEO"},
-            {"data": [{"name": "views", "values": [{"value": 21296}]}]},
+            {"data": [{"name": "views", "values": [{"value": 21296}]},
+                      {"name": "reach", "values": [{"value": 15000}]}]},
         ]
         with patch.object(
             meta_client, "graph_get", side_effect=responses,
         ) as graph_get:
             stats = meta_client.get_instagram_media_stats("media1", page_key="p")
         self.assertEqual(stats["view_count"], 21296)
+        self.assertEqual(stats["reach"], 15000)
         self.assertIsNone(stats["share_count"])
+        self.assertIsNone(stats["saved"])
         graph_get.assert_any_call(
-            "media1/insights", metric="views", page_key="p"
+            "media1/insights", metric="views,reach,saved,follows,profile_visits", page_key="p"
         )
 
-    def test_get_instagram_media_stats_skips_views_when_insights_unsupported(self):
+    def test_get_instagram_media_stats_walks_down_tiers_on_metric_errors(self):
+        # follows/profile_visits rejected -> reach,saved rejected -> base works.
         responses = [
             {"like_count": 4, "comments_count": 1, "media_type": "VIDEO"},
-            meta_client.GraphAPIError("unsupported metric for this media type"),
+            meta_client.GraphAPIError("(#100) metric[2] must be one of the following values"),
+            meta_client.GraphAPIError("(#100) metric[1] must be one of the following values"),
+            {"data": [{"name": "views", "values": [{"value": 21296}]}]},
+            # A second VIDEO starts at the tier that worked: one call, not three.
+            {"like_count": 1, "comments_count": 0, "media_type": "VIDEO"},
+            {"data": [{"name": "views", "values": [{"value": 7}]}]},
         ]
-        with patch.object(meta_client, "graph_get", side_effect=responses):
+        with patch.object(meta_client, "graph_get", side_effect=responses) as graph_get:
+            first = meta_client.get_instagram_media_stats("media1", page_key="p")
+            second = meta_client.get_instagram_media_stats("media2", page_key="p")
+        self.assertEqual(first["view_count"], 21296)
+        self.assertIsNone(first["reach"])
+        self.assertEqual(second["view_count"], 7)
+        self.assertEqual(graph_get.call_count, 6)
+        self.assertEqual(meta_client._insight_tier_floor[("VIDEO", "")], 2)
+
+    def test_get_instagram_media_stats_skips_insights_on_transient_error(self):
+        responses = [
+            {"like_count": 4, "comments_count": 1, "media_type": "VIDEO"},
+            meta_client.GraphAPIError("media1/insights: Meta read failed after 2 attempts"),
+        ]
+        with patch.object(meta_client, "graph_get", side_effect=responses) as graph_get:
             stats = meta_client.get_instagram_media_stats("media1")
         self.assertIsNone(stats["view_count"])
-        self.assertIsNone(stats["share_count"])
+        self.assertIsNone(stats["reach"])
+        self.assertEqual(graph_get.call_count, 2)       # no walk down the tiers
+        self.assertNotIn(("VIDEO", ""), meta_client._insight_tier_floor)
 
     def test_get_instagram_media_stats_fetches_shares_for_reels(self):
         responses = [
@@ -404,23 +444,28 @@ class MetaStatsTests(unittest.TestCase):
         self.assertEqual(stats["view_count"], 21296)
         self.assertEqual(stats["share_count"], 42)
         graph_get.assert_any_call(
-            "media1/insights", metric="views,shares", page_key="p"
+            "media1/insights", metric="views,shares,reach,saved,follows,profile_visits", page_key="p"
         )
 
     def test_get_instagram_media_stats_no_shares_for_carousel(self):
-        with patch.object(
-            meta_client, "graph_get",
-            return_value={
+        responses = [
+            {
                 "like_count": 4,
                 "comments_count": 1,
                 "media_type": "CAROUSEL_ALBUM",
                 "media_product_type": "FEED",
             },
-        ) as graph_get:
+            {"data": [{"name": "reach", "values": [{"value": 300}]},
+                      {"name": "saved", "values": [{"value": 9}]}]},
+        ]
+        with patch.object(meta_client, "graph_get", side_effect=responses) as graph_get:
             stats = meta_client.get_instagram_media_stats("media1", page_key="p")
         self.assertIsNone(stats["share_count"])
         self.assertIsNone(stats["view_count"])
-        graph_get.assert_called_once()
+        self.assertEqual(stats["saved"], 9)
+        graph_get.assert_any_call(
+            "media1/insights", metric="reach,saved,follows,profile_visits", page_key="p"
+        )
 
     def test_get_instagram_media_stats_no_shares_for_feed_video(self):
         responses = [
@@ -438,7 +483,7 @@ class MetaStatsTests(unittest.TestCase):
             stats = meta_client.get_instagram_media_stats("media1", page_key="p")
         self.assertIsNone(stats["share_count"])
         graph_get.assert_any_call(
-            "media1/insights", metric="views", page_key="p"
+            "media1/insights", metric="views,reach,saved,follows,profile_visits", page_key="p"
         )
 
 
