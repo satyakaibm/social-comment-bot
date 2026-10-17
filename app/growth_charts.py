@@ -172,6 +172,87 @@ def _comment_rows(conn, *, cutoff: str, platform: str | None, page_key: str | No
     return [dict(row) for row in conn.execute(sql, query_params)]
 
 
+LIFECYCLE_BIN_HOURS = 6
+LIFECYCLE_MAX_HOURS = 24 * 7
+
+
+def _lifecycle_rows(conn, *, cutoff: str, platform: str | None, page_key: str | None) -> list[dict]:
+    """Views gained since first sighting, per video, for videos first seen
+    inside the window.
+
+    A video whose first snapshot sits right at the window's start was almost
+    certainly published earlier and only looks "new" because older history
+    was pruned, so only videos first seen at least a day after the cutoff
+    count. Hours are measured from that first snapshot, not the platform's
+    publish time, which the stats tables do not store; for a channel polled
+    every 30 minutes the difference is small.
+    """
+    clause, params = _page_clause("h.page_key", page_key)
+    platform_clause = " AND h.platform = ?" if platform else ""
+    sql = f"""
+        WITH firsts AS (
+            SELECT platform, video_id, MIN(captured_at) AS first_at
+              FROM video_stats_history
+             WHERE captured_at >= ? AND view_count IS NOT NULL
+             GROUP BY platform, video_id
+            HAVING MIN(captured_at) >= datetime(?, '+1 day')
+        ), base AS (
+            SELECT f.platform, f.video_id, f.first_at, h.view_count AS first_views
+              FROM firsts f
+              JOIN video_stats_history h
+                ON h.platform = f.platform AND h.video_id = f.video_id
+               AND h.captured_at = f.first_at AND h.view_count IS NOT NULL
+        )
+        SELECT h.platform, h.video_id, h.video_title, b.first_at,
+               (julianday(h.captured_at) - julianday(b.first_at)) * 24 AS hours,
+               MAX(0, h.view_count - b.first_views) AS views_gained
+          FROM base b
+          JOIN video_stats_history h
+            ON h.platform = b.platform AND h.video_id = b.video_id
+         WHERE h.view_count IS NOT NULL
+           AND (julianday(h.captured_at) - julianday(b.first_at)) * 24 <= ? {platform_clause} {clause}
+         ORDER BY h.platform, h.video_id, h.captured_at, h.id
+    """
+    query_params: list = [cutoff, cutoff, LIFECYCLE_MAX_HOURS]
+    if platform:
+        query_params.append(platform)
+    query_params.extend(params)
+    return [dict(row) for row in conn.execute(sql, query_params)]
+
+
+def _commenter_rows(conn, *, cutoff: str, platform: str | None, page_key: str | None) -> list[dict]:
+    """One row per (platform, commenter, video, IST day) in the window.
+
+    author_id identifies a person where the platform gives one; the display
+    name is the fallback for older rows. Blank authors are dropped rather
+    than pooled into one phantom "" commenter.
+    """
+    clause, params = _page_clause("page_key", page_key)
+    platform_clause = " AND platform = ?" if platform else ""
+    published = db._published_at_utc_expr("published_at")
+    stamp = (
+        f"COALESCE(CASE WHEN trim(COALESCE(published_at, '')) <> '' AND {published} IS NOT NULL "
+        f"THEN {published} END, created_at)"
+    )
+    sql = f"""
+        SELECT platform,
+               COALESCE(NULLIF(trim(author_id), ''), NULLIF(trim(author), '')) AS commenter,
+               MAX(NULLIF(trim(author), '')) AS display_name,
+               video_id,
+               date({stamp}, '+5 hours', '+30 minutes') AS day,
+               COUNT(*) AS comments
+          FROM comments
+         WHERE created_at >= ? {platform_clause} {clause}
+           AND COALESCE(NULLIF(trim(author_id), ''), NULLIF(trim(author), '')) IS NOT NULL
+         GROUP BY platform, commenter, video_id, day
+    """
+    query_params: list = [cutoff]
+    if platform:
+        query_params.append(platform)
+    query_params.extend(params)
+    return [dict(row) for row in conn.execute(sql, query_params)]
+
+
 def build_dataset(conn, *, platform: str | None, page_key: str | None, days: int) -> dict[str, Any]:
     """Everything the charts and the direction need, as small aggregates."""
     pd = _pd()
@@ -192,6 +273,8 @@ def build_dataset(conn, *, platform: str | None, page_key: str | None, days: int
     )
     daily = pd.DataFrame(_daily_growth_rows(conn, cutoff=cutoff, **kw))
     comments = pd.DataFrame(_comment_rows(conn, cutoff=cutoff, **kw))
+    lifecycle_raw = pd.DataFrame(_lifecycle_rows(conn, cutoff=cutoff, **kw))
+    commenters = pd.DataFrame(_commenter_rows(conn, cutoff=cutoff, **kw))
     experiments = db.list_recommendation_experiments(conn, limit=500, **kw)
 
     data: dict[str, Any] = {
@@ -208,6 +291,8 @@ def build_dataset(conn, *, platform: str | None, page_key: str | None, days: int
     data["view_peaks"] = _timing_peaks(engagement, "view_growth")
     data["comment_peaks"] = _timing_peaks(audience, "comment_count")
     data["online_profile"] = _online_profile(online)
+    data["lifecycle"], data["lifecycle_median"], data["lifecycle_verdicts"] = _lifecycle(lifecycle_raw, now)
+    data["community_weeks"], data["superfans"] = _community(commenters, now)
     data["comments_per_day"] = (
         comments.dropna(subset=["day"]).groupby(["platform", "day"]).size().reset_index(name="comments")
         if not comments.empty else pd.DataFrame(columns=["platform", "day", "comments"])
@@ -318,6 +403,88 @@ def _online_profile(online):
     o = online.copy()
     o["hour_ist"] = ((o["hour_utc"] * 60 + 330) % 1440) / 60
     return o.groupby("hour_ist")["online_count"].agg(["mean", "min", "max"]).reset_index()
+
+
+def _lifecycle(raw, now):
+    """Bin each new video's views-gained curve to 6-hour steps, a per-platform
+    median curve, and a verdict per video at the 48-hour mark."""
+    pd = _pd()
+    empty = pd.DataFrame(columns=["platform", "video_id", "title", "hour", "views_gained"])
+    verdict_columns = ["platform", "video_id", "title", "age_hours", "views_48h", "median_48h", "verdict"]
+    if raw.empty:
+        return empty, pd.DataFrame(columns=["platform", "hour", "median_views", "videos"]), pd.DataFrame(columns=verdict_columns)
+    raw = raw.copy()
+    raw["title"] = raw["video_title"].fillna(raw["video_id"]).astype(str).str.slice(0, 40)
+    raw["hour"] = (raw["hours"] // LIFECYCLE_BIN_HOURS * LIFECYCLE_BIN_HOURS).astype(int)
+    curves = raw.groupby(["platform", "video_id", "title", "hour"], as_index=False)["views_gained"].max()
+    # Carry each curve forward so a video polled less often than the bin
+    # width still has a value at every step it has lived through.
+    filled = []
+    for (platform, video_id, title), group in curves.groupby(["platform", "video_id", "title"]):
+        last_hour = int(group["hour"].max())
+        grid = pd.DataFrame({"hour": range(0, last_hour + 1, LIFECYCLE_BIN_HOURS)})
+        merged = grid.merge(group[["hour", "views_gained"]], on="hour", how="left")
+        merged["views_gained"] = merged["views_gained"].ffill().fillna(0)
+        merged["platform"], merged["video_id"], merged["title"] = platform, video_id, title
+        filled.append(merged)
+    curves = pd.concat(filled, ignore_index=True)[["platform", "video_id", "title", "hour", "views_gained"]]
+    median = (curves.groupby(["platform", "hour"])["views_gained"]
+              .agg(median_views="median", videos="count").reset_index())
+    median = median[median["videos"] >= 2]
+    first_seen = raw.groupby(["platform", "video_id"])["first_at"].min()
+    verdicts = []
+    for (platform, video_id, title), group in curves.groupby(["platform", "video_id", "title"]):
+        first_at = pd.to_datetime(first_seen.loc[(platform, video_id)], utc=True, errors="coerce")
+        age_hours = float((now - first_at).total_seconds() / 3600) if not pd.isna(first_at) else 0.0
+        at_48 = group[group["hour"] <= 48]["views_gained"].max()
+        median_row = median[(median["platform"] == platform) & (median["hour"] == 48)]
+        median_48 = float(median_row["median_views"].iloc[0]) if not median_row.empty else None
+        if age_hours < 48:
+            verdict = "too early"
+        elif median_48 is None:
+            verdict = "no comparison yet"
+        elif at_48 >= median_48 * 1.25:
+            verdict = "above median"
+        elif at_48 <= median_48 * 0.75:
+            verdict = "below median"
+        else:
+            verdict = "around median"
+        verdicts.append({"platform": platform, "video_id": video_id, "title": title, "age_hours": round(age_hours, 1),
+                         "views_48h": int(at_48), "median_48h": median_48, "verdict": verdict})
+    return curves, median, pd.DataFrame(verdicts, columns=verdict_columns)
+
+
+def _community(commenters, now):
+    """Weekly new vs returning commenters per platform, and the top repeat
+    commenters. "Returning" means seen in an earlier week of the window, so
+    the window's first week is a baseline and is not reported."""
+    pd = _pd()
+    week_columns = ["platform", "week_start", "new", "returning", "total"]
+    fan_columns = ["platform", "commenter", "display_name", "comments", "videos", "active_days"]
+    if commenters.empty:
+        return pd.DataFrame(columns=week_columns), pd.DataFrame(columns=fan_columns)
+    c = commenters.copy()
+    c["day"] = pd.to_datetime(c["day"], errors="coerce")
+    c = c.dropna(subset=["day"])
+    c["week_start"] = (c["day"] - pd.to_timedelta(c["day"].dt.weekday, unit="D")).dt.date
+    first_week = c.groupby(["platform", "commenter"])["week_start"].min().rename("first_week")
+    weekly = c.groupby(["platform", "commenter", "week_start"]).size().reset_index(name="n")
+    weekly = weekly.join(first_week, on=["platform", "commenter"])
+    weekly["kind"] = (weekly["week_start"] > weekly["first_week"]).map({True: "returning", False: "new"})
+    weeks = weekly.groupby(["platform", "week_start", "kind"])["commenter"].nunique().unstack("kind", fill_value=0).reset_index()
+    for column in ("new", "returning"):
+        if column not in weeks:
+            weeks[column] = 0
+    weeks["total"] = weeks["new"] + weeks["returning"]
+    baseline = weeks.groupby("platform")["week_start"].transform("min")
+    weeks = weeks[weeks["week_start"] > baseline][week_columns].sort_values(["platform", "week_start"]).reset_index(drop=True)
+    fans = (c.groupby(["platform", "commenter"])
+             .agg(display_name=("display_name", "max"), comments=("comments", "sum"),
+                  videos=("video_id", "nunique"), active_days=("day", "nunique"))
+             .reset_index())
+    fans = fans[fans["comments"] >= 2].sort_values(["platform", "comments", "active_days"], ascending=[True, False, False])
+    fans = fans.groupby("platform").head(8).reset_index(drop=True)[fan_columns]
+    return weeks, fans
 
 
 # ---------------------------------------------------------------------------
@@ -562,6 +729,98 @@ def chart_instagram_online(data: dict) -> bytes | None:
     return _png(fig)
 
 
+def chart_lifecycle(data: dict) -> bytes | None:
+    curves, median = data["lifecycle"], data["lifecycle_median"]
+    if curves.empty:
+        return None
+    plt, _ = _plt()
+    platforms = [p for p in PLATFORMS if (curves["platform"] == p).any()]
+    fig, axes = plt.subplots(1, len(platforms), figsize=(4.6 * len(platforms) + 1, 4.2), squeeze=False)
+    for ax, platform in zip(axes[0], platforms):
+        color = PLATFORM_COLOR[platform]
+        c = curves[curves["platform"] == platform]
+        finals = c.groupby("video_id")["views_gained"].max().sort_values(ascending=False)
+        leaders = set(finals.head(2).index)
+        for video_id, group in c.groupby("video_id"):
+            group = group.sort_values("hour")
+            lead = video_id in leaders
+            ax.plot(group["hour"], group["views_gained"], color=color, alpha=0.9 if lead else 0.3,
+                    linewidth=1.6 if lead else 1.0)
+            if lead:
+                ax.annotate(group["title"].iloc[0], (group["hour"].iloc[-1], group["views_gained"].iloc[-1]),
+                            xytext=(4, 0), textcoords="offset points", fontsize=7, color=INK_2, va="center")
+        m = median[median["platform"] == platform].sort_values("hour")
+        if not m.empty:
+            ax.plot(m["hour"], m["median_views"], color=INK, linewidth=2.2, label="channel median")
+            ax.legend(loc="upper left")
+        ax.axvline(48, color=AXIS, linewidth=0.8)
+        ax.text(48, 0, " 48 h", fontsize=7, color=MUTED, va="bottom")
+        ax.set_title(f"{platform}: {c['video_id'].nunique()} new uploads")
+        ax.set_xlabel("Hours since first seen")
+        ax.set_ylabel("Views gained")
+        ax.set_xlim(0, LIFECYCLE_MAX_HOURS)
+        ax.set_xticks(range(0, LIFECYCLE_MAX_HOURS + 1, 24))
+        ax.set_ylim(bottom=0)
+        ax.margins(x=0.12)
+    fig.suptitle("First week of each upload: is it tracking above or below the channel's usual curve?")
+    fig.tight_layout()
+    return _png(fig)
+
+
+def chart_community(data: dict) -> bytes | None:
+    pd = _pd()
+    weeks, fans = data["community_weeks"], data["superfans"]
+    if weeks.empty and fans.empty:
+        return None
+    plt, _ = _plt()
+    platforms = [p for p in PLATFORMS if (not weeks.empty and (weeks["platform"] == p).any())
+                 or (not fans.empty and (fans["platform"] == p).any())]
+    fig, axes = plt.subplots(len(platforms), 2, figsize=(13, 3.1 * len(platforms) + 0.6), squeeze=False,
+                             gridspec_kw={"width_ratios": [3, 2]})
+    for row, platform in enumerate(platforms):
+        color = PLATFORM_COLOR[platform]
+        ax = axes[row][0]
+        w = weeks[weeks["platform"] == platform].sort_values("week_start") if not weeks.empty else weeks
+        if not w.empty:
+            labels = [pd.Timestamp(d).strftime("%d %b") for d in w["week_start"]]
+            x = range(len(labels))
+            ax.bar(x, w["returning"], color=color, width=0.6, label="returning", edgecolor=SURFACE, linewidth=2)
+            ax.bar(x, w["new"], bottom=w["returning"], color=color, alpha=0.35, width=0.6, label="new",
+                   edgecolor=SURFACE, linewidth=2)
+            for i, (new, returning) in enumerate(zip(w["new"], w["returning"])):
+                if returning:
+                    ax.text(i, returning / 2, f"{int(returning)}", ha="center", va="center", fontsize=8, color=SURFACE)
+                if new:
+                    ax.text(i, returning + new / 2, f"{int(new)}", ha="center", va="center", fontsize=8, color=INK)
+            ax.set_xticks(list(x))
+            ax.set_xticklabels(labels)
+            ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2)
+            ax.set_ylabel("People who commented")
+        else:
+            ax.text(0.5, 0.5, "Needs two or more weeks of comments", ha="center", va="center", fontsize=9, color=MUTED, transform=ax.transAxes)
+            ax.set_axis_off()
+        ax.set_title(f"{platform}: commenters per week, returning vs new", pad=22)
+        ax.grid(axis="x", visible=False)
+        ax = axes[row][1]
+        f = fans[fans["platform"] == platform] if not fans.empty else fans
+        if not f.empty:
+            names = [str(n)[:22] for n in f["display_name"].fillna(f["commenter"])]
+            ax.barh(names, f["comments"], color=color, height=0.6)
+            ax.invert_yaxis()
+            for i, (n, v) in enumerate(zip(f["comments"], f["videos"])):
+                ax.text(n, i, f"  {int(n)} on {int(v)} video{'s' if v != 1 else ''}", va="center", fontsize=8, color=INK_2)
+            ax.margins(x=0.45)
+            ax.set_xlabel("Comments in the window")
+        else:
+            ax.text(0.5, 0.5, "No repeat commenters yet", ha="center", va="center", fontsize=9, color=MUTED, transform=ax.transAxes)
+            ax.set_axis_off()
+        ax.set_title(f"{platform}: most frequent commenters")
+        ax.grid(axis="y", visible=False)
+    fig.suptitle("Community: are the same people coming back, and who are they?")
+    fig.tight_layout()
+    return _png(fig)
+
+
 CHARTS: dict[str, dict] = {
     "scoreboard": {"wide": True, "title": "Platform scoreboard", "render": chart_scoreboard,
                    "caption": "Views, likes, comments and shares gained in the window, summed over tracked content."},
@@ -569,6 +828,10 @@ CHARTS: dict[str, dict] = {
               "caption": "Views gained and new audience comments per IST day, one line per platform."},
     "movers": {"title": "Top movers (7 days)", "render": chart_movers,
                "caption": "The content gaining the most views this week. Read the titles as a set: that is what is being rewarded now."},
+    "lifecycle": {"wide": True, "title": "First week of each upload", "render": chart_lifecycle,
+                  "caption": "Views gained since each new upload was first seen, one line per video, with the channel's median curve. Above the median at 48 hours is a breakout worth following up."},
+    "community": {"wide": True, "title": "Community", "render": chart_community,
+                  "caption": "People commenting each week, split into returning and first-time, plus your most frequent commenters. Returning commenters growing is the real sign a channel is building an audience."},
     "timing": {"wide": True, "title": "Audience timing", "render": chart_timing,
                "caption": "When views move and when people comment, by weekday and IST hour. Darker is busier."},
     "intents": {"title": "Comment intent", "render": chart_intents,
@@ -608,6 +871,10 @@ def _has_data(data: dict, name: str) -> bool:
         return not (data["daily"].empty and data["comments_per_day"].empty)
     if name == "movers":
         return not data["movers"].empty and data["movers"]["view_growth"].fillna(0).sum() > 0
+    if name == "lifecycle":
+        return not data["lifecycle"].empty
+    if name == "community":
+        return not (data["community_weeks"].empty and data["superfans"].empty)
     if name == "timing":
         return not (data["engagement"].empty and data["audience"].empty)
     if name == "intents":
@@ -627,6 +894,10 @@ def _has_data(data: dict, name: str) -> bool:
 
 def _hour(hour) -> str:
     return f"{int(hour):02d}:00"
+
+
+def pd_label(day) -> str:
+    return _pd().Timestamp(day).strftime("%d %b")
 
 
 def direction(data: dict) -> dict:
@@ -674,6 +945,29 @@ def direction(data: dict) -> dict:
         for _, row in movers.head(5).iterrows():
             points.append(f"{row['title']} ({row['platform']}): +{int(row['view_growth'] or 0):,} views, +{int(row['like_growth'] or 0):,} likes, +{int(row['comment_growth'] or 0):,} comments.")
     findings.append({"title": "What is moving this week", "points": points})
+
+    points = []
+    verdicts = data["lifecycle_verdicts"]
+    if verdicts.empty:
+        points.append("No uploads first seen inside the window yet, so there is no first-week curve to compare against.")
+    else:
+        for platform in PLATFORMS:
+            v = verdicts[verdicts["platform"] == platform]
+            if v.empty:
+                continue
+            counts = v["verdict"].value_counts()
+            above = v[v["verdict"] == "above median"].sort_values("views_48h", ascending=False)
+            below = v[v["verdict"] == "below median"]
+            summary = (f"{platform}: {len(v)} uploads in the window; at 48 hours {int(counts.get('above median', 0))} above the channel median, "
+                       f"{int(counts.get('around median', 0))} around it, {int(counts.get('below median', 0))} below, {int(counts.get('too early', 0))} too young to judge.")
+            points.append(summary)
+            if not above.empty:
+                names = "; ".join(f"{r['title']} ({int(r['views_48h']):,} views by 48 h vs median {int(r['median_48h']):,})" for _, r in above.head(3).iterrows())
+                points.append(f"{platform} breakouts: {names}.")
+                plan.append(f"Follow up on {above.iloc[0]['title']} ({platform}) while it is still being recommended: same topic, next angle, within a week.")
+            if len(below) >= 2 and len(below) >= len(v) / 2:
+                points.append(f"{platform}: most recent uploads are tracking below the channel's usual first-week curve; look at what the above-median ones did differently (hook, title, thumbnail, timing) before the next upload.")
+    findings.append({"title": "How new uploads are tracking", "points": points})
 
     points = []
     if rates.empty:
@@ -728,6 +1022,27 @@ def direction(data: dict) -> dict:
             if c / total >= 0.1:
                 points.append(f"{row['platform']}: complaints are above 10%. Address them publicly before pushing more of the same content.")
     findings.append({"title": "What the audience is asking for", "points": points})
+
+    points = []
+    weeks, fans = data["community_weeks"], data["superfans"]
+    if weeks.empty and fans.empty:
+        points.append("Not enough commenters across two or more weeks to tell returning people from new ones yet.")
+    else:
+        for platform in PLATFORMS:
+            w = weeks[weeks["platform"] == platform].sort_values("week_start") if not weeks.empty else weeks
+            if len(w) >= 1:
+                latest = w.iloc[-1]
+                trend = ""
+                if len(w) >= 2:
+                    previous = w.iloc[-2]
+                    trend = f", returning {'up' if latest['returning'] > previous['returning'] else 'down' if latest['returning'] < previous['returning'] else 'flat'} from {int(previous['returning'])} the week before"
+                points.append(f"{platform}: week of {pd_label(latest['week_start'])}: {int(latest['returning'])} returning and {int(latest['new'])} first-time commenters{trend}.")
+            f = fans[fans["platform"] == platform] if not fans.empty else fans
+            if not f.empty:
+                top = "; ".join(f"{str(r['display_name'] or r['commenter'])[:22]} ({int(r['comments'])} comments on {int(r['videos'])} videos)" for _, r in f.head(3).iterrows())
+                points.append(f"{platform} most frequent commenters: {top}.")
+                plan.append(f"Reply first and by name to your top {min(3, len(f))} repeat commenters on {platform}; they are the start of a community, and a pinned reply to one of them is seen by everyone.")
+    findings.append({"title": "Is a community forming?", "points": points})
 
     points = []
     if coverage.empty:

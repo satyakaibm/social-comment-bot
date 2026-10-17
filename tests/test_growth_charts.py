@@ -124,6 +124,22 @@ class GrowthChartsTests(unittest.TestCase):
                     "UPDATE comments SET status = ?, updated_at = ? WHERE comment_id = ?",
                     (status, (published + timedelta(hours=2)).isoformat(), f"c{index}"),
                 )
+            # Repeat commenters across three earlier weeks, so the community
+            # chart has returning people and the lifecycle chart has a plan.
+            extra = [("viewer0", 20), ("viewer0", 13), ("viewer0", 6), ("viewer9", 20),
+                     ("viewer8", 13), ("viewer8", 6), ("viewer8", 2)]
+            for n, (author, day) in enumerate(extra):
+                published = now - timedelta(days=day, hours=3)
+                db.insert_comment(
+                    conn, comment_id=f"x{n}", platform="youtube",
+                    video_id="yt-hit" if n % 2 else "yt-slow", video_title="Puri beach at sunrise",
+                    author=author, text="Nice one", published_at=published.isoformat(),
+                    draft_reply="Thanks!", page_key=config.DEFAULT_PAGE_KEY,
+                )
+                conn.execute(
+                    "UPDATE comments SET status = 'posted', updated_at = ? WHERE comment_id = ?",
+                    ((published + timedelta(hours=2)).isoformat(), f"x{n}"),
+                )
             db.sync_seen_stats_from_comments(conn)
             for day in range(3):
                 bucket_end = (now - timedelta(days=day)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -153,15 +169,26 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertFalse(data["daily"].empty)
         self.assertFalse(data["engagement"].empty)
         self.assertFalse(data["audience"].empty)
-        self.assertEqual(int(data["intents"]["total"].sum()), 8)
+        self.assertEqual(int(data["intents"]["total"].sum()), 15)
         # Comments 2 and 5 land on instagram (index % 3 == 2): one posted, one failed.
         coverage = data["coverage"].set_index("platform")
-        self.assertEqual(coverage.loc["youtube", "total"], 6)
+        self.assertEqual(coverage.loc["youtube", "total"], 13)
         self.assertEqual(coverage.loc["youtube", "failed"], 0)
         self.assertEqual(coverage.loc["youtube", "pending"], 1)
         self.assertAlmostEqual(coverage.loc["youtube", "median_reply_hours"], 2.0)
         self.assertEqual(coverage.loc["instagram", "failed"], 1)
         self.assertEqual(len(data["online_profile"]), 24)
+        # Every seeded video was first seen 12 days ago, well inside the window.
+        self.assertEqual(data["lifecycle"]["video_id"].nunique(), 4)
+        verdicts = data["lifecycle_verdicts"].set_index("video_id")
+        self.assertEqual(verdicts.loc["yt-hit", "verdict"], "above median")
+        self.assertEqual(verdicts.loc["yt-dead", "verdict"], "below median")
+        self.assertEqual(verdicts.loc["ig-reel", "verdict"], "no comparison yet")  # one instagram upload, no median
+        weeks = data["community_weeks"]
+        self.assertFalse(weeks.empty)
+        self.assertGreaterEqual(int(weeks["returning"].sum()), 1)
+        fans = data["superfans"].set_index("commenter")
+        self.assertGreaterEqual(fans.loc["viewer0", "comments"], 3)
 
     def test_platform_filter_limits_dataset(self):
         data = self._dataset(platform="instagram")
@@ -186,6 +213,10 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertIn("Schedule youtube uploads", plan)
         self.assertIn("Instagram reels at about", plan)
         self.assertIn("Start one experiment", plan)
+        self.assertIn("Follow up on Puri beach at sunrise (youtube)", plan)
+        self.assertIn("repeat commenters on youtube", plan)
+        self.assertIn("How new uploads are tracking", titles)
+        self.assertIn("Is a community forming?", titles)
         self.assertEqual(len(result["plan"]), len(set(result["plan"])))
 
     def test_every_chart_with_data_renders_a_png(self):
@@ -231,6 +262,8 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertIn("Your plan for the next 30 days", html)
         self.assertIn("/momentum/charts/scoreboard.png?platform=&amp;page_key=", html)
         self.assertIn("/momentum/charts/timing.png", html)
+        self.assertIn("/momentum/charts/lifecycle.png", html)
+        self.assertIn("/momentum/charts/community.png", html)
 
     def test_disabled_flag_hides_section_and_route(self):
         with patch.object(config, "GROWTH_CHARTS_ENABLED", False):
