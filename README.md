@@ -277,12 +277,12 @@ For another environment, create a file with the same variables and select it wit
 
 ### Growth charts and direction (Momentum)
 
-The Momentum page has a "Growth charts and direction" section: eleven
+The Momentum page has a "Growth charts and direction" section: twelve
 matplotlib/seaborn charts (platform scoreboard, day-by-day views and
 comments, followers per day, top movers, first week of each upload against the channel's
 median curve, community of returning vs first-time commenters, audience
 timing heatmaps, comment intent, reply coverage and speed, engagement
-rate, Instagram followers online) and a
+rate, Instagram reach and saves, Instagram followers online) and a
 plain-language read-out that ends in a numbered plan for the next 30 days.
 Everything is built from the same 30-day queries as the cards above it
 (`app/growth_charts.py`), rendered on the server as PNG at
@@ -307,6 +307,10 @@ for this and skip themselves; the Docker test image always runs them.
 ### Instagram "Most active times" (Instagram's own data)
 
 Momentum's **Most active times** card for each Instagram account is not modelled by this app. It is Meta's `online_followers` insight -- the hourly follower-online counts behind the chart in the Instagram app -- averaged per hour over the days held and shown on the IST clock (Meta reports UTC hours, so UTC 06:00 appears as 11:30 AM IST). The video-stats worker fetches the trailing week every `INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS` (default 6) using the existing page token (`instagram_manage_insights`, already granted) and keeps `AUDIENCE_ONLINE_RETENTION_DAYS` (default 90) of it. Meta publishes each day about two days after it ends, so the most recent two days are always missing; an account needs at least 100 followers before Meta returns anything.
+
+### Instagram reach, saves, follows and profile visits
+
+The Instagram stats refresh asks the media Insights API for `reach`, `saved`, `follows` and `profile_visits` alongside the existing views/shares, in the same single call per media, and stores them on `video_stats` / `video_stats_history`. Meta rejects metrics a media kind does not support, so the fetch walks down from the full set to `reach,saved` to the old base set and remembers per media kind (per process) which tier worked, so a rejected tier costs one failed call per kind, not one per media. Momentum's **Instagram reach and saves** chart shows accounts reached per post and saves per 1,000 reached (media with fewer than 100 accounts reached are left out of the rate ranking), and the written direction names the most-saved content, "reach without keep" posts, follows per 1,000 reached and the share of profile visitors who followed.
 
 ### Followers per day
 

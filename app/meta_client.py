@@ -547,18 +547,40 @@ def get_instagram_media_caption(media_id: str, *, page_key: str = config.DEFAULT
     return data.get("caption", "")
 
 
+# Media insights metrics by media kind, richest tier first. Meta rejects a
+# metric it does not support for a media kind with a (#100) "metric" error
+# that fails the whole request, so the fetch walks down the tiers and
+# remembers, per kind and per process, the first tier that worked: every
+# later media of that kind starts there instead of paying for the failed
+# call again. Only a "metric" error moves the floor; a transient Graph
+# failure leaves it alone.
+_insight_tier_floor: dict[tuple[str, str], int] = {}
+
+
+def _insight_tiers(media_type: str, product_type: str) -> list[list[str]]:
+    base: list[str] = []
+    if media_type == "VIDEO":
+        base.append("views")
+    if product_type == "REELS":
+        base.append("shares")
+    tiers = [base + ["reach", "saved", "follows", "profile_visits"], base + ["reach", "saved"]]
+    if base:
+        tiers.append(base)
+    return tiers
+
+
 def get_instagram_media_stats(
     media_id: str, *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
 ) -> dict:
-    """Return an Instagram media's like/comment/view/share counts.
+    """Return an Instagram media's like/comment/view/share counts plus its
+    reach, saves, follows and profile visits from the Insights API.
 
-    Views and shares both come from the Insights API rather than a plain
-    field, and both are skipped (not raised) for media types the Insights
-    API rejects them for. Views apply to any video/Reel media -- a plain
-    image or carousel has no view concept. Shares are narrower still: the
-    Graph API only accepts metric=shares for Reels (media_product_type ==
-    "REELS"); it errors on a plain feed video, a photo, or a carousel, so
-    those always get share_count=None rather than a real 0.
+    Views apply to any video/Reel media -- a plain image or carousel has no
+    view concept. Shares are narrower still: the Graph API only accepts
+    metric=shares for Reels (media_product_type == "REELS"). Reach and
+    saved exist for every media kind; follows and profile_visits are the
+    newest metrics and not every kind supports them, hence the tiers in
+    _insight_tiers. Anything Meta does not return is None, never a fake 0.
     """
     kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
     data = graph_get(
@@ -567,35 +589,38 @@ def get_instagram_media_stats(
         page_key=page_key,
         **kwargs,
     )
-    metrics = []
-    if data.get("media_type") == "VIDEO":
-        metrics.append("views")
-    if data.get("media_product_type") == "REELS":
-        metrics.append("shares")
-    view_count = None
-    share_count = None
-    if metrics:
+    media_type = data.get("media_type") or ""
+    product_type = data.get("media_product_type") or ""
+    kind = (media_type, product_type)
+    tiers = _insight_tiers(media_type, product_type)
+    found: dict[str, int | None] = {}
+    for index in range(_insight_tier_floor.get(kind, 0), len(tiers)):
         try:
             insights = graph_get(
                 f"{media_id}/insights",
-                metric=",".join(metrics),
+                metric=",".join(tiers[index]),
                 page_key=page_key,
                 **kwargs,
             )
-            for item in insights.get("data") or []:
-                values = item.get("values") or []
-                value = values[0].get("value") if values else None
-                if item.get("name") == "views":
-                    view_count = value
-                elif item.get("name") == "shares":
-                    share_count = value
-        except GraphAPIError:
-            pass
+        except GraphAPIError as exc:
+            if "metric" in str(exc).lower() and index + 1 < len(tiers):
+                _insight_tier_floor[kind] = index + 1
+                continue
+            break
+        for item in insights.get("data") or []:
+            values = item.get("values") or []
+            found[item.get("name")] = values[0].get("value") if values else None
+        _insight_tier_floor[kind] = index
+        break
     return {
         "like_count": data.get("like_count"),
         "comment_count": data.get("comments_count"),
-        "view_count": view_count,
-        "share_count": share_count,
+        "view_count": found.get("views"),
+        "share_count": found.get("shares"),
+        "reach": found.get("reach"),
+        "saved": found.get("saved"),
+        "follows": found.get("follows"),
+        "profile_visits": found.get("profile_visits"),
     }
 
 

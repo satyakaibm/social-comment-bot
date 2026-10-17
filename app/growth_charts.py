@@ -296,6 +296,7 @@ def build_dataset(conn, *, platform: str | None, page_key: str | None, days: int
     data["lifecycle"], data["lifecycle_median"], data["lifecycle_verdicts"] = _lifecycle(lifecycle_raw, now)
     data["community_weeks"], data["superfans"] = _community(commenters, now)
     data["follower_summary"] = _follower_summary(followers, data["scoreboard"])
+    data["ig_media"] = _instagram_media(stats)
     data["comments_per_day"] = (
         comments.dropna(subset=["day"]).groupby(["platform", "day"]).size().reset_index(name="comments")
         if not comments.empty else pd.DataFrame(columns=["platform", "day", "comments"])
@@ -526,6 +527,27 @@ def _follower_summary(followers, scoreboard):
             "per_1k_views": round(1000 * gain_30d / view_growth, 2) if view_growth and gain_30d >= 0 else None,
         })
     return pd.DataFrame(rows, columns=columns)
+
+
+IG_MIN_REACH = 100
+
+
+def _instagram_media(stats):
+    """Instagram media with insights: reach, saves, follows and profile visits
+    as counted at the latest snapshot, plus the two rates that matter --
+    saves and follows per 1,000 accounts reached."""
+    pd = _pd()
+    columns = ["video_id", "title", "reach", "saved", "follows", "profile_visits", "view_count",
+               "like_count", "saves_per_1k", "follows_per_1k", "updated_at"]
+    if stats.empty or "reach" not in stats:
+        return pd.DataFrame(columns=columns)
+    m = stats[(stats["platform"] == "instagram") & stats["reach"].notna() & (stats["reach"] > 0)].copy()
+    if m.empty:
+        return pd.DataFrame(columns=columns)
+    m["title"] = m["video_title"].fillna(m["video_id"]).astype(str).str.slice(0, 40)
+    m["saves_per_1k"] = (1000 * m["saved"].fillna(0) / m["reach"]).round(1)
+    m["follows_per_1k"] = (1000 * m["follows"] / m["reach"]).round(2).where(m["follows"].notna())
+    return m.sort_values("reach", ascending=False).reset_index(drop=True)[columns]
 
 
 # ---------------------------------------------------------------------------
@@ -785,6 +807,44 @@ def chart_engagement_rate(data: dict) -> bytes | None:
     return _png(fig)
 
 
+def chart_instagram_reach(data: dict) -> bytes | None:
+    m = data["ig_media"]
+    if m.empty:
+        return None
+    plt, _ = _plt()
+    color = PLATFORM_COLOR["instagram"]
+    fig, axes = plt.subplots(1, 2, figsize=(13, 0.42 * min(10, len(m)) + 1.8))
+    ax = axes[0]
+    top = m.head(10)
+    ax.barh(top["title"], top["reach"], color=color, height=0.6)
+    ax.invert_yaxis()
+    for i, (reach, rate) in enumerate(zip(top["reach"], top["saves_per_1k"])):
+        ax.text(reach, i, f"  {int(reach):,} reached, {rate:.0f} saves/1k", va="center", fontsize=8, color=INK_2)
+    ax.margins(x=0.55)
+    ax.grid(axis="y", visible=False)
+    ax.set_xlabel("Accounts reached")
+    ax.set_title("Widest reach")
+    ax = axes[1]
+    keepers = m[m["reach"] >= IG_MIN_REACH].sort_values("saves_per_1k", ascending=False).head(10)
+    if keepers.empty:
+        ax.text(0.5, 0.5, f"Needs media with at least {IG_MIN_REACH} accounts reached", ha="center", va="center",
+                fontsize=9, color=MUTED, transform=ax.transAxes)
+        ax.set_axis_off()
+    else:
+        ax.barh(keepers["title"], keepers["saves_per_1k"], color=color, height=0.6)
+        ax.invert_yaxis()
+        for i, (rate, saved, follows) in enumerate(zip(keepers["saves_per_1k"], keepers["saved"], keepers["follows"])):
+            extra = f", {int(follows)} follows" if follows == follows and follows is not None else ""
+            ax.text(rate, i, f"  {int(saved or 0):,} saves{extra}", va="center", fontsize=8, color=INK_2)
+        ax.margins(x=0.5)
+        ax.grid(axis="y", visible=False)
+        ax.set_xlabel("Saves per 1,000 accounts reached")
+        ax.set_title("Most saved for its reach (content people keep)")
+    fig.suptitle("Instagram: who you reached and what they kept")
+    fig.tight_layout()
+    return _png(fig)
+
+
 def chart_instagram_online(data: dict) -> bytes | None:
     profile = data["online_profile"]
     if profile.empty:
@@ -921,6 +981,8 @@ CHARTS: dict[str, dict] = {
                 "caption": "How many comments got a reply, what is still pending or failed, and the median hours to reply."},
     "engagement_rate": {"wide": True, "title": "Engagement rate", "render": chart_engagement_rate,
                         "caption": "Interactions per view for every video with at least 100 views, and the eight that convert best."},
+    "instagram_reach": {"wide": True, "title": "Instagram reach and saves", "render": chart_instagram_reach,
+                        "caption": "Instagram's own media insights: accounts reached per post or reel, and saves per 1,000 reached. A high save rate marks content people want to come back to; follows are the viewers it turned into followers."},
     "instagram_online": {"title": "Instagram followers online", "render": chart_instagram_online,
                          "caption": "Instagram's own online_followers insight by IST hour. The whole follower base, so the best publishing signal for reels."},
 }
@@ -967,6 +1029,8 @@ def _has_data(data: dict, name: str) -> bool:
         return not data["coverage"].empty
     if name == "engagement_rate":
         return not data["rates"].empty
+    if name == "instagram_reach":
+        return not data["ig_media"].empty
     if name == "instagram_online":
         return not data["online_profile"].empty
     return False
@@ -1163,6 +1227,39 @@ def direction(data: dict) -> dict:
             if latency and row["median_reply_hours"] > 6:
                 points.append(f"{row['platform']}: replies inside the first hour get seen by the commenter and by the people the platform shows the thread to; after six hours they mostly do not.")
     findings.append({"title": "Are we replying well enough?", "points": points})
+
+    m = data["ig_media"]
+    if data["platform"] in ("", "instagram"):
+        points = []
+        if m.empty:
+            points.append("No Instagram media insights yet. Reach, saves, follows and profile visits are stored from the next stats cycle on.")
+        else:
+            measured = m[m["reach"] >= IG_MIN_REACH]
+            if measured.empty:
+                points.append(f"{len(m)} media have insights but none has reached {IG_MIN_REACH} accounts yet; rates need more reach to mean anything.")
+            else:
+                median_rate = measured["saves_per_1k"].median()
+                points.append(f"{len(measured)} media with at least {IG_MIN_REACH} accounts reached; median {median_rate:.0f} saves per 1,000 reached, {int(measured['reach'].sum()):,} accounts reached in total.")
+                keepers = measured.sort_values("saves_per_1k", ascending=False).head(3)
+                points.append("Most kept: " + "; ".join(f"{r['title']} ({r['saves_per_1k']:.0f} saves/1k on {int(r['reach']):,} reached)" for _, r in keepers.iterrows()) + ".")
+                plan.append(f"Make the next two reels in the style of {keepers.iloc[0]['title']}: saves are what Instagram's ranking reads as worth showing to new accounts.")
+                wide = measured[(measured["reach"] >= measured["reach"].median()) & (measured["saves_per_1k"] < median_rate / 2)]
+                if not wide.empty:
+                    points.append("Reach without keep (wide but rarely saved): " + "; ".join(f"{r['title']} ({r['saves_per_1k']:.0f} saves/1k on {int(r['reach']):,})" for _, r in wide.head(3).iterrows()) + ". These travel but do not stick; a stronger payoff or a reason to save would convert that reach.")
+                with_follows = measured[measured["follows"].notna()]
+                if not with_follows.empty:
+                    follows = int(with_follows["follows"].sum())
+                    visits = int(with_follows["profile_visits"].fillna(0).sum())
+                    per_1k = 1000 * follows / with_follows["reach"].sum()
+                    line = f"{follows:,} follows from {int(with_follows['reach'].sum()):,} accounts reached ({per_1k:.1f} per 1,000)"
+                    if visits:
+                        line += f"; {visits:,} profile visits, so {100 * follows / visits:.0f}% of visitors followed"
+                    points.append(line + ".")
+                    best = with_follows.sort_values("follows_per_1k", ascending=False).iloc[0]
+                    points.append(f"Best at turning viewers into followers: {best['title']} ({best['follows_per_1k']:.1f} follows per 1,000 reached).")
+                    if visits and follows / visits < 0.1:
+                        plan.append("Fewer than 1 in 10 Instagram profile visitors follow: the profile is losing people the reels brought in. Rewrite the bio line and the pinned grid before the next push.")
+        findings.append({"title": "Instagram reach and saves", "points": points})
 
     experiments = data["experiments"]
     active = sum(item.get("status") not in {"completed", "ignored"} for item in experiments)
