@@ -196,6 +196,10 @@ DASHBOARD_SESSION_HOURS = int(os.environ.get("DASHBOARD_SESSION_HOURS", "12"))
 # stats pollers write a snapshot, every 30 minutes by default, so a 10-minute
 # reuse window is invisible to readers. 0 disables the cache.
 ANALYTICS_CACHE_SECONDS = int(os.environ.get("ANALYTICS_CACHE_SECONDS", "600"))
+# Server-rendered matplotlib/seaborn charts on the Momentum page. Needs the
+# analysis libraries from requirements.txt; set to false to hide the section
+# (for example on a host where matplotlib cannot initialise its font cache).
+GROWTH_CHARTS_ENABLED = os.environ.get("GROWTH_CHARTS_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
 # Local HTTP only. Production (HTTPS / Cloudflare Tunnel) must leave this unset
 # so the process refuses a default session secret, insecure cookies, or an
 # unencrypted comments database.

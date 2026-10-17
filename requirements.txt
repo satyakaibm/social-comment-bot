@@ -15,3 +15,10 @@ gunicorn==26.2.0
 # 0.6.2+ ships manylinux wheels for amd64 and aarch64. sqlcipher3-binary
 # has no aarch64 wheel, which broke Docker Desktop on Apple silicon.
 sqlcipher3==0.6.2; sys_platform == "linux"
+
+# Momentum "Growth charts and direction" (app/growth_charts.py) and
+# scripts/growth_report.py. Server-side PNG rendering; imported lazily so the
+# rest of the app does not pay matplotlib's start-up cost.
+pandas==3.0.6
+matplotlib==3.11.2
+seaborn==0.13.2

@@ -28,3 +28,6 @@ terraform/*.tfstate.*
 terraform/terraform.tfvars
 terraform/tfplan
 terraform/*.tfplan
+
+# Local chart/report output (scripts/growth_report.py, docs/examples)
+reports/

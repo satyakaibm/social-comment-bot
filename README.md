@@ -275,6 +275,33 @@ If Meta webhooks are disabled, the host cron entry for Facebook and Instagram do
 
 For another environment, create a file with the same variables and select it with `POLLING_CONFIG_FILE=/path/to/polling.env`. Set `FACEBOOK_POST_IDS` or `INSTAGRAM_MEDIA_IDS` in `.env` to stay on specific content.
 
+### Growth charts and direction (Momentum)
+
+The Momentum page has a "Growth charts and direction" section: eight
+matplotlib/seaborn charts (platform scoreboard, day-by-day views and
+comments, top movers, audience timing heatmaps, comment intent, reply
+coverage and speed, engagement rate, Instagram followers online) and a
+plain-language read-out that ends in a numbered plan for the next 30 days.
+Everything is built from the same 30-day queries as the cards above it
+(`app/growth_charts.py`), rendered on the server as PNG at
+`/momentum/charts/<name>.png` and cached with the other analytics for
+`ANALYTICS_CACHE_SECONDS`. The dataset is aggregates only, never the raw
+snapshot history, so it stays small under the tenant memory cap.
+
+- `GROWTH_CHARTS_ENABLED=false` hides the section and the chart routes.
+- The section also disappears on its own when pandas/matplotlib/seaborn are
+  not installed (they are in `requirements.txt`; the Docker image has them).
+- `scripts/growth_report.py` writes the same charts, a CSV behind each one
+  and `growth_direction.md` to `reports/growth/<date>/` for sharing a
+  monthly snapshot offline. Run it against a copy of the live database
+  (`scripts/sync_db_from_vm.sh`), never on the VM.
+- `docs/examples/seaborn_tips_plots.py` is a small worked example of the
+  same chart style (histplots and boxplots on seaborn's `tips` dataset).
+
+Note for macOS developers: matplotlib can segfault while building its font
+cache if a system font cannot be parsed by FreeType. The chart tests probe
+for this and skip themselves; the Docker test image always runs them.
+
 ### Instagram "Most active times" (Instagram's own data)
 
 Momentum's **Most active times** card for each Instagram account is not modelled by this app. It is Meta's `online_followers` insight -- the hourly follower-online counts behind the chart in the Instagram app -- averaged per hour over the days held and shown on the IST clock (Meta reports UTC hours, so UTC 06:00 appears as 11:30 AM IST). The video-stats worker fetches the trailing week every `INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS` (default 6) using the existing page token (`instagram_manage_insights`, already granted) and keeps `AUDIENCE_ONLINE_RETENTION_DAYS` (default 90) of it. Meta publishes each day about two days after it ends, so the most recent two days are always missing; an account needs at least 100 followers before Meta returns anything.
