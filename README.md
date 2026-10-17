@@ -277,10 +277,12 @@ For another environment, create a file with the same variables and select it wit
 
 ### Growth charts and direction (Momentum)
 
-The Momentum page has a "Growth charts and direction" section: eight
+The Momentum page has a "Growth charts and direction" section: ten
 matplotlib/seaborn charts (platform scoreboard, day-by-day views and
-comments, top movers, audience timing heatmaps, comment intent, reply
-coverage and speed, engagement rate, Instagram followers online) and a
+comments, top movers, first week of each upload against the channel's
+median curve, community of returning vs first-time commenters, audience
+timing heatmaps, comment intent, reply coverage and speed, engagement
+rate, Instagram followers online) and a
 plain-language read-out that ends in a numbered plan for the next 30 days.
 Everything is built from the same 30-day queries as the cards above it
 (`app/growth_charts.py`), rendered on the server as PNG at
