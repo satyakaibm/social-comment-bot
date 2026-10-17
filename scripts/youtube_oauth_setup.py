@@ -1,14 +1,11 @@
 """One-time interactive OAuth flow to obtain a YouTube refresh token.
 
-Run this once, as the channel owner, after setting YOUTUBE_OAUTH_CLIENT_ID
-and YOUTUBE_OAUTH_CLIENT_SECRET in .env. It opens a browser for consent, then
-prints the resulting refresh token to paste into YOUTUBE_REFRESH_TOKEN.
+Run this once, as the channel owner, after setting YOUTUBE_OAUTH_CLIENT_ID and YOUTUBE_OAUTH_CLIENT_SECRET in .env
+It opens a browser for consent, then prints the resulting refresh token to paste into YOUTUBE_REFRESH_TOKEN.
 
-For a second+ page (see .env's PAGE_KEY_2 etc.), pass that page's env var
-suffix with --suffix so it reads YOUTUBE_OAUTH_CLIENT_ID<suffix>/SECRET<suffix>
-instead -- in that mode the refresh token is written straight into .env's
-YOUTUBE_REFRESH_TOKEN<suffix> line rather than printed, since it's easy to
-mismatch which page's line to paste it into by hand.
+For a second+ page (see .env's PAGE_KEY_2 etc.), pass that page's env var suffix with --suffix so it reads YOUTUBE_OAUTH_CLIENT_ID<suffix>/SECRET<suffix>
+instead -- in that mode the refresh token is written straight into .env's YOUTUBE_REFRESH_TOKEN<suffix> line rather than printed,
+since it's easy to mismatch which page's line to paste it into by hand.
 
 Usage:
     python scripts/youtube_oauth_setup.py
