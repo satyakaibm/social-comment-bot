@@ -147,6 +147,72 @@ def _refresh_instagram_online(conn) -> int:
     return updated
 
 
+def _refresh_audience_size(conn, *, youtube: bool, meta: bool) -> int:
+    """Store today's follower/subscriber count for every configured channel.
+
+    Counts move slowly, so each channel is re-asked at most every
+    AUDIENCE_SIZE_REFRESH_HOURS; a day's row keeps its latest value. A
+    channel whose fetch fails is skipped until the next tick, like the
+    per-video stats above.
+    """
+    if not config.AUDIENCE_SIZE_ENABLED:
+        return 0
+    targets: list[tuple[str, str]] = []
+    if youtube:
+        targets += [("youtube", key) for key in config.youtube_page_keys()]
+    if meta:
+        targets += [("facebook", key) for key in config.facebook_page_keys()]
+        targets += [("instagram", key) for key in config.instagram_page_keys()]
+    updated = 0
+    for platform, page_key in targets:
+        if db.audience_size_fetched_within(
+            conn, platform=platform, page_key=page_key,
+            hours=config.AUDIENCE_SIZE_REFRESH_HOURS,
+        ):
+            continue
+        try:
+            if platform == "youtube":
+                counts = youtube_client.get_channel_statistics(
+                    youtube_client.get_client(page_key), quota_conn=conn, page_key=page_key
+                )
+            elif platform == "facebook":
+                counts = meta_client.get_facebook_page_followers(
+                    page_key=page_key, quota_conn=conn
+                )
+            else:
+                counts = meta_client.get_instagram_followers(
+                    page_key=page_key, quota_conn=conn
+                )
+        except Exception as exc:
+            print(
+                f"video_stats: {platform} follower count fetch failed for page "
+                f"'{page_key}': {exc}",
+                flush=True,
+            )
+            continue
+        if counts.get("followers") is None:
+            continue
+        db.upsert_audience_size(
+            conn, platform=platform, page_key=page_key,
+            followers=counts["followers"], content_count=counts.get("content_count"),
+        )
+        conn.commit()
+        updated += 1
+    return updated
+
+
+def _prune_audience_size(conn) -> None:
+    # YouTube subscriber counts are API statistics and fall under the same
+    # 30-day cap as video_stats_history; Meta counts are not.
+    db.prune_audience_size(
+        conn, platform="youtube", retention_days=config.VIDEO_STATS_HISTORY_RETENTION_DAYS
+    )
+    for platform in ("facebook", "instagram"):
+        db.prune_audience_size(
+            conn, platform=platform, retention_days=config.AUDIENCE_SIZE_RETENTION_DAYS
+        )
+
+
 def refresh_all() -> int:
     """Refresh cached like/share/comment counts for the most recently active
     videos and posts on every configured platform.
@@ -165,6 +231,7 @@ def refresh_all() -> int:
             _refresh_youtube(conn)
             + _refresh_facebook(conn)
             + _refresh_instagram(conn)
+            + _refresh_audience_size(conn, youtube=True, meta=True)
         )
 
 
@@ -178,6 +245,8 @@ def refresh_selected(*, youtube: bool, meta: bool) -> int:
             db.prune_audience_online(
                 conn, retention_days=config.AUDIENCE_ONLINE_RETENTION_DAYS
             )
+        updated += _refresh_audience_size(conn, youtube=youtube, meta=meta)
+        _prune_audience_size(conn)
         # Both halves of the 30-day cap required by YouTube Developer Policy
         # III.E.4: drop historical snapshots past the window, and clear the
         # counts on any latest-snapshot row that has gone stale because its

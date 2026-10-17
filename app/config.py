@@ -122,6 +122,15 @@ INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS = int(
     os.environ.get("INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS", "6")
 )
 AUDIENCE_ONLINE_RETENTION_DAYS = int(os.environ.get("AUDIENCE_ONLINE_RETENTION_DAYS", "90"))
+# Daily follower/subscriber counts per channel (Momentum's "Followers per
+# day" chart). One YouTube channels.list (1 quota unit) and one Graph read per
+# Facebook Page / Instagram account, at most every AUDIENCE_SIZE_REFRESH_HOURS.
+# YouTube rows are capped at the 30-day statistics window above; Meta rows
+# are kept for AUDIENCE_SIZE_RETENTION_DAYS. AUDIENCE_SIZE_ENABLED=false is
+# the kill switch (the test suite turns it off so no test can call out).
+AUDIENCE_SIZE_ENABLED = os.environ.get("AUDIENCE_SIZE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "on")
+AUDIENCE_SIZE_REFRESH_HOURS = int(os.environ.get("AUDIENCE_SIZE_REFRESH_HOURS", "6"))
+AUDIENCE_SIZE_RETENTION_DAYS = int(os.environ.get("AUDIENCE_SIZE_RETENTION_DAYS", "365"))
 
 META_GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
 FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "")

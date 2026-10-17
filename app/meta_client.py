@@ -643,6 +643,48 @@ def get_instagram_online_followers(
     return buckets
 
 
+def get_facebook_page_followers(
+    *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
+) -> dict:
+    """The Page's follower count (followers_count; fan_count as fallback for
+    Pages where only likes are exposed). One Graph read."""
+    _require_page(page_key, "FACEBOOK_PAGE_ID")
+    kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
+    data = graph_get(
+        _page(page_key).facebook_page_id,
+        fields="followers_count,fan_count",
+        page_key=page_key,
+        **kwargs,
+    )
+    followers = data.get("followers_count")
+    if followers is None:
+        followers = data.get("fan_count")
+    return {
+        "followers": int(followers) if followers is not None else None,
+        "content_count": None,
+    }
+
+
+def get_instagram_followers(
+    *, page_key: str = config.DEFAULT_PAGE_KEY, quota_conn=None
+) -> dict:
+    """The Instagram account's followers_count and media_count. One Graph read."""
+    _require_page(page_key, "INSTAGRAM_USER_ID")
+    kwargs = {"quota_conn": quota_conn} if quota_conn is not None else {}
+    data = graph_get(
+        _page(page_key).instagram_user_id,
+        fields="followers_count,media_count",
+        page_key=page_key,
+        **kwargs,
+    )
+    followers = data.get("followers_count")
+    media = data.get("media_count")
+    return {
+        "followers": int(followers) if followers is not None else None,
+        "content_count": int(media) if media is not None else None,
+    }
+
+
 def get_instagram_username(*, page_key: str = config.DEFAULT_PAGE_KEY) -> str:
     if page_key in _ig_username_cache:
         return _ig_username_cache[page_key]

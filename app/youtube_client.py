@@ -148,6 +148,37 @@ def get_my_channel_id(
     return channel_id
 
 
+def get_channel_statistics(
+    youtube: Resource, *, quota_conn=None, page_key: str = config.DEFAULT_PAGE_KEY
+) -> dict:
+    """Subscriber, upload and lifetime view counts for the authenticated
+    channel (channels.list part=statistics, 1 quota unit).
+
+    YouTube publishes subscriber counts rounded to three significant figures
+    once a channel passes 1,000, so day-to-day deltas on a small channel step
+    rather than climb. A channel that hides its count returns followers=None.
+    """
+    resp = execute(
+        youtube.channels().list(part="statistics", mine=True),
+        quota_conn=quota_conn, page_key=page_key,
+    )
+    items = resp.get("items") or []
+    if not items:
+        raise RuntimeError("No channel found for the authenticated account.")
+    stats = items[0].get("statistics") or {}
+    hidden = str(stats.get("hiddenSubscriberCount", "")).lower() == "true"
+
+    def count(name):
+        value = stats.get(name)
+        return int(value) if value not in (None, "") else None
+
+    return {
+        "followers": None if hidden else count("subscriberCount"),
+        "content_count": count("videoCount"),
+        "view_count": count("viewCount"),
+    }
+
+
 def get_video_channel_ids(
     youtube: Resource, video_ids, *, page_key: str = config.DEFAULT_PAGE_KEY
 ) -> dict[str, str]:

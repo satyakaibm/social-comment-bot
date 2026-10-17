@@ -24,6 +24,16 @@ def no_real_email(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_follower_count_fetches(monkeypatch):
+    """The follower-count refresh is driven by config.PAGES, not by rows in
+    the database, so on a developer machine whose .env holds real tokens any
+    test that reaches video_stats.refresh_selected would call YouTube and
+    Meta for real. Off by default; the feature's own tests turn it on under
+    their own mocks."""
+    monkeypatch.setattr(config, "AUDIENCE_SIZE_ENABLED", False)
+
+
+@pytest.fixture(autouse=True)
 def fresh_query_cache():
     """Analytics results are cached for minutes in production; tests that
     write rows and then render Momentum/Insights must see their own data."""
