@@ -276,12 +276,14 @@ def build_dataset(conn, *, platform: str | None, page_key: str | None, days: int
     lifecycle_raw = pd.DataFrame(_lifecycle_rows(conn, cutoff=cutoff, **kw))
     commenters = pd.DataFrame(_commenter_rows(conn, cutoff=cutoff, **kw))
     experiments = db.list_recommendation_experiments(conn, limit=500, **kw)
+    followers = pd.DataFrame(db.list_audience_size(conn, days=days, **kw))
 
     data: dict[str, Any] = {
         "now": now, "days": days, "platform": platform or "", "page_key": page_key or "",
         "stats": stats, "growth_long": growth_long, "growth_7d": growth_7d,
         "engagement": engagement, "audience": audience, "online": online,
         "daily": daily, "comments": comments, "experiments": experiments,
+        "followers": followers,
     }
     data["scoreboard"] = _scoreboard(data)
     data["movers"] = _top_movers(data)
@@ -293,6 +295,7 @@ def build_dataset(conn, *, platform: str | None, page_key: str | None, days: int
     data["online_profile"] = _online_profile(online)
     data["lifecycle"], data["lifecycle_median"], data["lifecycle_verdicts"] = _lifecycle(lifecycle_raw, now)
     data["community_weeks"], data["superfans"] = _community(commenters, now)
+    data["follower_summary"] = _follower_summary(followers, data["scoreboard"])
     data["comments_per_day"] = (
         comments.dropna(subset=["day"]).groupby(["platform", "day"]).size().reset_index(name="comments")
         if not comments.empty else pd.DataFrame(columns=["platform", "day", "comments"])
@@ -487,6 +490,44 @@ def _community(commenters, now):
     return weeks, fans
 
 
+def _follower_summary(followers, scoreboard):
+    """Per channel: latest count, gains over 7 and 30 days, and followers
+    gained per 1,000 views gained in the window (the conversion rate a
+    subscribe/follow call-to-action moves)."""
+    pd = _pd()
+    columns = ["platform", "page_key", "latest", "latest_day", "days_held", "gain_7d", "gain_30d",
+               "pct_30d", "best_day", "best_day_gain", "per_1k_views"]
+    if followers.empty:
+        return pd.DataFrame(columns=columns)
+    f = followers.copy()
+    f["day"] = pd.to_datetime(f["day"], errors="coerce")
+    f = f.dropna(subset=["day"]).sort_values(["platform", "page_key", "day"])
+    views = {}
+    if not scoreboard.empty:
+        views = dict(zip(scoreboard["platform"], scoreboard["view_growth"]))
+    rows = []
+    for (platform, page_key), group in f.groupby(["platform", "page_key"]):
+        latest = group.iloc[-1]
+        first = group.iloc[0]
+        week_ago = group[group["day"] <= latest["day"] - pd.Timedelta(days=7)]
+        gain_7d = int(latest["followers"] - week_ago.iloc[-1]["followers"]) if not week_ago.empty else None
+        gain_30d = int(latest["followers"] - first["followers"])
+        daily = group.set_index("day")["followers"].diff().dropna()
+        best_day = daily.idxmax() if not daily.empty else None
+        view_growth = views.get(platform)
+        rows.append({
+            "platform": platform, "page_key": page_key,
+            "latest": int(latest["followers"]), "latest_day": latest["day"].date(),
+            "days_held": int(len(group)),
+            "gain_7d": gain_7d, "gain_30d": gain_30d,
+            "pct_30d": round(100 * gain_30d / first["followers"], 2) if first["followers"] else None,
+            "best_day": best_day.date() if best_day is not None else None,
+            "best_day_gain": int(daily.max()) if not daily.empty else None,
+            "per_1k_views": round(1000 * gain_30d / view_growth, 2) if view_growth and gain_30d >= 0 else None,
+        })
+    return pd.DataFrame(rows, columns=columns)
+
+
 # ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
@@ -502,6 +543,44 @@ def _png(fig) -> bytes:
 def _bar_labels(ax, fmt="{:,.0f}", pad=3) -> None:
     for container in ax.containers:
         ax.bar_label(container, fmt=fmt, padding=pad, fontsize=8, color=INK_2)
+
+
+FOLLOWER_LABEL = {"youtube": "subscribers", "facebook": "followers", "instagram": "followers"}
+
+
+def chart_followers(data: dict) -> bytes | None:
+    pd = _pd()
+    followers, summary = data["followers"], data["follower_summary"]
+    if followers.empty or followers.groupby(["platform", "page_key"])["day"].nunique().max() < 2:
+        return None
+    plt, _ = _plt()
+    from matplotlib.ticker import FuncFormatter
+    platforms = [p for p in PLATFORMS if (followers["platform"] == p).any()]
+    fig, axes = plt.subplots(1, len(platforms), figsize=(4.6 * len(platforms) + 1, 3.8), squeeze=False)
+    for ax, platform in zip(axes[0], platforms):
+        color = PLATFORM_COLOR[platform]
+        f = followers[followers["platform"] == platform]
+        pages = list(f["page_key"].unique())
+        for index, page_key in enumerate(pages):
+            g = f[f["page_key"] == page_key].sort_values("day")
+            x = pd.to_datetime(g["day"])
+            alpha = 1.0 if index == 0 else 0.55
+            ax.plot(x, g["followers"], color=color, alpha=alpha, marker="o", markersize=3)
+            row = summary[(summary["platform"] == platform) & (summary["page_key"] == page_key)]
+            gain = int(row.iloc[0]["gain_30d"]) if not row.empty else 0
+            page = config.PAGES.get(page_key)
+            label = f"{page.label if page and len(pages) > 1 else ''} {gain:+,}".strip()
+            ax.annotate(label, (x.iloc[-1], g["followers"].iloc[-1]), xytext=(6, 0), textcoords="offset points",
+                        fontsize=8, color=INK_2, va="center")
+        latest = int(f.sort_values("day").iloc[-1]["followers"]) if len(pages) == 1 else int(f.groupby("page_key")["followers"].last().sum())
+        ax.set_title(f"{platform}: {latest:,} {FOLLOWER_LABEL[platform]}")
+        ax.set_ylabel(FOLLOWER_LABEL[platform].capitalize())
+        ax.yaxis.set_major_formatter(FuncFormatter(lambda v, _: f"{int(v):,}"))
+        ax.margins(x=0.18, y=0.25)
+        ax.tick_params(axis="x", labelrotation=30)
+    fig.suptitle(f"Followers per day, last {data['days']} days (change over the window at the line end)")
+    fig.tight_layout()
+    return _png(fig)
 
 
 def chart_scoreboard(data: dict) -> bytes | None:
@@ -822,6 +901,8 @@ def chart_community(data: dict) -> bytes | None:
 
 
 CHARTS: dict[str, dict] = {
+    "followers": {"wide": True, "title": "Followers per day", "render": chart_followers,
+                  "caption": "Subscribers (YouTube) and followers (Facebook, Instagram) as counted each day by the stats worker. YouTube rounds public subscriber counts to three significant figures above 1,000, so small channels step rather than climb."},
     "scoreboard": {"wide": True, "title": "Platform scoreboard", "render": chart_scoreboard,
                    "caption": "Views, likes, comments and shares gained in the window, summed over tracked content."},
     "daily": {"wide": True, "title": "Day by day", "render": chart_daily,
@@ -865,6 +946,9 @@ def chart_specs(data: dict) -> list[dict]:
 
 
 def _has_data(data: dict, name: str) -> bool:
+    if name == "followers":
+        f = data["followers"]
+        return not f.empty and f.groupby(["platform", "page_key"])["day"].nunique().max() >= 2
     if name == "scoreboard":
         return not data["scoreboard"].empty
     if name == "daily":
@@ -916,6 +1000,29 @@ def direction(data: dict) -> dict:
     plan: list[str] = []
 
     points: list[str] = []
+    summary = data["follower_summary"]
+    if summary.empty:
+        points.append("No follower counts stored yet. The stats worker records one per channel per day from the next cycle on; the chart appears after two days.")
+    else:
+        for _, row in summary.iterrows():
+            page = config.PAGES.get(row["page_key"])
+            where = f"{row['platform']}" + (f" ({page.label})" if page and summary["page_key"].nunique() > 1 else "")
+            label = FOLLOWER_LABEL[row["platform"]]
+            parts = [f"{where}: {row['latest']:,} {label} on {pd_label(row['latest_day'])}"]
+            if row["days_held"] >= 2:
+                parts.append(f"{int(row['gain_30d']):+,} over the {int(row['days_held'])} days held" + (f" ({row['pct_30d']:+.2f}%)" if row["pct_30d"] is not None else ""))
+            if row["gain_7d"] is not None:
+                parts.append(f"{int(row['gain_7d']):+,} in the last 7 days")
+            if row["best_day_gain"] and row["best_day_gain"] > 0:
+                parts.append(f"best day {pd_label(row['best_day'])} ({int(row['best_day_gain']):+,})")
+            points.append(", ".join(parts) + ".")
+            if row["per_1k_views"] is not None and row["days_held"] >= 7:
+                points.append(f"{where}: {row['per_1k_views']:.1f} new {label} per 1,000 views gained in the window.")
+                if row["per_1k_views"] < 2:
+                    plan.append(f"Fewer than 2 new {label} per 1,000 views on {row['platform']}: viewers watch but do not {'subscribe' if row['platform'] == 'youtube' else 'follow'}. Put the ask in the first 30 seconds and the last 10 of every upload for a month and re-check this number.")
+    findings.append({"title": "Audience size", "points": points})
+
+    points = []
     if board.empty:
         points.append("No video statistics in this window yet; the stats worker has not captured two snapshots of anything.")
     else:

@@ -168,6 +168,21 @@ CREATE TABLE IF NOT EXISTS audience_online (
     PRIMARY KEY (platform, page_key, bucket_end, hour_utc)
 );
 
+-- One follower/subscriber count per channel per IST day, written by the
+-- video-stats worker (channels.list statistics for YouTube, followers_count
+-- for a Facebook Page or Instagram account). YouTube rows fall under the
+-- 30-day statistics cap like video_stats_history; Meta rows are kept for
+-- AUDIENCE_SIZE_RETENTION_DAYS.
+CREATE TABLE IF NOT EXISTS audience_size (
+    platform TEXT NOT NULL,
+    page_key TEXT NOT NULL DEFAULT '',
+    day TEXT NOT NULL,
+    followers INTEGER NOT NULL,
+    content_count INTEGER,
+    captured_at TEXT NOT NULL,
+    PRIMARY KEY (platform, page_key, day)
+);
+
 CREATE TABLE IF NOT EXISTS recommendation_experiments (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     recommendation_key TEXT NOT NULL UNIQUE,
@@ -436,6 +451,9 @@ def init_db() -> None:
         )
         _migrate_seen_comments(conn)
         sync_seen_stats_from_comments(conn)
+
+
+IST = timezone(timedelta(hours=5, minutes=30))
 
 
 def now() -> str:
@@ -767,6 +785,84 @@ def audience_online_fetched_within(
         (platform, page_key, f"-{max(1, hours)} hours"),
     ).fetchone()
     return row is not None
+
+
+def upsert_audience_size(
+    conn: sqlite3.Connection,
+    *,
+    platform: str,
+    page_key: str,
+    followers: int,
+    content_count: int | None = None,
+    captured_at: str | None = None,
+) -> str:
+    """Store a channel's follower count under the IST day it was taken.
+
+    A second fetch on the same day overwrites the first, so each day keeps
+    its latest value. Returns the day key written.
+    """
+    captured_at = captured_at or now()
+    day = datetime.fromisoformat(captured_at).astimezone(IST).date().isoformat()
+    conn.execute(
+        """INSERT INTO audience_size
+               (platform, page_key, day, followers, content_count, captured_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(platform, page_key, day)
+           DO UPDATE SET followers = excluded.followers,
+                         content_count = excluded.content_count,
+                         captured_at = excluded.captured_at""",
+        (platform, page_key, day, int(followers),
+         int(content_count) if content_count is not None else None, captured_at),
+    )
+    return day
+
+
+def audience_size_fetched_within(
+    conn: sqlite3.Connection, *, platform: str, page_key: str, hours: int
+) -> bool:
+    """True when this channel's follower count was fetched in the last `hours`."""
+    row = conn.execute(
+        """SELECT 1 FROM audience_size
+            WHERE platform = ? AND page_key = ?
+              AND datetime(captured_at) >= datetime('now', ?)
+            LIMIT 1""",
+        (platform, page_key, f"-{max(1, hours)} hours"),
+    ).fetchone()
+    return row is not None
+
+
+def list_audience_size(
+    conn: sqlite3.Connection,
+    *,
+    platform: str | None = None,
+    page_key: str | None = None,
+    days: int = 30,
+) -> list[dict]:
+    """Daily follower counts for the last `days` IST days, oldest first."""
+    sql = """SELECT platform, page_key, day, followers, content_count, captured_at
+               FROM audience_size
+              WHERE date(day) >= date('now', '+5 hours', '+30 minutes', ?)"""
+    params: list = [f"-{max(1, days)} days"]
+    if platform:
+        sql += " AND platform = ?"
+        params.append(platform)
+    if page_key:
+        clause, extra = _page_key_filter(page_key)
+        sql += clause
+        params.extend(extra)
+    sql += " ORDER BY platform, page_key, day"
+    return [dict(row) for row in conn.execute(sql, params)]
+
+
+def prune_audience_size(
+    conn: sqlite3.Connection, *, platform: str, retention_days: int
+) -> int:
+    cursor = conn.execute(
+        """DELETE FROM audience_size
+            WHERE platform = ? AND date(day) < date('now', ?)""",
+        (platform, f"-{max(1, retention_days)} days"),
+    )
+    return cursor.rowcount
 
 
 def prune_audience_online(conn: sqlite3.Connection, *, retention_days: int) -> int:

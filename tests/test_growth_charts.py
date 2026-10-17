@@ -141,6 +141,12 @@ class GrowthChartsTests(unittest.TestCase):
                     ((published + timedelta(hours=2)).isoformat(), f"x{n}"),
                 )
             db.sync_seen_stats_from_comments(conn)
+            for day in range(12, -1, -1):
+                taken = (now - timedelta(days=day)).isoformat()
+                db.upsert_audience_size(conn, platform="youtube", page_key=config.DEFAULT_PAGE_KEY,
+                                        followers=10_000 + 40 * (12 - day), content_count=120, captured_at=taken)
+                db.upsert_audience_size(conn, platform="instagram", page_key=config.DEFAULT_PAGE_KEY,
+                                        followers=2_500 + 5 * (12 - day), content_count=80, captured_at=taken)
             for day in range(3):
                 bucket_end = (now - timedelta(days=day)).replace(hour=0, minute=0, second=0, microsecond=0)
                 for hour in range(24):
@@ -189,6 +195,11 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertGreaterEqual(int(weeks["returning"].sum()), 1)
         fans = data["superfans"].set_index("commenter")
         self.assertGreaterEqual(fans.loc["viewer0", "comments"], 3)
+        summary = data["follower_summary"].set_index("platform")
+        self.assertEqual(summary.loc["youtube", "latest"], 10_480)
+        self.assertEqual(summary.loc["youtube", "gain_30d"], 480)
+        self.assertEqual(summary.loc["youtube", "gain_7d"], 280)
+        self.assertEqual(summary.loc["instagram", "gain_30d"], 60)
 
     def test_platform_filter_limits_dataset(self):
         data = self._dataset(platform="instagram")
@@ -217,6 +228,10 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertIn("repeat commenters on youtube", plan)
         self.assertIn("How new uploads are tracking", titles)
         self.assertIn("Is a community forming?", titles)
+        self.assertEqual(titles[0], "Audience size")
+        audience = " ".join(result["findings"][0]["points"])
+        self.assertIn("10,480 subscribers", audience)
+        self.assertIn("+480 over the 13 days held", audience)
         self.assertEqual(len(result["plan"]), len(set(result["plan"])))
 
     def test_every_chart_with_data_renders_a_png(self):
@@ -230,7 +245,7 @@ class GrowthChartsTests(unittest.TestCase):
 
     def test_empty_database_renders_nothing_but_still_directs(self):
         with db.connect() as conn:
-            for table in ("comments", "seen_comments", "video_stats", "video_stats_history", "audience_online"):
+            for table in ("comments", "seen_comments", "video_stats", "video_stats_history", "audience_online", "audience_size"):
                 conn.execute(f"DELETE FROM {table}")
         data = self._dataset()
         self.assertEqual(growth_charts.chart_specs(data), [])
@@ -264,6 +279,7 @@ class GrowthChartsTests(unittest.TestCase):
         self.assertIn("/momentum/charts/timing.png", html)
         self.assertIn("/momentum/charts/lifecycle.png", html)
         self.assertIn("/momentum/charts/community.png", html)
+        self.assertIn("/momentum/charts/followers.png", html)
 
     def test_disabled_flag_hides_section_and_route(self):
         with patch.object(config, "GROWTH_CHARTS_ENABLED", False):

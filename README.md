@@ -277,9 +277,9 @@ For another environment, create a file with the same variables and select it wit
 
 ### Growth charts and direction (Momentum)
 
-The Momentum page has a "Growth charts and direction" section: ten
+The Momentum page has a "Growth charts and direction" section: eleven
 matplotlib/seaborn charts (platform scoreboard, day-by-day views and
-comments, top movers, first week of each upload against the channel's
+comments, followers per day, top movers, first week of each upload against the channel's
 median curve, community of returning vs first-time commenters, audience
 timing heatmaps, comment intent, reply coverage and speed, engagement
 rate, Instagram followers online) and a
@@ -307,6 +307,10 @@ for this and skip themselves; the Docker test image always runs them.
 ### Instagram "Most active times" (Instagram's own data)
 
 Momentum's **Most active times** card for each Instagram account is not modelled by this app. It is Meta's `online_followers` insight -- the hourly follower-online counts behind the chart in the Instagram app -- averaged per hour over the days held and shown on the IST clock (Meta reports UTC hours, so UTC 06:00 appears as 11:30 AM IST). The video-stats worker fetches the trailing week every `INSTAGRAM_ONLINE_FOLLOWERS_REFRESH_HOURS` (default 6) using the existing page token (`instagram_manage_insights`, already granted) and keeps `AUDIENCE_ONLINE_RETENTION_DAYS` (default 90) of it. Meta publishes each day about two days after it ends, so the most recent two days are always missing; an account needs at least 100 followers before Meta returns anything.
+
+### Followers per day
+
+Momentum's **Followers per day** chart is the channel-level count the video-stats worker stores once per channel per IST day: `channels.list` statistics for YouTube (1 quota unit; YouTube rounds public subscriber counts to three significant figures above 1,000), `followers_count` for a Facebook Page and for an Instagram account (one Graph read each, existing page token). A channel is re-asked at most every `AUDIENCE_SIZE_REFRESH_HOURS` (default 6). YouTube rows are capped at the 30-day statistics window; Meta rows are kept for `AUDIENCE_SIZE_RETENTION_DAYS` (default 365). `AUDIENCE_SIZE_ENABLED=false` turns the fetch off. The written direction reports the gain over the window and the last 7 days, and new followers per 1,000 views gained, which is the number a subscribe/follow call-to-action moves.
 
 Facebook and YouTube have no API equivalent: Meta removed `page_fans_online` from Page Insights in 2024, and the YouTube Analytics API has no hour-of-day dimension, so YouTube Studio's "When your viewers are on YouTube" cannot be reproduced here. For those platforms the dashboard can only show when your audience *engages* (comments and snapshot growth), which is a different and much sparser signal -- use the native dashboards for publish timing.
 
