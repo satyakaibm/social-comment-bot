@@ -13,13 +13,13 @@ IST = timezone(timedelta(hours=5, minutes=30))
 from zoneinfo import ZoneInfo
 from urllib.parse import urlencode, urlsplit
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, send_file, session, url_for
+from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_file, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from app import mailer
 from werkzeug.serving import make_server
 
-from app import analytics, config, db, query_cache, security_headers
+from app import analytics, config, db, growth_charts, query_cache, security_headers
 from app.password_policy import PASSWORD_HINT, password_meets_policy
 from app.post import post_approved
 from app.webhook import register_meta_routes, start_event_worker
@@ -286,6 +286,36 @@ def _cached_rows(name: str, compute, *parts):
     database's rows, plus every filter that changes the result.
     """
     return query_cache.cached((name, str(db.DB_PATH), *parts), compute)
+
+
+def _growth_enabled() -> bool:
+    return config.GROWTH_CHARTS_ENABLED and growth_charts.available()
+
+
+def _growth_dataset(conn, platform: str, page_key: str) -> dict:
+    """The Momentum chart dataset, cached like the other analytics queries."""
+    return _cached_rows(
+        "growth_dataset",
+        lambda: growth_charts.build_dataset(
+            conn, platform=platform or None, page_key=page_key or None,
+            days=config.YOUTUBE_STATS_MAX_RETENTION_DAYS,
+        ),
+        platform, page_key,
+    )
+
+
+def _growth_context(conn, platform: str, page_key: str, logger) -> tuple[dict | None, list[dict]]:
+    """Direction text and chart list for the Momentum page, or nothing when
+    the libraries are missing or the dataset fails: the rest of the page
+    must still render."""
+    if not _growth_enabled():
+        return None, []
+    try:
+        dataset = _growth_dataset(conn, platform, page_key)
+        return growth_charts.direction(dataset), growth_charts.chart_specs(dataset)
+    except Exception:
+        logger.exception("Growth charts unavailable")
+        return None, []
 
 
 def _quota_cards(conn, platform: str, page_key: str = "") -> list[dict]:
@@ -1246,6 +1276,9 @@ def create_app() -> Flask:
             experiments = db.list_recommendation_experiments(
                 conn, platform=platform or None, page_key=page_key or None
             )
+            growth_direction, growth_chart_specs = _growth_context(
+                conn, platform, page_key, app.logger
+            )
             online_rows = (
                 db.list_audience_online(
                     conn, platform="instagram", page_key=page_key or None, days=28
@@ -1344,6 +1377,8 @@ def create_app() -> Flask:
         }
         return render_template(
             "momentum.html",
+            growth_direction=growth_direction,
+            growth_chart_specs=growth_chart_specs,
             creator_recommendations=creator_recommendations,
             momentum_recommendations=momentum_recommendations,
             audience_timing=audience_timing,
@@ -1362,6 +1397,33 @@ def create_app() -> Flask:
             dashboard_username=session["dashboard_username"],
             profile_initial=session["dashboard_username"][:1].upper(),
         )
+
+    @app.get("/momentum/charts/<name>.png")
+    def momentum_chart(name: str):
+        """One Momentum chart as PNG, rendered server-side and cached with
+        the analytics queries. Same platform/page_key filters as the page."""
+        if name not in growth_charts.CHARTS or not _growth_enabled():
+            abort(404)
+        platform = request.args.get("platform", "").strip()
+        if platform not in PLATFORMS:
+            platform = ""
+        page_key = request.args.get("page_key", "").strip()
+        if page_key not in config.PAGES:
+            page_key = ""
+        with request_db() as conn:
+            dataset = _growth_dataset(conn, platform, page_key)
+            png = _cached_rows(
+                "growth_chart",
+                lambda: growth_charts.render(dataset, name),
+                name, platform, page_key,
+            )
+        if png is None:
+            abort(404)
+        response = Response(png, mimetype="image/png")
+        response.headers["Cache-Control"] = (
+            f"private, max-age={max(0, config.ANALYTICS_CACHE_SECONDS)}"
+        )
+        return response
 
     @app.post("/insights/experiments")
     @app.post("/momentum/experiments")
