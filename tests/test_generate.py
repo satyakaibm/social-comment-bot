@@ -26,7 +26,57 @@ class _FakeChats:
         return self.chat
 
 
+class _FakeClaudeMessages:
+    def __init__(self, text='{"language": "Odia", "reply": "🙏"}', stop_reason="end_turn"):
+        self.calls = []
+        self.text = text
+        self.stop_reason = stop_reason
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return SimpleNamespace(
+            stop_reason=self.stop_reason,
+            stop_details=None,
+            content=[
+                SimpleNamespace(type="thinking", thinking=""),
+                SimpleNamespace(type="text", text=self.text),
+            ],
+        )
+
+
+def _fake_claude(messages):
+    return SimpleNamespace(beta=SimpleNamespace(messages=messages))
+
+
 class GenerateTests(unittest.TestCase):
+    def test_claude_provider_drafts_through_anthropic(self):
+        messages = _FakeClaudeMessages()
+        with patch.object(config, "LLM_PROVIDER", "claude"), \
+             patch.object(generate, "_get_claude_client", return_value=_fake_claude(messages)), \
+             patch.object(generate, "_get_client", side_effect=AssertionError("Gemini used")), \
+             patch.object(generate, "load_examples", return_value=[]):
+            reply = generate.draft_reply(
+                platform="instagram", context_title="Aarti", author="viewer",
+                comment_text="Jai Maa",
+            )
+
+        self.assertEqual(reply, "@viewer 🙏")
+        call = messages.calls[0]
+        self.assertEqual(call["model"], config.CLAUDE_MODEL)
+        self.assertIn("Jai Maa", call["messages"][0]["content"])
+        self.assertEqual(call["output_config"]["format"]["type"], "json_schema")
+
+    def test_claude_refusal_raises_instead_of_posting_empty_reply(self):
+        messages = _FakeClaudeMessages(text="", stop_reason="refusal")
+        with patch.object(config, "LLM_PROVIDER", "claude"), \
+             patch.object(generate, "_get_claude_client", return_value=_fake_claude(messages)), \
+             patch.object(generate, "load_examples", return_value=[]):
+            with self.assertRaises(RuntimeError):
+                generate.draft_reply(
+                    platform="youtube", context_title="Aarti", author="viewer",
+                    comment_text="Jai Maa",
+                )
+
     def test_draft_uses_chat_send_message(self):
         client = SimpleNamespace(chats=_FakeChats())
         with patch.object(generate, "_get_client", return_value=client), \
