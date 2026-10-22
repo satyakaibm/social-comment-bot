@@ -2,6 +2,7 @@ import json
 import re
 import time
 
+import anthropic
 from google import genai
 from google.genai import errors, types
 
@@ -10,6 +11,7 @@ from app.reply_examples import format_for_prompt, load_examples
 from app.sanitize import sanitize_draft
 
 _client: genai.Client | None = None
+_claude_client: anthropic.Anthropic | None = None
 
 MAX_RATE_LIMIT_RETRIES = 5
 DEFAULT_RETRY_DELAY_SECONDS = 20.0
@@ -21,6 +23,18 @@ def _get_client() -> genai.Client:
         config.require("GEMINI_API_KEY")
         _client = genai.Client(api_key=config.GEMINI_API_KEY)
     return _client
+
+
+def _get_claude_client() -> anthropic.Anthropic:
+    global _claude_client
+    if _claude_client is None:
+        config.require("ANTHROPIC_API_KEY")
+        # The SDK already retries 429/5xx with backoff; give it the same
+        # patience the Gemini loop below has.
+        _claude_client = anthropic.Anthropic(
+            api_key=config.ANTHROPIC_API_KEY, max_retries=MAX_RATE_LIMIT_RETRIES
+        )
+    return _claude_client
 
 
 def _retry_delay_seconds(error: errors.ClientError) -> float:
@@ -166,6 +180,17 @@ write the reply in that language:
 '''
 
 
+_DRAFT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "language": {"type": "string"},
+        "reply": {"type": "string"},
+    },
+    "required": ["language", "reply"],
+    "additionalProperties": False,
+}
+
+
 def _parse_draft_payload(raw: str) -> str:
     text = raw.strip()
     if text.startswith("```"):
@@ -210,6 +235,46 @@ def draft_reply(
         "The reply language is decided by the comment text alone, not by the "
         "caption, the title, or the commenter's name. "
     )
+    if config.LLM_PROVIDER == "claude":
+        raw = _draft_with_claude(system_instruction, user_message)
+    else:
+        raw = _draft_with_gemini(system_instruction, user_message)
+    reply = _parse_draft_payload(raw)
+    if platform in _MENTION_PLATFORMS:
+        reply = f"@{author} {reply}"
+    return sanitize_draft(reply, page_key=page_key)
+
+
+def _draft_with_claude(system_instruction: str, user_message: str) -> str:
+    client = _get_claude_client()
+    response = client.beta.messages.create(
+        model=config.CLAUDE_MODEL,
+        # Thinking counts against max_tokens, so this is far above the reply
+        # length itself; effort keeps the thinking short.
+        max_tokens=4000,
+        system=system_instruction,
+        messages=[{"role": "user", "content": user_message}],
+        # The system prompt (persona + examples + rules) is identical for
+        # every comment on a page; caching it makes repeat drafts far cheaper.
+        cache_control={"type": "ephemeral"},
+        output_config={
+            "effort": config.CLAUDE_EFFORT,
+            "format": {"type": "json_schema", "schema": _DRAFT_SCHEMA},
+        },
+        # On a safety-classifier decline, let the API re-run the request on
+        # its recommended fallback model instead of returning nothing.
+        betas=["server-side-fallback-2026-07-01"],
+        fallbacks="default",
+    )
+    if response.stop_reason == "refusal":
+        raise RuntimeError(f"Claude declined to draft a reply ({response.stop_details})")
+    text = next((b.text for b in response.content if b.type == "text"), "")
+    if not text:
+        raise RuntimeError(f"Claude returned no reply text (stop_reason={response.stop_reason})")
+    return text.strip()
+
+
+def _draft_with_gemini(system_instruction: str, user_message: str) -> str:
     client = _get_client()
     generation_config = types.GenerateContentConfig(
         system_instruction=system_instruction,
@@ -224,10 +289,7 @@ def draft_reply(
                 config=generation_config,
             )
             response = chat.send_message(user_message)
-            reply = _parse_draft_payload(response.text.strip())
-            if platform in _MENTION_PLATFORMS:
-                reply = f"@{author} {reply}"
-            return sanitize_draft(reply, page_key=page_key)
+            return response.text.strip()
         except errors.ClientError as e:
             if e.code == 429 and attempt < MAX_RATE_LIMIT_RETRIES:
                 delay = _retry_delay_seconds(e)

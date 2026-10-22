@@ -264,6 +264,15 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 # the cap are left unseen and get drafted on a later cycle/day. 0 = no cap.
 GEMINI_DAILY_DRAFT_LIMIT = int(os.environ.get("GEMINI_DAILY_DRAFT_LIMIT", "0"))
 
+# Which model drafts replies: "gemini" (default) or "claude". Switching is
+# env-only so Claude can be trialled for a few days and reverted without a
+# deploy of new code. GEMINI_DAILY_DRAFT_LIMIT caps drafts for either one.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "gemini").strip().lower()
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-opus-5-5")
+# A reply is one or two sentences; low effort keeps thinking (and cost) short.
+CLAUDE_EFFORT = os.environ.get("CLAUDE_EFFORT", "low")
+
 # Operator-written comment/reply examples (one file per example).
 _examples_dir = os.environ.get("REPLY_EXAMPLES_DIR", "").strip()
 REPLY_EXAMPLES_DIR = (
