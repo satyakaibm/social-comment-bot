@@ -358,6 +358,13 @@ class DashboardTests(unittest.TestCase):
         last_page = self.client.get("/?status=posted&page=3")
         self.assertIn(b"Page 3 of 3", last_page.data)
         self.assertIn(b"Previous", last_page.data)
+
+        # Bottom-right count: this page's range against the filtered total.
+        def page_count(data):
+            return " ".join(data.decode().split('class="page-count">', 1)[1].split("</p>", 1)[0]
+                            .replace("<strong>", "").replace("</strong>", "").split())
+        self.assertEqual(page_count(first_page.data), "Showing 1–50 of 101 comments")
+        self.assertEqual(page_count(last_page.data), "Showing 101–101 of 101 comments")
         self.assertEqual(last_page.data.count(b"<tr>"), 2)
 
     def test_retry_posts_failed_comment(self):

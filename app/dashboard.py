@@ -979,6 +979,8 @@ def create_app() -> Flask:
             page=page,
             pages=pages,
             total=total,
+            page_first=offset + 1 if rows else 0,
+            page_last=offset + len(rows),
             sort_order=sort_order,
             next_sort_order="asc" if sort_order == "desc" else "desc",
             query_string=request.query_string.decode(),
