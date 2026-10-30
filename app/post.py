@@ -8,7 +8,7 @@ from requests import RequestException
 
 from app import config, db, meta_client
 from app.comment_age import is_within_comment_age_limit
-from app.sanitize import remove_leading_mention, sanitize_draft
+from app.sanitize import collapse_double_mention, sanitize_draft
 from app.scripts import dominant_script
 from app.youtube_client import (
     find_own_reply,
@@ -331,10 +331,9 @@ def post_approved(
                 )
                 continue
             if platform == "youtube":
-                # Existing queued YouTube drafts may still contain the old
-                # automated @username prefix. Replies are already nested below
-                # the comment, so post them as plain text.
-                reply_text = remove_leading_mention(reply_text)
+                # Drafts queued by the old code carry "@@handle"; a single "@"
+                # is what YouTube turns into a mention.
+                reply_text = collapse_double_mention(reply_text)
             if reply_text != (row["draft_reply"] or ""):
                 db.update_status(
                     conn,

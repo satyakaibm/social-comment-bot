@@ -52,10 +52,24 @@ _PLATFORM_LABELS = {
     "instagram": "Instagram post",
 }
 
-# Instagram is the only supported platform where prefixing "@author" creates
-# the intended commenter mention. YouTube replies are already nested beneath
-# the original comment, so the username prefix is unnecessary.
-_MENTION_PLATFORMS = {"instagram"}
+# Instagram and YouTube turn a leading "@handle" into a real, clickable
+# mention. YouTube's authorDisplayName already carries the "@" -- prefixing
+# another is what produced the "@@viewer" replies that got YouTube mentions
+# switched off -- and an older account may have a plain display name with
+# spaces, which is not a handle, so that reply stays plain. Facebook gets no
+# prefix: a page cannot mention a public commenter (the Graph API does not
+# expose mentionable user ids), and a bare name is not wanted in its place.
+_YOUTUBE_HANDLE = re.compile(r"@[\w.\-]+")
+
+
+def _mention(platform: str, author: str) -> str:
+    """The leading "@handle " for a reply, or "" when there is no real one."""
+    name = author.strip()
+    if platform == "instagram" and name:
+        return f"@{name.lstrip('@')} "
+    if platform == "youtube" and _YOUTUBE_HANDLE.fullmatch(name):
+        return f"{name} "
+    return ""
 
 # Keyed by config.reply_style_profile -- a page's mandatory rules on top of
 # its persona. Two channels (a devotional Odia page vs. a travel channel) need
@@ -240,8 +254,7 @@ def draft_reply(
     else:
         raw = _draft_with_gemini(system_instruction, user_message)
     reply = _parse_draft_payload(raw)
-    if platform in _MENTION_PLATFORMS:
-        reply = f"@{author} {reply}"
+    reply = f"{_mention(platform, author)}{reply}"
     return sanitize_draft(reply, page_key=page_key)
 
 

@@ -672,7 +672,7 @@ class ExistingReplyTests(unittest.TestCase):
             )
             like.assert_not_called()
 
-    def test_youtube_post_strips_an_old_automated_author_prefix(self):
+    def test_youtube_post_collapses_an_old_double_at_prefix(self):
         self.seed('youtube')
         with db.connect() as conn:
             db.update_status(conn, 'youtube', 'approved', draft_reply='@@viewer 🙏')
@@ -685,7 +685,7 @@ class ExistingReplyTests(unittest.TestCase):
             self.assertEqual(post.post_approved(platform='youtube'), 1)
 
         body = youtube.comments.return_value.insert.call_args.kwargs['body']
-        self.assertEqual(body['snippet']['textOriginal'], '🙏')
+        self.assertEqual(body['snippet']['textOriginal'], '@viewer 🙏')
 
     def test_youtube_checks_later_reply_pages(self):
         youtube = MagicMock()
