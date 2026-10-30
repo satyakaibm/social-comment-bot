@@ -92,21 +92,25 @@ class GenerateTests(unittest.TestCase):
         self.assertEqual(len(client.chats.created), 1)
         self.assertIn("Jai Maa", client.chats.chat.messages[0])
 
-    def test_only_instagram_drafts_receive_an_author_prefix(self):
+    def _draft(self, platform, author):
         client = SimpleNamespace(chats=_FakeChats())
         with patch.object(generate, "_get_client", return_value=client), \
              patch.object(generate, "load_examples", return_value=[]):
-            youtube = generate.draft_reply(
-                platform="youtube", context_title="Aarti", author="viewer",
+            reply = generate.draft_reply(
+                platform=platform, context_title="Aarti", author=author,
                 comment_text="Jai Maa",
             )
-            instagram = generate.draft_reply(
-                platform="instagram", context_title="Aarti", author="viewer",
-                comment_text="Jai Maa",
-            )
+        return reply, client.chats.chat.messages[0]
 
-        self.assertEqual(youtube, "🙏")
-        self.assertEqual(instagram, "@viewer 🙏")
+    def test_instagram_and_youtube_handles_become_mentions(self):
+        self.assertEqual(self._draft("instagram", "viewer")[0], "@viewer 🙏")
+        # YouTube's authorDisplayName already starts with "@"; it must not
+        # gain a second one.
+        self.assertEqual(self._draft("youtube", "@viewer-12")[0], "@viewer-12 🙏")
+
+    def test_facebook_and_non_handle_youtube_names_stay_plain(self):
+        self.assertEqual(self._draft("facebook", "Rajesh Kumar Dash")[0], "🙏")
+        self.assertEqual(self._draft("youtube", "Rajesh Dash")[0], "🙏")
 
     def test_second_page_uses_its_persona_and_generic_style_not_hindolroad_rules(self):
         second = make_page_config(

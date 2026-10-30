@@ -175,9 +175,9 @@ def sanitize_draft(
     return f"{mention}{rest}".strip()
 
 
-def remove_leading_mention(text: str) -> str:
-    """Remove the automated leading @username from a platform reply."""
-    return re.sub(r"^\s*@+\S+(?:\s+|$)", "", text).strip()
+def collapse_double_mention(text: str) -> str:
+    """Turn a leading "@@handle" into "@handle"; leave everything else as is."""
+    return re.sub(r"^\s*@{2,}", "@", text).strip()
 
 
 def sanitize_stored_drafts(*, platform: str = "youtube") -> int:

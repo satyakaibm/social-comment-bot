@@ -34,6 +34,14 @@ def no_follower_count_fetches(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def default_llm_provider(monkeypatch):
+    """Drafting tests mock the Gemini client, so a developer .env with
+    LLM_PROVIDER=claude sent their prompts to the real Claude API and failed
+    on its live replies. Tests that cover the Claude path patch it back."""
+    monkeypatch.setattr(config, "LLM_PROVIDER", "gemini")
+
+
+@pytest.fixture(autouse=True)
 def fresh_query_cache():
     """Analytics results are cached for minutes in production; tests that
     write rows and then render Momentum/Insights must see their own data."""
