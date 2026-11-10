@@ -102,8 +102,14 @@ def cmd_poll_all(_args) -> None:
     print(f"Total queued: {total}")
 
 
-def cmd_redraft(_args) -> None:
-    n = redraft_pending()
+def cmd_redraft(args) -> None:
+    n = redraft_pending(
+        platform=args.platform,
+        page_key=args.page,
+        error_contains=args.error_contains,
+        missing_drafts_only=args.missing_drafts_only,
+        limit=args.limit,
+    )
     print(f"Redrafted {n} comment(s) using the current REPLY_PERSONA.")
 
 
@@ -358,10 +364,35 @@ def main() -> None:
         help="Path to the backup database (default: data/comments.db.bak)",
     )
     import_p.set_defaults(func=cmd_import_stats)
-    sub.add_parser(
+    redraft_p = sub.add_parser(
         "redraft",
         help="Regenerate drafts for all pending_review comments with the current REPLY_PERSONA",
-    ).set_defaults(func=cmd_redraft)
+    )
+    redraft_p.add_argument(
+        "--platform",
+        choices=("youtube", "facebook", "instagram"),
+        help="Only redraft pending comments from this platform",
+    )
+    redraft_p.add_argument(
+        "--page",
+        choices=tuple(config.PAGES),
+        help="Only redraft comments for this configured page/channel",
+    )
+    redraft_p.add_argument(
+        "--error-contains",
+        help="Only redraft pending comments whose current error contains this text",
+    )
+    redraft_p.add_argument(
+        "--missing-drafts-only",
+        action="store_true",
+        help="Leave comments with an existing draft unchanged",
+    )
+    redraft_p.add_argument(
+        "--limit",
+        type=int,
+        help="Redraft at most N matching comments, oldest first",
+    )
+    redraft_p.set_defaults(func=cmd_redraft)
 
     args = parser.parse_args()
     try:

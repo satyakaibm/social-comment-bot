@@ -329,7 +329,7 @@ reply: Aarti time is in the video description.
 
 Examples are maintained manually; the bot does not create or append chant examples. `_template.txt` is ignored when loading examples.
 
-On all platforms, the drafting prompt prohibits generic thanks for watching, commenting, supporting, or sharing devotion. The persona takes priority over examples: when configured for emoji-only devotional greetings, drafts use 🙏. Questions receive a direct, brief answer. Existing drafts can be regenerated with `python -m app.cli redraft`.
+On all platforms, the drafting prompt prohibits generic thanks for watching, commenting, supporting, or sharing devotion. The persona takes priority over examples: when configured for emoji-only devotional greetings, drafts use 🙏. Questions receive a direct, brief answer. Existing drafts can be regenerated with `python -m app.cli redraft`; use `--platform`, `--page`, `--error-contains`, `--missing-drafts-only`, and `--limit` to target a bounded batch. Successful redrafts stay pending review and clear their previous error.
 
 Optional: `REPLY_EXAMPLES_DIR` in `.env` if you keep the folder somewhere else.
 
